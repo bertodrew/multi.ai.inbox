@@ -62,7 +62,7 @@ This fork turns mailcow into **multi.ai.inbox**: an inbox-as-a-service layer for
 - **Post-login connector choice** — *Login with Namecheap* (list domains, manage DNS) or *Use dedicated MCP* (the fork's native MCP server)
 - **Per-domain Settings page** (`domain_settings` table) — mail FQDN, branding, PTR target, quotas + auto-generated DNS snippets per domain
 - **Native MCP server** — tools `list_domains`, `get_domain_settings`, `set_domain_settings` on top of `json_api.php`, authenticated with the same `api` key table
-- **Registrar connectors** — Namecheap (API key) and Infomaniak (OAuth v2, multiple organizations)
+- **Registrar connectors** — Namecheap (API key) and Infomaniak (dedicated API token, multiple organizations via `account_id`)
 
 ## Architecture
 

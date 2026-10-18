@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Choose a connector: Namecheap DNS or the dedicated MCP server.">
+  <title>Connectors — multi.ai.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">multi<b>.ai.inbox</b></span>
+      </a>
+      <nav class="bar-nav">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" id="admin-link" href="#">Admin panel</a>
+        <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="wrap">
+      <h2 class="page-title">Connectors</h2>
+      <p class="lede small">Choose what to connect to this instance.</p>
+
+      <div class="connector-grid">
+        <article class="connector-card">
+          <div class="connector-head">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>
+            </svg>
+            <h3>Namecheap DNS</h3>
+          </div>
+          <p>List your Namecheap domains and inspect their DNS records.</p>
+          <div class="connector-actions">
+            <button class="btn primary" id="btn-load-domains" type="button">Browse domains</button>
+          </div>
+          <p class="msg error" id="domains-error" hidden></p>
+          <div id="domains-output" hidden></div>
+          <div id="dns-output" hidden></div>
+        </article>
+
+        <article class="connector-card">
+          <div class="connector-head">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 4V2M15 4V2M9 22v-2M15 22v-2M4 9H2M4 15H2M22 9h-2M22 15h-2"/><circle cx="12" cy="12" r="2.5"/>
+            </svg>
+            <h3>Use dedicated MCP</h3>
+          </div>
+          <p>
+            Connect Claude or Hermes to this fork&rsquo;s native MCP server to read and change
+            mail domain settings without opening the panel.
+          </p>
+
+          <div class="endpoint-row">
+            <code id="mcp-endpoint">/api/mcp.php</code>
+            <button class="btn ghost small-btn" data-copy="#mcp-endpoint" type="button">Copy</button>
+          </div>
+
+          <ul class="tools-list">
+            <li><code>list_domains</code><span>&mdash; list all mail domains with quota, aliases and active state</span></li>
+            <li><code>get_domain_settings</code><span>&mdash; full settings of one domain (quota, DKIM, relay&hellip;)</span></li>
+            <li><code>set_domain_settings</code><span>&mdash; change only the attributes you pass, e.g. <code>{"active":"1"}</code></span></li>
+          </ul>
+
+          <details>
+            <summary>Claude Desktop / Claude Code config</summary>
+            <pre id="claude-config"></pre>
+            <button class="btn ghost small-btn" data-copy="#claude-config" type="button">Copy</button>
+          </details>
+
+          <details>
+            <summary>Hermes usage instructions</summary>
+            <p class="hint">
+              Point the Hermes MCP client at the endpoint above with
+              <code>Authorization: Bearer &lt;MAILCOW_API_KEY&gt;</code> (the read-write key from
+              <code>mailcow.conf</code>). Then prompts like &ldquo;list domains and show the settings
+              of <code>example.com</code>&rdquo; call <code>list_domains</code> and
+              <code>get_domain_settings</code>; changes go through <code>set_domain_settings</code>.
+            </p>
+          </details>
+
+          <p class="hint">
+            The mailcow API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
+            docker subnet allowed in <code>API_ALLOW_FROM</code>. The key is read from
+            <code>mailcow.conf</code> at runtime &mdash; it is never written to this page or the repository.
+          </p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+    </div>
+  </footer>
+
+  <script src="assets/connectors.js"></script>
+</body>
+</html>
