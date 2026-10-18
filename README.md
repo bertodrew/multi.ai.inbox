@@ -50,9 +50,94 @@ Please see [the official documentation](https://docs.mailcow.email/) for install
 
 [Official 𝕏 (Twitter) Account](https://twitter.com/mailcow_email)
 
-[Official Mastodon Account](https://mailcow.social/@doncow)
+---
 
-Telegram desktop clients are available for [multiple platforms](https://desktop.telegram.org). You can search the groups history for keywords.
+# multi.ai.inbox — how the service works
+
+This fork turns mailcow into **multi.ai.inbox**: an inbox-as-a-service layer for AI agents across multiple brands (5 domains, ~15 mailboxes), self-hosted on Hetzner (EU).
+
+**What this fork adds on top of upstream mailcow:**
+
+- **Landing page** (`landing/`) — public frontdoor with two login paths: mailcow credentials or **"Login with Namecheap"** (API-key connect; Namecheap has no OAuth for third-party apps)
+- **Post-login connector choice** — *Login with Namecheap* (list domains, manage DNS) or *Use dedicated MCP* (the fork's native MCP server)
+- **Per-domain Settings page** (`domain_settings` table) — mail FQDN, branding, PTR target, quotas + auto-generated DNS snippets per domain
+- **Native MCP server** — tools `list_domains`, `get_domain_settings`, `set_domain_settings` on top of `json_api.php`, authenticated with the same `api` key table
+- **Registrar connectors** — Namecheap (API key) and Infomaniak (OAuth v2, multiple organizations)
+
+## Architecture
+
+```mermaid
+flowchart TB
+    User["👤 Founder / Agent"]
+
+    subgraph LANDING["multi.ai.inbox landing page"]
+        L["login: mailcow · Namecheap API key<br/>post-login: registrar connector or dedicated MCP"]
+    end
+
+    subgraph HETZNER["Hetzner CX33 · 2.28.99.252 (EU)"]
+        subgraph STACK["Mailcow stack — 18 containers"]
+            NGINX["nginx"]
+            MCP["MCP server (fork)<br/>list_domains · get/set_domain_settings"]
+            API["json_api.php<br/>tables: api (key+IP whitelist) · domain_settings"]
+            MAIL["postfix · dovecot · SOGo"]
+            SEC["rspamd · clamd · netfilter"]
+            ACME["acme — Let's Encrypt"]
+        end
+        DB[("MySQL")]
+    end
+
+    NC["Namecheap API<br/>domains · DNS hosts"]
+    INF["Infomaniak API<br/>kSuite · domains · DNS (multi-org)"]
+    DNS["DNS zone<br/>A mail → 2.28.99.252 · MX · SPF · DKIM · DMARC"]
+
+    User --> L
+    L --> API
+    MCP --> API
+    API --> DB
+    L --> NC
+    L --> INF
+    NC --> DNS
+    INF --> DNS
+    DNS -- "A + MX" --> NGINX
+    ACME -- "TLS cert" --> NGINX
+    DNS -- "SPF/DKIM/DMARC" --> MAIL
+```
+
+## Domain provisioning flow
+
+```mermaid
+sequenceDiagram
+    actor U as Founder
+    participant L as Landing multi.ai.inbox
+    participant MC as Mailcow API
+    participant R as Registrar (Namecheap / Infomaniak)
+    participant AC as acme (Let's Encrypt)
+
+    U->>L: login (mailcow or registrar API key)
+    L->>R: list domains
+    R-->>L: domain list
+    U->>L: pick domain + settings (FQDN, branding, quotas)
+    L->>MC: add domain + domain_settings
+    MC-->>L: DKIM key generated
+    L->>R: set A (mail → 2.28.99.252), MX, SPF, DKIM, DMARC
+    R-->>L: zone updated
+    AC->>AC: issue TLS cert once A record propagates
+    U->>L: create mailbox hello@domain
+```
+
+## Mail flow
+
+```mermaid
+flowchart LR
+    IN["Internet"] <-->|":25 ⚠️ Hetzner ticket required"| PW["postfix"]
+    PW --> RS["rspamd"] --> DV["dovecot"] --> SG["SOGo · /user"]
+```
+
+**Security model:** the Namecheap/Infomaniak keys live server-side (never in the repo or logs); DNS writes use single-record updates only (`update_dns_record`) — full-zone replaces (`setHosts`) would wipe SPF/DKIM/DMARC.
+
+---
+
+[mailcow community](https://community.mailcow.email)
 
 ## Misc
 
