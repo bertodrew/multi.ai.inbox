@@ -1,4 +1,4 @@
-/* onboarding.js — multi.ai.inbox setup wizard (3 steps)
+/* onboarding.js — AImulti.inbox setup wizard (3 steps)
    Consumes the EXISTING landing API only:
      GET  api/status     — session, csrf, mailcow_origin
      POST api/connect    — Namecheap API key (form-encoded + X-Landing-CSRF)
@@ -114,7 +114,7 @@
   }
   status = status.data;
 
-  /* topbar: mailcow UI link */
+  /* topbar: mail UI link */
   const adminLink = $('#admin-link');
   if (status.mailcow_origin) adminLink.href = status.mailcow_origin + '/';
 

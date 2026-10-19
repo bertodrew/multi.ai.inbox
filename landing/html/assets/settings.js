@@ -217,7 +217,7 @@
     if (rec) {
       note.hidden = true;
     } else {
-      showMsg(note, 'Mail-domain fields show registrar data only \u2014 mailcow values will appear once the API gateway is live.');
+      showMsg(note, 'Mail-domain fields show registrar data only \u2014 platform values will appear once the API gateway is live.');
     }
     fillForm(current.record);
 

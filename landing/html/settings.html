@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Per-domain settings: FQDN, branding, PTR target, quotas and DNS snippets.">
-  <title>Domain settings — multi.ai.inbox</title>
+  <title>Domain settings — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
   <link rel="stylesheet" href="assets/theme.css">
@@ -21,15 +21,16 @@
           <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
           <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span class="brand-name">multi<b>.ai.inbox</b></span>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
       <nav class="bar-nav" aria-label="Main">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="settings.html" aria-current="page">Settings</a>
         <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mailcow UI</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
         <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
       </nav>
     </div>
@@ -63,12 +64,12 @@
             <div class="field full">
               <label for="f-fqdn">FQDN</label>
               <input id="f-fqdn" type="text" readonly aria-describedby="fqdn-help">
-              <p class="help" id="fqdn-help">The domain itself &mdash; it cannot be renamed here; add or remove domains from the mailcow UI.</p>
+              <p class="help" id="fqdn-help">The domain itself &mdash; it cannot be renamed here; add or remove domains from the mail UI.</p>
             </div>
             <div class="field full">
               <label for="f-branding">Branding (description)</label>
               <input id="f-branding" type="text" aria-describedby="branding-help">
-              <p class="help" id="branding-help">Shown in the mailcow UI and on relayed mail metadata.</p>
+              <p class="help" id="branding-help">Shown in the mail UI and on relayed mail metadata.</p>
             </div>
             <div class="field full">
               <label for="f-ptr">PTR target</label>
@@ -112,7 +113,7 @@
 
   <footer>
     <div class="wrap footer-inner">
-      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
       <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
     </div>
   </footer>

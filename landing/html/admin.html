@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Operator and domain-admin view: scoped operations, session details and the recent audit trail.">
-  <title>Admin — multi.ai.inbox</title>
+  <title>Admin — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
   <link rel="stylesheet" href="assets/theme.css">
@@ -21,15 +21,16 @@
           <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
           <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span class="brand-name">multi<b>.ai.inbox</b></span>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
       <nav class="bar-nav" aria-label="Main">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="settings.html">Settings</a>
         <a class="btn ghost" href="admin.html" aria-current="page">Admin</a>
-        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mailcow UI</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
       </nav>
     </div>
   </header>
@@ -98,7 +99,7 @@
         <ul class="kv">
           <li><span class="k">Connected as</span><span class="v" id="kv-user">&ndash;</span></li>
           <li><span class="k">Registrar environment</span><span class="v" id="kv-sandbox">&ndash;</span></li>
-          <li><span class="k">Mailcow origin</span><span class="v" id="kv-origin">&ndash;</span></li>
+          <li><span class="k">Mail origin</span><span class="v" id="kv-origin">&ndash;</span></li>
           <li><span class="k">Landing API</span><span class="v" id="kv-api">&ndash;</span></li>
         </ul>
       </section>
@@ -121,7 +122,7 @@
 
   <footer>
     <div class="wrap footer-inner">
-      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
       <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
     </div>
   </footer>

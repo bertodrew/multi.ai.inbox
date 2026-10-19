@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Choose a connector: Namecheap DNS or the dedicated MCP server.">
-  <title>Connectors — multi.ai.inbox</title>
+  <title>Connectors — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -18,11 +18,12 @@
           <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
           <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span class="brand-name">multi<b>.ai.inbox</b></span>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
       <nav class="bar-nav">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" id="admin-link" href="#">Admin panel</a>
         <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
       </nav>
@@ -84,17 +85,17 @@
             <summary>Hermes usage instructions</summary>
             <p class="hint">
               Point the Hermes MCP client at the endpoint above with
-              <code>Authorization: Bearer &lt;MAILCOW_API_KEY&gt;</code> (the read-write key from
-              <code>mailcow.conf</code>). Then prompts like &ldquo;list domains and show the settings
+              <code>Authorization: Bearer &lt;platform API key&gt;</code> (the read-write key from
+              <code>the platform config</code>). Then prompts like &ldquo;list domains and show the settings
               of <code>example.com</code>&rdquo; call <code>list_domains</code> and
               <code>get_domain_settings</code>; changes go through <code>set_domain_settings</code>.
             </p>
           </details>
 
           <p class="hint">
-            The mailcow API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
+            The mail API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
             docker subnet allowed in <code>API_ALLOW_FROM</code>. The key is read from
-            <code>mailcow.conf</code> at runtime &mdash; it is never written to this page or the repository.
+            <code>the platform config</code> at runtime &mdash; it is never written to this page or the repository.
           </p>
         </article>
       </div>
@@ -103,7 +104,7 @@
 
   <footer>
     <div class="wrap footer-inner">
-      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
       <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
       <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
     </div>

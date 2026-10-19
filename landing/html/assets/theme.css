@@ -590,3 +590,41 @@ tbody tr[role="button"]:focus-visible {
 @media (max-width: 560px) {
   .connected-as { display: inline; font-size: 0.82rem; }
 }
+
+/* --------------------------------------------------------------------------
+   Webmail — module launcher + groupware client embed (same-origin iframe)
+   -------------------------------------------------------------------------- */
+
+.toolbar .module-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.module-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sogo-frame {
+  display: block;
+  width: 100%;
+  height: min(76vh, 860px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+footer a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+footer a:hover { color: var(--text); }
+
+@media (max-width: 640px) {
+  .sogo-frame { height: 68vh; }
+}

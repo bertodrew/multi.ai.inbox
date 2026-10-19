@@ -8,7 +8,7 @@
      GATEWAY_MAILBOXES = 'api/gateway/mailboxes?domain=<domain>'
    On 404/501/503 or any failure the page shows the honest notice (what ships
    when, what works today) — never fake rows. Basic actions work today:
-   prepare + copy the address, open the mailcow UI. */
+   prepare + copy the address, open the mail UI. */
 (async () => {
   'use strict';
 
@@ -169,7 +169,7 @@
       note.hidden = true;
       const mailboxes = res.data.mailboxes;
       if (!mailboxes.length) {
-        out.appendChild(el('p', 'empty-state', 'No mailboxes on this domain yet \u2014 create the first one in the mailcow UI.'));
+        out.appendChild(el('p', 'empty-state', 'No mailboxes on this domain yet \u2014 create the first one in the mail UI.'));
         return;
       }
       out.appendChild(table(
@@ -212,7 +212,7 @@
     if (!previewInput.value) return;
     try {
       await navigator.clipboard.writeText(previewInput.value);
-      showMsg($('#copy-ok'), 'Address copied \u2014 paste it in the mailcow UI to create the mailbox.');
+      showMsg($('#copy-ok'), 'Address copied \u2014 paste it in the mail UI to create the mailbox.');
     } catch (err) {
       showMsg($('#copy-ok'), 'Copy failed \u2014 select the preview field and copy manually.');
     }

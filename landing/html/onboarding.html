@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Set up multi.ai.inbox in three steps: verify the mailcow origin, connect a provider, inspect your first domain.">
-  <title>Setup — multi.ai.inbox</title>
+  <meta name="description" content="Set up AImulti.inbox in three steps: verify the mail origin, connect a provider, inspect your first domain.">
+  <title>Setup — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
   <link rel="stylesheet" href="assets/theme.css">
@@ -21,14 +21,15 @@
           <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
           <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span class="brand-name">multi<b>.ai.inbox</b></span>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
       <nav class="bar-nav" aria-label="Main">
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="settings.html">Settings</a>
         <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mailcow UI</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
       </nav>
     </div>
   </header>
@@ -38,12 +39,12 @@
       <div class="page-head">
         <div>
           <h1>Setup</h1>
-          <p class="lede small">Three steps: verify the mailcow origin, connect a provider, inspect your first domain.</p>
+          <p class="lede small">Three steps: verify the mail origin, connect a provider, inspect your first domain.</p>
         </div>
       </div>
 
       <ol class="stepper" aria-label="Setup progress">
-        <li id="step-ind-1" aria-current="step"><span class="step-dot" aria-hidden="true">1</span>Mailcow</li>
+        <li id="step-ind-1" aria-current="step"><span class="step-dot" aria-hidden="true">1</span>Mail</li>
         <li id="step-ind-2"><span class="step-dot" aria-hidden="true">2</span>Connector</li>
         <li id="step-ind-3"><span class="step-dot" aria-hidden="true">3</span>First domain</li>
       </ol>
@@ -52,20 +53,20 @@
         <!-- Step 1 — mailcow origin -->
         <section class="card" id="step-1" aria-labelledby="step-1-title">
           <div class="card-head">
-            <h2 id="step-1-title" tabindex="-1">Mailcow origin</h2>
+            <h2 id="step-1-title" tabindex="-1">Mail origin</h2>
             <span class="card-meta" id="origin-state"></span>
           </div>
           <p>
-            Your mail platform is the mailcow UI on this host. The landing reads its
+            Your mail platform is the mail UI on this host. The landing reads its
             origin from the deployment and links to it &mdash; sign in there with your
-            mailcow admin credentials.
+            admin credentials.
           </p>
           <ul class="kv">
             <li><span class="k">Origin</span><span class="v" id="origin-value">&hellip;</span></li>
             <li><span class="k">Landing API</span><span class="v" id="api-state">&hellip;</span></li>
           </ul>
           <div class="form-actions">
-            <a class="btn ghost" id="open-mailcow" href="#" target="_blank" rel="noopener">Open mailcow UI</a>
+            <a class="btn ghost" id="open-mailcow" href="#" target="_blank" rel="noopener">Open mail UI</a>
             <button class="btn primary" type="button" id="to-step-2">Continue to connection</button>
           </div>
         </section>
@@ -149,7 +150,7 @@
 
   <footer>
     <div class="wrap footer-inner">
-      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
       <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
     </div>
   </footer>

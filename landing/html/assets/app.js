@@ -25,7 +25,7 @@
   } else {
     const submit = mailcowForm.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
-    mailcowHint.textContent = 'Mailcow origin unknown: set MAILCOW_UI_ORIGIN in mailcow.conf and restart the landing services.';
+    mailcowHint.textContent = 'Mail origin unknown: set MAILCOW_UI_ORIGIN in the platform config and restart the landing services.';
   }
 
   // S4: the server no longer discloses its egress IP to the browser — leave the

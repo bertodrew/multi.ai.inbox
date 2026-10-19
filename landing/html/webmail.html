@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="The full mail client: mail, folders, compose, calendar, contacts and tasks — the groupware client ships with the platform.">
+  <title>Webmail — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <nav class="bar-nav" aria-label="Main">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html" aria-current="page">Webmail</a>
+        <a class="btn ghost" href="settings.html">Settings</a>
+        <a class="btn ghost" href="admin.html">Admin</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap" id="page">
+      <div class="page-head">
+        <div>
+          <h1>Webmail</h1>
+          <p class="lede small">The full mail client &mdash; mail, folders, compose, calendar, contacts and tasks. The groupware client ships with the platform; sign-in is your mailbox address + password.</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <span class="module-label" id="module-label">Module</span>
+        <button class="btn ghost module-btn" type="button" data-view="Mail" aria-pressed="true">Mail</button>
+        <button class="btn ghost module-btn" type="button" data-view="Calendar" aria-pressed="false">Calendar</button>
+        <button class="btn ghost module-btn" type="button" data-view="Contacts" aria-pressed="false">Contacts</button>
+        <button class="btn ghost module-btn" type="button" data-view="Tasks" aria-pressed="false">Tasks</button>
+        <span class="toolbar-spacer"></span>
+        <a class="btn ghost" id="sogo-open" href="/SOGo/" target="_blank" rel="noopener">Open in new tab</a>
+      </div>
+
+      <p class="msg notice" id="sogo-note" role="status" aria-live="polite">
+        Sign-in is your mailbox address + password &mdash; the same authentication as the mail UI.
+        If the frame stays empty after sign-in, use &ldquo;Open in new tab&rdquo;.
+      </p>
+
+      <iframe id="sogo-frame" class="sogo-frame" src="/SOGo/so" title="Groupware webmail client"
+              referrerpolicy="no-referrer"></iframe>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
+      <span>
+        <a href="terms.html">Terms</a> &middot;
+        <a href="privacy.html">Privacy</a> &middot;
+        <a href="sla.html">SLA</a>
+      </span>
+    </div>
+  </footer>
+
+  <script src="assets/webmail.js"></script>
+</body>
+</html>
