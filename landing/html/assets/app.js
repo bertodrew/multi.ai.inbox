@@ -83,4 +83,36 @@
     ncError.textContent = res.error || 'Connection failed';
     ncError.hidden = false;
   });
+
+  // Sign-in modal: every [data-open-login] opens the <dialog>; backdrop and
+  // close button dismiss it (Esc is native to <dialog>).
+  const loginModal = $('#login-modal');
+  if (loginModal) {
+    document.querySelectorAll('[data-open-login]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loginModal.showModal();
+      });
+    });
+    loginModal.addEventListener('click', (e) => {
+      if (e.target === loginModal) loginModal.close();
+    });
+    const closeBtn = $('#login-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => loginModal.close());
+  }
+
+  // Scroll reveal: elements marked data-reveal fade/slide in on first view.
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          en.target.classList.add('in');
+          io.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+  } else {
+    document.querySelectorAll('[data-reveal]').forEach((el) => el.classList.add('in'));
+  }
 })();
