@@ -1,5 +1,5 @@
 # multi.ai.inbox landing page (fork) — incluso dentro il server block via site.*.custom
-# Pagina: /landingpage/ (statico), API: /landingpage/api/ (fastcgi verso landing-php)
+# Pagina: /landingpage/ (statico), API: /landingpage/api/ (proxy verso il container Go)
 
 location = /landingpage { return 301 /landingpage/; }
 
@@ -9,9 +9,9 @@ location ^~ /landingpage/ {
 }
 
 location ^~ /landingpage/api/ {
-    rewrite ^/landingpage/api/(.*)$ /api/$1 break;
-    include /etc/nginx/fastcgi_params;
-    fastcgi_pass landing-php:9000;
-    fastcgi_param SCRIPT_FILENAME /www$fastcgi_script_name;
-    fastcgi_read_timeout 60s;
+    proxy_pass http://landing-go:8080/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_read_timeout 60s;
 }

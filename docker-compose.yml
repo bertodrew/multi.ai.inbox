@@ -661,26 +661,11 @@ services:
           aliases:
             - ofelia
 
-    # multi.ai.inbox landing: public page, Namecheap API-key connect and MCP endpoint
-    # Exposed on a dedicated port (default 127.0.0.1:8080); the admin UI on / is untouched.
-    # To publish it, set LANDING_BIND="" (or a host IP) and LANDING_HTTP_PORT=8080 in mailcow.conf.
-    landing-nginx:
-      depends_on:
-        - landing-php
-      image: nginx:1.29-alpine
-      restart: always
-      ports:
-        - "${LANDING_BIND:-127.0.0.1}:${LANDING_HTTP_PORT:-8080}:80"
-      volumes:
-        - ./landing/html:/www:ro,Z
-        - ./landing/nginx/landing.conf:/etc/nginx/conf.d/default.conf:ro,Z
-      networks:
-        mailcow-network:
-          aliases:
-            - landing
-
-    landing-php:
-      image: php:8.3-fpm-alpine
+    # multi.ai.inbox landing: Go API container (distroless, stdlib-only rewrite of the PHP version)
+    # Static page served by the mailcow nginx at /landingpage/, API proxied to this container.
+    landing-go:
+      build: ./landing/go
+      image: multiai/landing-go:latest
       restart: always
       environment:
         - TZ=${TZ}
@@ -690,13 +675,13 @@ services:
         - MAILCOW_API_KEY=${API_KEY:-}
         - NAMECHEAP_API_URL=${NAMECHEAP_API_URL:-https://api.namecheap.com/xml.response}
         - NAMECHEAP_SANDBOX_API_URL=${NAMECHEAP_SANDBOX_API_URL:-https://api.sandbox.namecheap.com/xml.response}
+        - HTTPS_INFER=on
       volumes:
-        - ./landing/php:/www/api:ro,Z
         - landing-credentials-vol-1:/credentials:z
       networks:
         mailcow-network:
           aliases:
-            - landing-php
+            - landing-go
 
 networks:
   mailcow-network:

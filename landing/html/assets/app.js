@@ -3,7 +3,7 @@
 
   let status = null;
   try {
-    status = await fetch('api/status.php').then((r) => r.json());
+    status = await fetch('api/status').then((r) => r.json());
   } catch (e) {
     status = null;
   }
@@ -27,15 +27,10 @@
     mailcowHint.textContent = 'Mailcow origin unknown: set MAILCOW_UI_ORIGIN in mailcow.conf and restart the landing services.';
   }
 
-  if (status && status.ok && status.public_ip) {
-    $('#nc-client-ip').value = status.public_ip;
-    $('#nc-ip-hint').innerHTML =
-      'Whitelist this server IP in Namecheap &rarr; Profile &rarr; Tools &rarr; API Access: ' +
-      '<code>' + status.public_ip + '</code>';
-  } else {
-    $('#nc-ip-hint').textContent =
-      'Could not auto-detect the server IP: open the Namecheap panel and add this server IP under Profile > Tools > API Access.';
-  }
+  // S4: the server no longer discloses its egress IP to the browser — leave the
+  // field empty and the API uses the server's own egress IP (auto-detected).
+  $('#nc-ip-hint').textContent =
+    'Optional: leave empty to use this server\u2019s egress IP, or type the IP whitelisted in Namecheap (Profile > Tools > API Access).';
 
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => {
@@ -67,7 +62,7 @@
     ncSubmit.textContent = 'Connecting…';
     let res;
     try {
-      res = await fetch('api/connect.php', {
+      res = await fetch('api/connect', {
         method: 'POST',
         body,
         headers: { 'X-Landing-CSRF': csrf },
