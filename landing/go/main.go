@@ -778,11 +778,14 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clearFailedAttempts(sess)
-	if err := storeCreds(sid, c); err != nil {
+	// Rotate FIRST, then store under the NEW sid: rotateSession invalidates the
+	// old sid AND its credential file — storing before rotating destroyed the
+	// just-written credentials on every successful connect (P0, review CTO 19/10).
+	newSID := rotateSession(w, r, sess)
+	if err := storeCreds(newSID, c); err != nil {
 		jsonErr(w, "Credential storage unavailable", http.StatusInternalServerError)
 		return
 	}
-	newSID := rotateSession(w, r, sess)
 	sessions.mu.Lock()
 	sessions.m[newSID].connected = true
 	sessions.m[newSID].username = username
