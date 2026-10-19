@@ -773,6 +773,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	c := creds{Username: username, APIKey: apiKey, ClientIP: ip, Sandbox: sandbox}
 	res := ncCall(c, "namecheap.domains.getList", url.Values{"Page": {"1"}, "PageSize": {"5"}})
 	if !res.OK {
+		auditLog("namecheap_connect_failed", map[string]any{"ip": ip, "nc_code": res.Code})
 		jsonErr(w, res.Error, http.StatusUnauthorized)
 		return
 	}
@@ -941,6 +942,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func handleMCP(w http.ResponseWriter, r *http.Request) {
+	auditLog("mcp_request", map[string]any{"ip": clientIP(r)}) // includes unauthorized attempts
 	expected := os.Getenv("MAILCOW_API_KEY")
 	provided := ""
 	if auth := r.Header.Get("Authorization"); auth != "" {
