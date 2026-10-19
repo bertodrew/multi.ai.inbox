@@ -22,6 +22,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -458,12 +459,47 @@ func validPublicIP(ip string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Namecheap client (unchanged behavior: XML form-encoded)
+// Namecheap client (unchanged behavior: XML form-encoded, stdlib encoding/xml)
 // ---------------------------------------------------------------------------
+
+// ncEnvelope parses the whole Namecheap response with encoding/xml — a real
+// parser on untrusted input, not hand-rolled string indexing (CISO: robust
+// against malformed/tag-bomb responses).
+type ncEnvelope struct {
+	Errors struct {
+		Error []struct {
+			Number  string `xml:"Number,attr"`
+			Message string `xml:",chardata"`
+		} `xml:"Error"`
+	} `xml:"Errors"`
+	CommandResponse struct {
+		DomainList struct {
+			Domain []struct {
+				Name       string `xml:"Name,attr"`
+				Created    string `xml:"Created,attr"`
+				Expires    string `xml:"Expires,attr"`
+				IsExpired  string `xml:"IsExpired,attr"`
+				IsLocked   string `xml:"IsLocked,attr"`
+				AutoRenew  string `xml:"AutoRenew,attr"`
+				WhoisGuard string `xml:"WhoisGuard,attr"`
+			} `xml:"Domain"`
+		} `xml:"DomainGetListResult"`
+		DNSHosts struct {
+			Host []struct {
+				HostID  string `xml:"HostID,attr"`
+				Name    string `xml:"Name,attr"`
+				Type    string `xml:"Type,attr"`
+				Address string `xml:"Address,attr"`
+				MXPref  string `xml:"MXPref,attr"`
+				TTL     string `xml:"TTL,attr"`
+			} `xml:"host"`
+		} `xml:"DomainDNSGetHostsResult"`
+	} `xml:"CommandResponse"`
+}
 
 type ncResult struct {
 	OK    bool
-	XML   []byte
+	Env   *ncEnvelope
 	Error string
 	Code  string
 	HTTP  int
@@ -493,16 +529,18 @@ func ncCall(c creds, command string, extra url.Values) ncResult {
 		return ncResult{Error: "Namecheap API unreachable, check server network"}
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4 MiB cap on untrusted responses
 	if err != nil {
 		return ncResult{Error: "Namecheap API unreachable, check server network"}
 	}
-	res := ncResult{HTTP: resp.StatusCode, XML: body}
-	if !strings.Contains(string(body), "<CommandResponse") {
-		res.Error = "Invalid Namecheap API response"
-		return res
+	env := &ncEnvelope{}
+	if err := xml.Unmarshal(body, env); err != nil {
+		return ncResult{Error: "Invalid Namecheap API response", HTTP: resp.StatusCode}
 	}
-	if num, msg, ok := ncFirstError(body); ok {
+	res := ncResult{HTTP: resp.StatusCode, Env: env}
+	if len(env.Errors.Error) > 0 {
+		e := env.Errors.Error[0]
+		num, msg := e.Number, strings.TrimSpace(e.Message)
 		if num == "1011031" || strings.Contains(strings.ToLower(msg), "not whitelisted") {
 			ip := c.ClientIP
 			if ip == "" {
@@ -517,73 +555,6 @@ func ncCall(c creds, command string, extra url.Values) ncResult {
 	return res
 }
 
-// ncFirstError pulls the first <Errors><Error Number="…">…</Error> node without a
-// full DOM build (stdlib XML parsing on the raw bytes).
-func ncFirstError(body []byte) (number, message string, present bool) {
-	s := string(body)
-	if !strings.Contains(s, "<Errors>") || !strings.Contains(s, "<Error") {
-		return "", "", false
-	}
-	const errTag = "<Error"
-	i := strings.Index(s, errTag)
-	if i < 0 {
-		return "", "", false
-	}
-	node := s[i:]
-	end := strings.Index(node, "</Error>")
-	if end < 0 {
-		return "", "", false
-	}
-	node = node[:end]
-	if num := attrValue(node, "Number"); num != "" {
-		number = num
-	}
-	if inner := strings.Index(node, ">"); inner >= 0 && inner+1 < len(node) {
-		message = strings.TrimSpace(node[inner+1:])
-	}
-	return number, message, true
-}
-
-func attrValue(s, key string) string {
-	m := regexp.MustCompile(regexp.QuoteMeta(key) + `="([^"]*)"`).FindStringSubmatch(s)
-	if len(m) < 2 {
-		return ""
-	}
-	return m[1]
-}
-
-// ---------------------------------------------------------------------------
-// XML field extraction (stdlib only)
-// ---------------------------------------------------------------------------
-
-func xmlAttrs(body []byte, tag string) []map[string]string {
-	out := []map[string]string{}
-	s := string(body)
-	open, close_ := "<"+tag, "</"+tag+">"
-	rest := s
-	for {
-		i := strings.Index(rest, open)
-		if i < 0 {
-			break
-		}
-		seg := rest[i:]
-		end := strings.Index(seg, close_)
-		if end < 0 {
-			break
-		}
-		node := seg[:end+len(close_)]
-		rest = rest[i+len(node):]
-		m := map[string]string{}
-		for _, key := range []string{"Name", "Created", "Expires", "IsExpired", "IsLocked", "AutoRenew", "WhoisGuard", "HostID", "Type", "Address", "MXPref", "TTL"} {
-			if v := attrValue(node, key); v != "" {
-				m[key] = v
-			}
-		}
-		out = append(out, m)
-	}
-	return out
-}
-
 func ncDomains(c creds) ([]map[string]any, *ncResult) {
 	domains := []map[string]any{}
 	for page := 1; page <= ncMaxPages; page++ {
@@ -592,16 +563,16 @@ func ncDomains(c creds) ([]map[string]any, *ncResult) {
 		if !res.OK {
 			return nil, &res
 		}
-		nodes := xmlAttrs(res.XML, "Domain")
+		nodes := res.Env.CommandResponse.DomainList.Domain
 		for _, n := range nodes {
 			domains = append(domains, map[string]any{
-				"name":       n["Name"],
-				"created":    n["Created"],
-				"expires":    n["Expires"],
-				"expired":    n["IsExpired"] == "true",
-				"locked":     n["IsLocked"] == "true",
-				"autorenew":  n["AutoRenew"] == "true",
-				"whoisguard": orDefault(n["WhoisGuard"], "NOTFOUND"),
+				"name":       n.Name,
+				"created":    n.Created,
+				"expires":    n.Expires,
+				"expired":    n.IsExpired == "true",
+				"locked":     n.IsLocked == "true",
+				"autorenew":  n.AutoRenew == "true",
+				"whoisguard": orDefault(n.WhoisGuard, "NOTFOUND"),
 			})
 		}
 		if len(nodes) < ncPageSize {
@@ -617,14 +588,14 @@ func ncDNSHosts(c creds, domain string) ([]map[string]any, *ncResult) {
 		return nil, &res
 	}
 	hosts := []map[string]any{}
-	for _, n := range xmlAttrs(res.XML, "host") {
+	for _, n := range res.Env.CommandResponse.DNSHosts.Host {
 		hosts = append(hosts, map[string]any{
-			"id":       n["HostID"],
-			"name":     n["Name"],
-			"type":     n["Type"],
-			"address":  n["Address"],
-			"mx_pref":  orDefault(n["MXPref"], "10"),
-			"ttl":      orDefault(n["TTL"], "1800"),
+			"id":      n.HostID,
+			"name":    n.Name,
+			"type":    n.Type,
+			"address": n.Address,
+			"mx_pref": orDefault(n.MXPref, "10"),
+			"ttl":     orDefault(n.TTL, "1800"),
 		})
 	}
 	return hosts, nil
@@ -671,6 +642,26 @@ func mailcowCall(verb, path string, body any) (map[string]any, error) {
 	var data map[string]any
 	_ = json.Unmarshal(b, &data)
 	return data, nil
+}
+
+// ---------------------------------------------------------------------------
+// audit log (secret-free, structured — journald/docker logs is the operator's pipeline)
+// ---------------------------------------------------------------------------
+
+// auditLog writes a structured audit line to stdout. Credentials and API keys
+// never land here — only event, outcome, tool/domain, client IP.
+func auditLog(event string, fields map[string]any) {
+	rec := make(map[string]any, len(fields)+2)
+	rec["event"] = event
+	rec["ts"] = time.Now().UTC().Format(time.RFC3339)
+	for k, v := range fields {
+		rec[k] = v
+	}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
+	log.Printf("[audit] %s", b)
 }
 
 // ---------------------------------------------------------------------------
@@ -795,6 +786,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	sessions.m[newSID].connected = true
 	sessions.m[newSID].username = username
 	sessions.mu.Unlock()
+	auditLog("namecheap_connect", map[string]any{"ok": true, "username": username, "sandbox": sandbox, "ip": ip})
 	jsonOut(w, map[string]any{"ok": true, "username": username, "sandbox": sandbox})
 }
 
@@ -808,6 +800,7 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dropSession(w, r)
+	auditLog("namecheap_disconnect", map[string]any{"ok": true, "ip": clientIP(r)})
 	jsonOut(w, map[string]any{"ok": true})
 }
 
@@ -988,6 +981,12 @@ func handleMCP(w http.ResponseWriter, r *http.Request) {
 		name := str(req.Params["name"])
 		args, _ := req.Params["arguments"].(map[string]any)
 		data, err := mcpToolCall(name, args)
+		auditLog("mcp_tool_call", map[string]any{
+			"tool":   name,
+			"domain": strings.ToLower(strings.TrimSpace(str(args["domain"]))),
+			"ok":     err == nil,
+			"ip":     clientIP(r),
+		})
 		if errors.Is(err, errUnknownTool) {
 			writeJSON(w, http.StatusOK, rpcResult(req.ID, map[string]any{
 				"content": []map[string]any{{"type": "text", "text": "Unknown tool: " + name}}, "isError": true,

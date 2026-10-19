@@ -667,6 +667,13 @@ services:
       build: ./landing/go
       image: multiai/landing-go:latest
       restart: always
+      read_only: true
+      tmpfs:
+        - /tmp:size=16m
+      cap_drop:
+        - ALL
+      security_opt:
+        - no-new-privileges:true
       environment:
         - TZ=${TZ}
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
