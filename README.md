@@ -58,7 +58,7 @@ This fork turns mailcow into **multi.ai.inbox**: an inbox-as-a-service layer for
 
 **What this fork adds on top of upstream mailcow:**
 
-- **Landing page** (`landing/`) — public frontdoor with two login paths: mailcow credentials or **"Login with Namecheap"** (API-key connect; Namecheap has no OAuth for third-party apps)
+- **Landing page** (`landing/`) — public frontdoor at **`/landingpage`** on the main origin (mailcow nginx), with two login paths: mailcow credentials or **"Login with Namecheap"** (API-key connect; Namecheap has no OAuth for third-party apps). Backend is a **Go 1.24 single-binary API** (stdlib-only, distroless container) — sessions are server-issued and rotated on connect, credentials are stored **per-session AES-256-GCM encrypted at rest**, failed connects are rate-limited per IP, and the status endpoint discloses no server IP.
 - **Post-login connector choice** — *Login with Namecheap* (list domains, manage DNS) or *Use dedicated MCP* (the fork's native MCP server)
 - **Per-domain Settings page** (`domain_settings` table) — mail FQDN, branding, PTR target, quotas + auto-generated DNS snippets per domain
 - **Native MCP server** — tools `list_domains`, `get_domain_settings`, `set_domain_settings` on top of `json_api.php`, authenticated with the same `api` key table
@@ -70,8 +70,8 @@ This fork turns mailcow into **multi.ai.inbox**: an inbox-as-a-service layer for
 flowchart TB
     User["👤 Founder / Agent"]
 
-    subgraph LANDING["multi.ai.inbox landing page"]
-        L["login: mailcow · Namecheap API key<br/>post-login: registrar connector or dedicated MCP"]
+    subgraph LANDING["multi.ai.inbox landing page — /landingpage"]
+        L["Go API (distroless)<br/>login: mailcow · Namecheap API key<br/>post-login: registrar connector or dedicated MCP"]
     end
 
     subgraph HETZNER["Hetzner CX33 · 2.28.99.252 (EU)"]
