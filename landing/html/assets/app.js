@@ -17,6 +17,7 @@
   const origin = status && status.ok ? status.mailcow_origin : '';
   const mailcowForm = $('#mailcow-form');
   const mailcowHint = $('#mailcow-hint');
+  mailcowHint.setAttribute('aria-live', 'polite'); // M4 fix: origin status announced
 
   if (origin) {
     mailcowForm.action = origin + '/';
@@ -29,6 +30,7 @@
 
   // S4: the server no longer discloses its egress IP to the browser — leave the
   // field empty and the API uses the server's own egress IP (auto-detected).
+  $('#nc-ip-hint').setAttribute('aria-live', 'polite'); // M4 fix: status update announced
   $('#nc-ip-hint').textContent =
     'Optional: leave empty to use this server\u2019s egress IP, or type the IP whitelisted in Namecheap (Profile > Tools > API Access).';
 
@@ -45,6 +47,7 @@
   });
 
   const ncError = $('#nc-error');
+  ncError.setAttribute('role', 'alert'); // M4 fix: submit errors announced to screen readers
   const ncSubmit = $('#nc-submit');
 
   $('#nc-form').addEventListener('submit', async (e) => {

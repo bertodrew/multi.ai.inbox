@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Per-domain settings: FQDN, branding, PTR target, quotas and DNS snippets.">
+  <title>Domain settings — multi.ai.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">multi<b>.ai.inbox</b></span>
+      </a>
+      <nav class="bar-nav" aria-label="Main">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="settings.html" aria-current="page">Settings</a>
+        <a class="btn ghost" href="admin.html">Admin</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mailcow UI</a>
+        <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap" id="page">
+      <div class="page-head">
+        <div>
+          <h1>Domain settings</h1>
+          <p class="lede small">Per-domain configuration: FQDN, branding, PTR target, quotas and the live DNS snippets.</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label for="domain-select">Domain</label>
+        <select id="domain-select"><option value="">Loading domains&hellip;</option></select>
+        <span class="toolbar-spacer"></span>
+        <button class="btn ghost" type="button" id="btn-refresh">Refresh</button>
+      </div>
+
+      <!-- Mail-domain settings (writes go through the API gateway, in costruzione) -->
+      <section class="card" aria-labelledby="mail-title">
+        <div class="card-head">
+          <h2 id="mail-title">Mail domain</h2>
+          <span class="card-meta" id="mail-meta"></span>
+        </div>
+        <p class="msg notice" id="gateway-read-note" hidden></p>
+        <form id="domain-form" novalidate>
+          <div class="form-grid">
+            <div class="field full">
+              <label for="f-fqdn">FQDN</label>
+              <input id="f-fqdn" type="text" readonly aria-describedby="fqdn-help">
+              <p class="help" id="fqdn-help">The domain itself &mdash; it cannot be renamed here; add or remove domains from the mailcow UI.</p>
+            </div>
+            <div class="field full">
+              <label for="f-branding">Branding (description)</label>
+              <input id="f-branding" type="text" aria-describedby="branding-help">
+              <p class="help" id="branding-help">Shown in the mailcow UI and on relayed mail metadata.</p>
+            </div>
+            <div class="field full">
+              <label for="f-ptr">PTR target</label>
+              <input id="f-ptr" type="text" aria-describedby="ptr-help">
+              <p class="help" id="ptr-help">Reverse-DNS name outbound mail should resolve to; applied server-side.</p>
+            </div>
+            <div class="field">
+              <label for="f-defquota">Default quota (MiB)</label>
+              <input id="f-defquota" type="number" min="0" inputmode="numeric" aria-describedby="quota-help">
+            </div>
+            <div class="field">
+              <label for="f-maxquota">Max quota (MiB)</label>
+              <input id="f-maxquota" type="number" min="0" inputmode="numeric" aria-describedby="quota-help">
+              <p class="help" id="quota-help">Per-mailbox storage ceiling in MiB (1024 = 1 GiB).</p>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" type="submit" id="btn-save">Save changes</button>
+          </div>
+        </form>
+        <p class="msg ok" id="save-ok" role="status" hidden></p>
+        <p class="msg error" id="save-error" role="alert" hidden></p>
+      </section>
+
+      <!-- DNS snippets (reads the EXISTING Namecheap endpoint) -->
+      <section class="card" aria-labelledby="dns-title">
+        <div class="card-head">
+          <h2 id="dns-title">DNS snippets</h2>
+          <span class="card-meta" id="dns-meta"></span>
+        </div>
+        <p>Live records for the selected domain, as the registrar serves them.</p>
+        <p class="msg error" id="dns-error" role="alert" hidden></p>
+        <div id="dns-output"></div>
+        <div class="form-actions">
+          <button class="btn ghost" type="button" id="btn-copy-dns">Copy records</button>
+        </div>
+        <p class="msg ok" id="copy-ok" role="status" hidden aria-live="polite"></p>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+    </div>
+  </footer>
+
+  <script src="assets/settings.js"></script>
+</body>
+</html>

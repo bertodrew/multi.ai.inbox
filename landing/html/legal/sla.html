@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Service Level Agreement of multi.ai.inbox: 99.5% monthly uptime on a single instance, measurement, exclusions, service credits and support response times.">
+  <title>SLA — multi.ai.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="../index.html">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">multi<b>.ai.inbox</b></span>
+      </a>
+      <nav class="bar-nav">
+        <a class="btn ghost" href="../index.html">Home</a>
+        <a class="btn ghost" href="terms.html">Terms</a>
+        <a class="btn ghost" href="privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="wrap">
+      <h2 class="page-title">Service Level Agreement</h2>
+      <p class="lede small">99.5% monthly uptime &mdash; measured, with service credits. Version 1.0-draft, updated 2026-10-19. Part of the <a href="terms.html">Terms of Service</a>.</p>
+
+      <p class="msg error"><strong>DRAFT</strong> &mdash; pending review by qualified legal counsel (IT/CH). Credit tiers and response times are market proposals to be validated before publication.</p>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>1. Availability commitment</h3></div>
+        <p>
+          The Provider commits to a <strong>monthly uptime of 99.5%</strong> for <strong>mail (SMTP 25/465/587, IMAP 143/993)</strong> and
+          <strong>webmail (HTTPS)</strong>. Over a 30-day month, 99.5% equals at most <strong>~216 minutes (3h 36m)</strong> of attributable downtime.
+        </p>
+        <p class="hint">
+          The service runs on a <strong>single instance (single-tenant, single-instance)</strong> on Hetzner (DE) <strong>without geographic
+          redundancy</strong>. 99.5% reflects this architecture: higher figures (e.g. 99.9%) are not promised until redundancy/DR is implemented.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>2. Measurement</h3></div>
+        <p>
+          <strong>Monthly uptime</strong> = (total minutes in the month &minus; attributable downtime minutes) / total minutes, computed at month-end on CEST.
+          <strong>Downtime</strong> is continuous or repeated unavailability of the services in &sect;1, ascertained by the Provider's monitoring or reported by the
+          Customer and verified. A monthly availability report is provided on request. [Monitoring system &mdash; to be defined.]
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>3. Exclusions</h3></div>
+        <p>The following do not count against uptime and grant no credits:</p>
+        <ul>
+          <li><strong>scheduled maintenance</strong> notified &ge; 48h in advance, max 4h/month, in the 02:00&ndash;06:00 CEST window;</li>
+          <li><strong>force majeure</strong>;</li>
+          <li><strong>failures of the infrastructure provider</strong> (Hetzner) and its services (network, storage, power);</li>
+          <li><strong>third-party outages</strong> not controlled by the Provider: connectors/registrar (Namecheap API), customer DNS managed externally, LLM providers, external public blacklists;</li>
+          <li><strong>IP blacklisting caused by the Customer's content or practices</strong> (AUP violation);</li>
+          <li>suspension for <strong>AUP violation or non-payment</strong>;</li>
+          <li><strong>customer-side issues</strong> (devices, connectivity, self-made misconfigurations);</li>
+          <li>services <strong>out of scope</strong> &mdash; e.g. inbox placement at third parties (deliverability disclaimer in the Terms &sect;11).</li>
+        </ul>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>4. Service credits</h3></div>
+        <p>If monthly uptime falls below 99.5%, the Customer is entitled to a <strong>credit on the next month's fee</strong>, to be claimed within [30 days] of the monthly report:</p>
+        <table>
+          <thead>
+            <tr><th>Monthly uptime</th><th>Credit on the monthly fee</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>&lt; 99.5% &ndash; &ge; 99.0%</td><td>10%</td></tr>
+            <tr><td>&lt; 99.0% &ndash; &ge; 98.0%</td><td>25%</td></tr>
+            <tr><td>&lt; 98.0% &ndash; &ge; 95.0%</td><td>50%</td></tr>
+            <tr><td>&lt; 95.0%</td><td>100%</td></tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          The credit is the <strong>sole remedy</strong> for missed uptime (except intent/gross negligence), does not cover indirect damages, and never exceeds
+          the monthly fee. No credits are due where the suspension results from the Customer's violation.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>5. Support response times</h3></div>
+        <table>
+          <thead>
+            <tr><th>Severity</th><th>Definition</th><th>First response</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>S1 &mdash; Critical</td><td>Mail/webmail unreachable or data loss</td><td><strong>1 hour</strong> (24/7)</td></tr>
+            <tr><td>S2 &mdash; High</td><td>Significant degradation (slowness, partial delivery, quota)</td><td><strong>4 hours</strong> (24/7)</td></tr>
+            <tr><td>S3 &mdash; Normal</td><td>Standard requests, configuration, questions</td><td><strong>1 business day</strong></td></tr>
+            <tr><td>S4 &mdash; Low</td><td>Informational requests, documentation</td><td><strong>3 business days</strong></td></tr>
+          </tbody>
+        </table>
+        <p class="hint">Response (not resolution) times; support hours [to be completed]. AUP violation &rarr; immediate suspension per the Terms &sect;6.</p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>6. Amendments</h3></div>
+        <p>Changes to this SLA with [30 days'] notice per the Terms &sect;14. Credits accrued before the change remain earned.</p>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="sla.html">SLA</a></span>
+    </div>
+  </footer>
+</body>
+</html>

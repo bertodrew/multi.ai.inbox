@@ -16,6 +16,12 @@
   const csrf = status.csrf;
   const endpoint = location.origin + '/api/mcp.php';
 
+  // M4 fix: error box and session status announced to screen readers
+  const domainsError = $('#domains-error');
+  if (domainsError) domainsError.setAttribute('role', 'alert');
+  const connectedAs = $('#connected-as');
+  if (connectedAs) connectedAs.setAttribute('aria-live', 'polite');
+
   $('#connected-as').textContent = 'Connected as ' + status.username + (status.sandbox ? ' (sandbox)' : '');
   $('#admin-link').href = status.mailcow_origin ? status.mailcow_origin + '/' : '#';
   $('#mcp-endpoint').textContent = endpoint;
@@ -164,6 +170,8 @@
   }
 
   $('#btn-disconnect').addEventListener('click', async () => {
+    // M12 fix: destructive action confirmed before credentials are removed
+    if (!window.confirm('Disconnect Namecheap? The stored API key will be removed from this session. You can reconnect at any time.')) return;
     const body = new URLSearchParams();
     body.set('csrf', csrf);
     await fetch('api/disconnect', {

@@ -1,0 +1,592 @@
+/* ==========================================================================
+   theme.css — multi.ai.inbox landing: harmonization layer
+   --------------------------------------------------------------------------
+   Loaded AFTER assets/style.css by the new post-login pages (onboarding,
+   settings, admin, inbox). The existing pages (index, connectors) keep
+   style.css untouched; the two rules they still need (table scroll, lifted
+   warn badge, focus-visible) are injected by their own JS as a stopgap until
+   this file is linked there too.
+
+   Brand system KEPT from style.css (poster style of the landing):
+   dark ground #14181f, panels #1e2530 / #232b38, accent green #2fbf71,
+   secondary blue #4f8ef7, radius 12px, system-ui, blurred topbar.
+
+   Additions follow the app-screen rules (contemporary, quiet): flat surfaces
+   separated by 1px lines, colour on data not chrome, noun titles at 24px,
+   right-aligned tabular numerics, honest empty/loading/error states, visible
+   focus everywhere, reduced-motion fallback.
+
+   Contrast pairs verified (WCAG 2.1, script-computed):
+     --warn #ff8a80 on panel #1e2530   6.75:1 (badge.warn was 4.16:1 — B13)
+     --placeholder #a3aec2 on #1a202b  7.31:1 (browser default ~3.55:1 — B14)
+     --focus #4f8ef7 on panel          4.80:1 (non-text indicator, ≥3:1)
+     --notice-ink #ffd28a on amber tint 8.56:1
+     muted #93a0b4 on panel/panel-2    5.82/5.38:1
+     blue #4f8ef7 on panel (text)      4.80:1
+   ========================================================================== */
+
+:root {
+  /* brand tokens (restated so this file is self-contained) */
+  --bg: #14181f;
+  --bg-soft: #1a202b;
+  --panel: #1e2530;
+  --panel-2: #232b38;
+  --border: #2d3748;
+  --text: #e8ebf1;
+  --muted: #93a0b4;
+  --accent: #2fbf71;
+  --accent-soft: rgba(47, 191, 113, 0.12);
+  --blue: #4f8ef7;
+  --blue-soft: rgba(79, 142, 247, 0.12);
+  --danger: #e5534b;
+  --radius: 12px;
+
+  /* harmonization roles (contrast-lifted where the review failed) */
+  --warn: #ff8a80;            /* badge.warn text — B13 fix */
+  --warn-soft: rgba(255, 138, 128, 0.12);
+  --notice-ink: #ffd28a;      /* gateway-pending notices */
+  --notice-border: rgba(230, 180, 55, 0.45);
+  --notice-soft: rgba(230, 180, 55, 0.12);
+  --ok: var(--accent);
+  --focus: #4f8ef7;           /* focus indicator */
+  --placeholder: #a3aec2;     /* B14 fix */
+  --skeleton: #2a3342;        /* loading bars */
+}
+
+/* --------------------------------------------------------------------------
+   Global accessibility fixes
+   -------------------------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--placeholder);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* skip link — first tab stop on every new page */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 30;
+  background: var(--accent);
+  color: #0d1310;
+  padding: 8px 14px;
+  border-radius: 0 0 8px 0;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus { left: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Page head — app screens: noun title at 24px, lede, actions on the right
+   -------------------------------------------------------------------------- */
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 32px 0 10px;
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 1.5rem; /* 24px — app title, not display type */
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+}
+
+.page-head .lede { margin: 0; max-width: 560px; }
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bar-nav a[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* narrow column for wizards and focused forms */
+.narrow { max-width: 720px; }
+
+/* --------------------------------------------------------------------------
+   Cards — flat, 1px line, no shadow (app screens)
+   -------------------------------------------------------------------------- */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  margin: 0 0 20px;
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.card-head h2 {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 600;
+}
+
+.card-meta { color: var(--muted); font-size: 0.85rem; }
+
+.card > p { color: var(--muted); font-size: 0.94rem; margin: 8px 0 14px; }
+
+/* in-card links need affordance (blue passes 4.8:1 on panel) */
+.card a:not(.btn),
+.kv a,
+.msg a,
+.hint a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.card a:not(.btn):hover { color: #7ba9f9; }
+
+/* --------------------------------------------------------------------------
+   Stepper (onboarding wizard)
+   -------------------------------------------------------------------------- */
+
+.stepper {
+  list-style: none;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 18px 0 24px;
+}
+
+.stepper li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.step-dot {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.stepper li[aria-current="step"] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.stepper li[aria-current="step"] .step-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0d1310;
+}
+
+.stepper li.done .step-dot {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   Stat strip — one divided container, no icons (app-screen KPIs)
+   -------------------------------------------------------------------------- */
+
+.stat-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0 0 20px;
+  overflow: hidden;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-left: 1px solid var(--border);
+}
+
+.stat:first-child { border-left: none; }
+
+.stat-label { font-size: 0.8rem; color: var(--muted); }
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Toolbar — the domain scope selector row
+   -------------------------------------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 0 0 20px;
+}
+
+.toolbar > label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.toolbar select {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 9px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.toolbar-spacer { flex: 1; }
+
+/* --------------------------------------------------------------------------
+   Forms and settings rows
+   -------------------------------------------------------------------------- */
+
+.field { margin: 14px 0 0; }
+
+.field > label,
+.field > .check {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.field > .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.field input:focus,
+.field select:focus { border-color: var(--accent); outline: none; }
+
+.field input[readonly] { color: var(--muted); }
+
+.field .help {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 6px 0 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+.form-grid .field.full { grid-column: 1 / -1; }
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+/* --------------------------------------------------------------------------
+   Messages — alert / notice / ok (M4 announcements live in the markup:
+   role="alert" on errors, aria-live="polite" on status regions)
+   -------------------------------------------------------------------------- */
+
+.msg {
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  margin: 14px 0 0;
+}
+
+.msg.error {
+  background: rgba(229, 83, 75, 0.12);
+  border: 1px solid var(--danger);
+  color: #ffb3ae;
+}
+
+.msg.notice {
+  background: var(--notice-soft);
+  border: 1px solid var(--notice-border);
+  color: var(--notice-ink);
+}
+
+.msg.ok {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   Key-value rows
+   -------------------------------------------------------------------------- */
+
+.kv { list-style: none; margin: 0; padding: 0; }
+
+.kv li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+}
+
+.kv li:last-child { border-bottom: none; }
+
+.kv .k { color: var(--muted); }
+
+.kv .v {
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Tables — M7 fix: every generated table sits in .table-scroll so 390px
+   scrolls inside the frame instead of overflowing the page; numeric columns
+   are right-aligned tabular figures; A3 rows are operable from the keyboard.
+   -------------------------------------------------------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 14px;
+  border-radius: 8px;
+}
+
+.table-scroll table { margin-top: 0; min-width: 540px; }
+
+td { overflow-wrap: anywhere; }
+
+td.num, th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+tbody tr[role="button"] { cursor: pointer; }
+
+tbody tr[role="button"]:hover,
+tbody tr[role="button"].selected { background: var(--panel-2); }
+
+tbody tr[role="button"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* --------------------------------------------------------------------------
+   Badges — B13: warn lifted to --warn (6.75:1 on panel, was 4.16:1)
+   -------------------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: none;
+}
+
+.badge.ok { border-color: var(--accent); color: var(--accent); }
+.badge.warn { border-color: var(--warn); color: var(--warn); }
+.badge.info { border-color: var(--blue); color: var(--blue); }
+
+/* --------------------------------------------------------------------------
+   Empty, loading and error states (honest, per app-screen rules)
+   -------------------------------------------------------------------------- */
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 18px 16px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin-top: 14px;
+}
+
+.empty-state .form-actions { margin-top: 12px; }
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.skeleton span {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: var(--skeleton);
+}
+
+.skeleton span:nth-child(2) { width: 82%; }
+.skeleton span:nth-child(3) { width: 64%; }
+.skeleton span:nth-child(4) { width: 76%; }
+
+/* --------------------------------------------------------------------------
+   Confirm modal (B8) — Escape cancels, focus is trapped to the dialog
+   -------------------------------------------------------------------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 13, 18, 0.7);
+}
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+.modal h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.modal h2:focus { outline: none; }
+
+.modal p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* --------------------------------------------------------------------------
+   Utilities
+   -------------------------------------------------------------------------- */
+
+.num { font-variant-numeric: tabular-nums; }
+.hidden { display: none !important; }
+
+.table-title { margin: 18px 0 0; font-size: 0.95rem; color: var(--text); }
+
+/* --------------------------------------------------------------------------
+   Responsive — 390px acceptance: stacked head, 2-up stats, full-width
+   controls, tables scroll inside their own frame (page never scrolls
+   sideways).
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .page-head { margin-top: 20px; }
+  .card { padding: 16px; }
+  .stat-strip { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); }
+  .stat { border-top: 1px solid var(--border); }
+  .stat:nth-child(even) { border-left: 1px solid var(--border); }
+  .stat:nth-child(-n+2) { border-top: none; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar select { flex-basis: auto; }
+  .form-actions .btn { flex: 1 1 auto; }
+}
+
+/* B22 fix: keep the session identity — and the "(sandbox)" marker — visible on
+   small screens instead of hiding it with the style.css 560px rule */
+@media (max-width: 560px) {
+  .connected-as { display: inline; font-size: 0.82rem; }
+}

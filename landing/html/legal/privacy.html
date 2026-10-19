@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Privacy Policy of multi.ai.inbox: data we process, legal bases, recipients, extra-EEA transfers, retention, cookies and your rights under the GDPR.">
+  <title>Privacy Policy — multi.ai.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="../index.html">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">multi<b>.ai.inbox</b></span>
+      </a>
+      <nav class="bar-nav">
+        <a class="btn ghost" href="../index.html">Home</a>
+        <a class="btn ghost" href="terms.html">Terms</a>
+        <a class="btn ghost" href="sla.html">SLA</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="wrap">
+      <h2 class="page-title">Privacy Policy</h2>
+      <p class="lede small">What we process, why, with whom and for how long &mdash; under the GDPR (and the Swiss nLPD where applicable). Version 1.0-draft, updated 2026-10-19.</p>
+
+      <p class="msg error"><strong>DRAFT</strong> &mdash; pending review by qualified legal counsel (IT/CH). Do not rely on this version before legal sign-off; fields marked [ ] are to be completed before publication.</p>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>1. Who we are and roles</h3>
+        </div>
+        <p>
+          Controller: <strong>[legal entity form and full name]</strong>, registered office [address].
+          Privacy contact: <strong>[privacy email]</strong>. DPO: not appointed; obligation to appoint to be verified with counsel.
+          For contact, billing and service-usage data we are the <strong>controller</strong>. For tenant mailboxes the
+          <strong>controller is the customer</strong> and we are the <strong>processor</strong> under Art. 28 GDPR (separate DPA).
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>2. Data, purposes and legal bases</h3>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Purpose</th><th>Personal data</th><th>Legal basis</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Delivering mail of hosted mailboxes (SMTP/IMAP, SOGo webmail)</td><td>Mail contents, headers, delivery-path IPs, quotas &mdash; of customers/tenants and of <em>external senders and recipients</em> (indirect collection)</td><td>Contract; legitimate interest + Art. 14 notice for external correspondents</td></tr>
+            <tr><td>Access to site and panels (login, connection forms)</td><td>Access credentials, registrar username, API key, client IP, timestamps</td><td>Contract; legitimate interest (security)</td></tr>
+            <tr><td>Security and audit logs (panel, API/MCP)</td><td>Event, timestamp, tool, domain, outcome, client IP</td><td>Legitimate interest (security, Accountability)</td></tr>
+            <tr><td>Domain management via registrar connectors</td><td>Registrar account data (username, API key, whitelisted IP), registrant/WHOIS where processed</td><td>Contract</td></tr>
+            <tr><td>Contact and invoicing</td><td>Customer contact persons, billing/usage data</td><td>Contract; legal obligations (tax)</td></tr>
+            <tr><td><strong>AI agents on mailboxes (planned &mdash; not active today)</strong></td><td>Mail contents and metadata, incidental special categories</td><td>Legitimate interest + written LIA (before activation); Art. 14 notice</td></tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          Special categories (Art. 9) may appear incidentally in mail contents: we minimize (extract only what the task
+          requires), do not log contents, and <strong>do not train models on mailbox contents</strong> without a specific basis.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>3. Cookies</h3>
+        </div>
+        <p>Only <strong>strictly necessary technical cookies</strong> &mdash; no profiling, no third-party trackers, therefore no banner.</p>
+        <table>
+          <thead>
+            <tr><th>Cookie</th><th>Purpose</th><th>Duration</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>MULTIAI_LANDING</code></td><td>Landing session (login/connection) &mdash; HttpOnly, Secure, SameSite=Lax</td><td>Session</td></tr>
+            <tr><td>Panel auth session (mailcow)</td><td>Admin authentication</td><td>Session</td></tr>
+            <tr><td>Webmail session (SOGo)</td><td>Webmail authentication</td><td>Session</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>4. Recipients and processors</h3>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Recipient</th><th>Country</th><th>Role</th><th>Basis</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Hetzner Online GmbH</td><td>Germany (EU)</td><td>Processor &mdash; server hosting, database, backups (all data on the instance)</td><td>DPA Art. 28 &mdash; <strong>to be activated in the Hetzner account</strong> (does not conclude automatically)</td></tr>
+            <tr><td>Namecheap Inc.</td><td><strong>USA</strong> (extra-EEA)</td><td>Processor for domain/WHOIS management; independent controller for its own accounts</td><td>DPA with <strong>incorporated SCCs</strong> + documented <strong>TIA</strong>; EU representative (EDPO); <strong>not DPF-certified</strong></td></tr>
+            <tr><td>Infomaniak</td><td><strong>Switzerland</strong> (planned)</td><td>Processor (when the connector is active)</td><td>EU&rarr;CH <strong>adequacy decision</strong> &mdash; no SCCs required</td></tr>
+            <tr><td>Let's Encrypt (ISRG)</td><td>USA</td><td>Independent controller &mdash; TLS certificate issuance</td><td>Technical necessity (domain name)</td></tr>
+            <tr><td>LLM provider (planned, only if AI agents read mailboxes)</td><td>To be defined</td><td>Processor &mdash; mail contents only where the flow requires it</td><td>DPA + SCC/DPF per vendor, or EU-based LLM &mdash; defined <strong>before</strong> activation</td></tr>
+            <tr><td>Judicial/administrative authorities</td><td>EU</td><td>Independent controllers</td><td>Legal obligation</td></tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          Technical note: the server's egress IP is detected via an external public service (currently
+          <code>api.ipify.org</code>, USA; server-related, not person-related).
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>5. Transfers outside the EEA</h3>
+        </div>
+        <p>
+          <strong>USA:</strong> Namecheap (username, API key, server IP) under <strong>SCCs</strong> in the Namecheap DPA with a documented
+          <strong>TIA</strong>; Let's Encrypt (domain name) for certificates. <strong>Switzerland (planned):</strong> adequacy decision &mdash; no extra safeguards.
+          No other extra-EEA transfer takes place; new recipients (including LLM providers) are added here <strong>before</strong> activation.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>6. Retention</h3>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Data</th><th>Retention</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Mailbox contents (maildir)</td><td>While the mailbox is active; deleted on mailbox removal or termination</td></tr>
+            <tr><td>Backups (mailboxes + database)</td><td><strong>30-day</strong> rotation (planned)</td></tr>
+            <tr><td>System and audit logs (panel, MCP)</td><td><strong>90 days</strong> (planned)</td></tr>
+            <tr><td>Landing connection sessions</td><td>Session &mdash; <strong>8&ndash;12h TTL</strong> (to be set)</td></tr>
+            <tr><td>Billing and contact data</td><td><strong>10 years</strong> (tax, Italian law); contacts up to 12 months after termination</td></tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          Values marked "planned/to be set" are <strong>targets</strong>: their technical enforcement is a <strong>precondition</strong> for publishing
+          this notice. Erasure in backups is exhausted by natural rotation (accepted practice).
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>7. Security</h3>
+        </div>
+        <p>
+          TLS on all surfaces; API credentials stored server-side encrypted with <strong>AES-256-GCM</strong>, never in logs, pages or the
+          repository; container isolation; rate limiting; secret-free audit logs; encrypted backups on a dedicated volume; personnel access
+          to mailbox contents <strong>only on the customer's authorized request</strong>, logged. On a breach with risk to data subjects:
+          notification to the supervisory authority without undue delay (Art. 33) and to data subjects when high risk (Art. 34); for tenant
+          mailboxes, immediate notification to the customer-controller per the DPA.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>8. AI agents</h3>
+        </div>
+        <p>
+          Today <strong>no AI agent reads mailboxes</strong> (available tools operate at domain level). If activated: minimal per-task extraction,
+          <strong>no model training on contents</strong>, actions towards third parties with <strong>human review</strong>, <strong>no exclusively
+          automated decisions</strong> with legal or similarly significant effects (Art. 22 GDPR), auditable per-agent keys, and an Art. 14
+          notice to correspondents before activation.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head">
+          <h3>9. Your rights</h3>
+        </div>
+        <p>
+          Artt. <strong>15&ndash;22 GDPR</strong>: access, rectification, erasure, restriction, portability, objection (Art. 21 at any time for
+          legitimate-interest processing). Exercise: <strong>[privacy email]</strong> &mdash; response within 1 month.
+          External senders/recipients: contact [privacy email]; for tenant mailboxes we are the processor and will assist the
+          customer-controller (Art. 28(3)(e)). Complaint: <strong>Garante per la protezione dei dati personali</strong> (www.garanteprivacy.it),
+          or the <strong>FDPIC</strong> in Switzerland, and in any case the controller.
+        </p>
+      </article>
+
+      <p class="hint">This English page is a convenience translation; the Italian policy (<code>privacy-it.md</code>) is authentic. Changes are published on this page with an update date.</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="sla.html">SLA</a></span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Terms of Service of multi.ai.inbox mail hosting: service description, SLA 99.5%, acceptable use, suspension, termination, data ownership and liability.">
+  <title>Terms of Service — multi.ai.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="../index.html">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">multi<b>.ai.inbox</b></span>
+      </a>
+      <nav class="bar-nav">
+        <a class="btn ghost" href="../index.html">Home</a>
+        <a class="btn ghost" href="privacy.html">Privacy</a>
+        <a class="btn ghost" href="sla.html">SLA</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="wrap">
+      <h2 class="page-title">Terms of Service</h2>
+      <p class="lede small">Terms governing the multi.ai.inbox mail hosting service. Version 1.0-draft, updated 2026-10-19. The Italian version (<code>tos-it.md</code>) is authentic.</p>
+
+      <p class="msg error"><strong>DRAFT</strong> &mdash; pending review by qualified legal counsel (IT/CH). Do not rely on this version before legal sign-off; fields marked [ ] are to be completed before publication.</p>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>1. Parties and imprint</h3></div>
+        <p>
+          Provider: <strong>[legal entity form and full name]</strong>, registered office [address], tax/VAT [ID] (the "Provider").
+          Customer: the person or entity signing up (the "Customer"/"Tenant").
+          Contacts: support [email] &middot; legal [email] &middot; privacy [email].
+        </p>
+        <p class="hint">
+          The service runs on <strong>multi.ai.inbox, a fork of mailcow-dockerized</strong> (GNU GPL-3.0). "mailcow" is a registered word mark of
+          The Infrastructure Company GmbH; multi.ai.inbox is <strong>not affiliated with, sponsored or endorsed by</strong> mailcow or
+          The Infrastructure Company GmbH.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>2. Service description</h3></div>
+        <p>In <strong>self-service</strong> mode (per-tenant signup and billing), the Provider provides:</p>
+        <ul>
+          <li><strong>mailboxes</strong> with SMTP/IMAP access and the <strong>SOGo webmail</strong>;</li>
+          <li>a web <strong>administration panel</strong> (standard interface of the fork);</li>
+          <li><strong>DNS management</strong> through a connector to the Customer's own registrar account (Namecheap today; Infomaniak planned), when the Customer links their own API key;</li>
+          <li><strong>API / MCP</strong> for automation, subject to authentication;</li>
+          <li>server-side <strong>antispam/antivirus</strong> (rspamd, ClamAV), <strong>TLS</strong> (Let's Encrypt), <strong>SPF, DKIM, DMARC, MTA-STS</strong>;</li>
+          <li><strong>backups</strong> (&sect;9).</li>
+        </ul>
+        <p>
+          <strong>Infrastructure:</strong> a <strong>single instance (single-tenant, single-instance)</strong> hosted with <strong>Hetzner Online GmbH (Germany, EU)</strong>,
+          without geographic redundancy &mdash; reflected in the SLA and expressly disclosed.
+          <strong>Not included:</strong> [to be completed at launch &mdash; e.g. bulk mailbox migration, per-tenant interface branding, SLA above 99.5%].
+          <strong>Registrar requirements (Namecheap):</strong> production API access thresholds (typically &ge; 20 registered domains or &ge; 50 USD balance/spend),
+          IPv4 whitelist of the Provider server IP, rate limits 50/min &middot; 700/hour &middot; 8,000/day &mdash; documented in onboarding.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>3. Signup, term, prices</h3></div>
+        <p>
+          Signup is self-service; the contract concludes upon activation of the first paid service.
+          <strong>Term/renewal:</strong> [to be completed at launch]. <strong>Prices:</strong> per the price list at order time [price list &mdash; to be completed],
+          net of applicable VAT/taxes. Domain/registrar payments remain on the direct Customer&ndash;registrar relationship: the Provider does not
+          resell domains or collect registrar fees for third parties. <strong>Non-payment:</strong> reminder within [X days], suspension after [Y days], termination after [Z days].
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>4. Service level (SLA)</h3></div>
+        <p>
+          The Provider commits to a <strong>monthly uptime of 99.5%</strong> for mail (SMTP, IMAP) and webmail, <strong>measured</strong> and backed by
+          service credits under the attached <a href="sla.html">SLA</a>, an integral part of this agreement. 99.5% reflects delivery on a
+          <strong>single instance without geographic redundancy</strong>: higher figures are not promised until redundancy is implemented.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>5. Acceptable use policy (AUP)</h3></div>
+        <p><strong>Prohibited:</strong> sending unsolicited commercial email (UCE/UBE, "spam") or <strong>mail bombing</strong>; <strong>phishing</strong>; distributing <strong>malware</strong>; content illegal under Italian and European law; infringement of third-party rights; <strong>reverse engineering of APIs</strong>; deliberate <strong>overload</strong> of systems and APIs; address harvesting. The AUP is aligned with registrar policies (Namecheap Universal ToS &sect;7, Hosting AUP &sect;9).</p>
+        <p><strong>Documented opt-in</strong> is required for bulk mail, with compliance to the Italian Privacy Code, GDPR and (where applicable) CAN-SPAM. Proof of consents may be requested.</p>
+        <p><strong>Consequences.</strong> Spam or abuse by a <strong>single tenant</strong> on the shared IP can blacklist the IP and destroy deliverability for <strong>all</strong> hosted domains. Therefore:</p>
+        <ul>
+          <li><strong>immediate suspension</strong> of the responsible mailboxes, even without notice while the abuse is ongoing;</li>
+          <li><strong>pass-through charge</strong> to the responsible Customer of third-party penalties &mdash; including the <strong>penalty of up to USD 500</strong> that the registrar (Namecheap Hosting AUP &sect;9) assesses in spam/blacklisting cases &mdash; plus documented delisting and mitigation costs;</li>
+          <li>reporting of manifestly unlawful uses to the authorities.</li>
+        </ul>
+        <p class="hint">The Provider monitors outbound traffic (rspamd) and may impose per-mailbox sending limits to protect the shared reputation.</p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>6. Suspension</h3></div>
+        <p>
+          The Provider may suspend the service for AUP violation, <strong>non-payment</strong>, concrete security threats, binding authority/registrar requests or
+          urgent maintenance. Suspension for AUP violation may be <strong>immediate, without notice</strong>. Notification within [24 hours] with the motivation;
+          re-activation after removal of the cause. Suspension days due to the Customer's violation give no fee reduction.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>7. Credentials and registrar connectors</h3></div>
+        <p>
+          The Customer's API keys are stored server-side <strong>encrypted (AES-256-GCM)</strong>, used <strong>only for the agreed operations</strong>
+          (DNS/domain management of the Customer's domains) and <strong>never appear in logs, pages or the repository</strong>; the Provider revokes them upon
+          disconnect and termination, and the Customer revokes them at the registrar. The Customer warrants the key's scope and notifies the Provider
+          immediately of any suspected compromise.
+        </p>
+        <p>
+          <strong>Domain ownership:</strong> domains remain <strong>registered in the Customer's own registrar account</strong>. The Provider acts as an API
+          management tool, <strong>not</strong> a registrar reseller, assumes no ICANN/RAA obligations and never moves domains into its own accounts without
+          written mandate.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>8. AI agents</h3></div>
+        <p>
+          AI agents may be used for triage, task extraction and draft proposals on mailboxes. Governed feature: per-agent auditable keys, <strong>human
+          review</strong> for actions with effects towards third parties, <strong>no exclusively automated decisions</strong> under Art. 22 GDPR (account
+          suspension/deletion, binding responses), and <strong>no model training on mailbox contents</strong> without a specific basis and the Customer's consent.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>9. Backups and retention</h3></div>
+        <p>
+          <strong>Encrypted backups</strong> of mailboxes and configuration on a dedicated volume, with <strong>[30-day &mdash; planned]</strong> rotation.
+          Contractual <strong>RPO/RTO targets are stated only after the restore-drill result</strong>. Retention: mailboxes while active; backups until
+          rotation; system/audit logs [90 days &mdash; planned]; invoicing data [10 years, Italian law]. At termination: export and deletion (&sect;12).
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>10. Data ownership and processing</h3></div>
+        <p>
+          Mail, contacts, attachments and brand data belong to the <strong>Customer</strong>. For tenant mailboxes the Provider is the <strong>processor</strong>
+          under Art. 28 GDPR and the Customer the <strong>controller</strong> (attached <a href="privacy.html">DPA</a>); for contact and billing data the Provider
+          is an independent controller. Personnel access to mailbox contents happens <strong>only on the Customer's authorized request</strong>, logged.
+          No use of customer data &mdash; <strong>not even aggregate analytics</strong> &mdash; without written consent.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>11. Software, warranty, deliverability</h3></div>
+        <p>
+          Upstream components (mailcow-dockerized and its components) are provided "<strong>AS IS</strong>" without warranty under GPLv3 &sect;15 &mdash; this does
+          <strong>not</strong> reduce the service obligations: the warranty covers the <strong>managed service</strong> (these Terms + SLA). The server IP is a
+          datacenter IP: inbox placement depends on IP reputation, recipient policies, external blacklists and domain <strong>warm-up</strong>; the Provider
+          manages SPF/DKIM/DMARC/MTA-STS and monitors reputation but <strong>does not guarantee inbox placement</strong> at third parties; blacklists caused by
+          the Customer's content or practices are excluded from the SLA (see &sect;5).
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>12. Termination and exit</h3></div>
+        <p>
+          Upon termination the Customer is entitled to a <strong>full export</strong> of mailboxes (Maildir/EML and/or IMAP migration), export of configurations,
+          and <strong>migration assistance</strong> within [30 days]; thereafter data is deleted, with residual copies in backups until natural rotation.
+          The Provider revokes stored credentials and assists with DNS record rework. The <strong>domain remains in the Customer's registrar account</strong> &mdash;
+          no lock-in, no exit penalty beyond amounts due. The Provider may withdraw with [30 days'] notice for justified reason, granting the same export and assistance.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>13. Limitation of liability</h3></div>
+        <p>
+          Except for intent or gross negligence, liability for death/personal injury, and non-excludable liability, the Provider's overall liability is
+          <strong>limited to the fees paid in the last 12 months</strong>; indirect damages, lost profit and reputation are <strong>excluded</strong>.
+          <strong>GDPR fines:</strong> administrative fines for a party's own violation remain at that party's expense and are not subject to the cap.
+          <strong>Force majeure</strong> (external blacklisting not attributable, Hetzner failures, third-party connector/registrar outages, exceptional DDoS)
+          excludes liability and SLA credit for the event's duration. Professional indemnity insurance [to be activated].
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>14. Amendments</h3></div>
+        <p>Amendments are notified with [30 days'] notice via email/dashboard; non-acceptance allows termination with immediate effect within the notice period. Amendments do not retroactively affect ongoing contracts.</p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>15. Governing law and precedence</h3></div>
+        <p>
+          Italian law; courts of [Provider's registered office &mdash; to be completed], save the mandatory consumer forum.
+          Precedence in case of conflict: <strong>DPA</strong> (data processing) &rarr; <strong>SLA</strong> (measurement and credits) &rarr; these Terms.
+          Annexes: <a href="sla.html">SLA</a>, <a href="privacy.html">Privacy Policy / DPA</a>.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>multi.ai.inbox &mdash; a mailcow-dockerized fork</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="sla.html">SLA</a></span>
+    </div>
+  </footer>
+</body>
+</html>

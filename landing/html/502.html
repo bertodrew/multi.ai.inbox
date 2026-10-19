@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>502 — Service temporarily unavailable — multi.ai.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    .error-wrap { padding: 84px 0 40px; text-align: center; }
+    .error-code {
+      margin: 0 0 10px;
+      font-size: clamp(3.4rem, 12vw, 6rem);
+      line-height: 1;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+      color: var(--warn, #ff8a80);
+    }
+    .error-card {
+      width: min(520px, 100%);
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      text-align: left;
+    }
+    .error-card h1 { margin: 0 0 8px; font-size: 1.3rem; }
+    .error-card p { margin: 0 0 14px; color: var(--muted); font-size: 0.95rem; }
+    .error-card ul { margin: 0 0 14px; padding-left: 18px; color: var(--muted); font-size: 0.9rem; }
+    .error-card li { margin: 4px 0; }
+    .error-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    @media (max-width: 560px) {
+      .error-wrap { padding: 48px 0 24px; }
+      .error-actions .btn { flex: 1 1 auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap error-wrap">
+    <p class="error-code" aria-hidden="true">502</p>
+    <div class="error-card">
+      <h1 tabindex="-1">Service temporarily unavailable</h1>
+      <p>
+        The multi.ai.inbox backend is not responding right now. Static pages
+        still load; data backed by the API is unavailable.
+      </p>
+      <ul>
+        <li>This is usually brief &mdash; wait a few minutes and retry.</li>
+        <li>If it persists, check the landing containers (<code>docker compose ps</code>).</li>
+      </ul>
+      <div class="error-actions">
+        <button class="btn primary" type="button" id="btn-retry">Retry</button>
+        <a class="btn ghost" href="/landingpage/">Go to home</a>
+      </div>
+    </div>
+  </main>
+  <script src="assets/502.js"></script>
+</body>
+</html>

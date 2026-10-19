@@ -1034,6 +1034,7 @@ func main() {
 	mux.HandleFunc("/api/domains", handleDomains)
 	mux.HandleFunc("/api/dns", handleDNS)
 	mux.HandleFunc("/api/mcp", handleMCP)
+	registerGatewayRoutes(mux, MailcowRegistrar{}) // gateway agenti con chiavi scoped (decisione founder 19/10)
 
 	srv := &http.Server{
 		Addr:              internalAddr,
