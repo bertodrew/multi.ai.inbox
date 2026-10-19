@@ -3,7 +3,7 @@
 
   let status = null;
   try {
-    status = await fetch('api/status').then((r) => r.json());
+    status = await fetch('/landingpage/api/status').then((r) => r.json());
   } catch (e) {
     status = null;
   }
@@ -20,8 +20,8 @@
   mailcowHint.setAttribute('aria-live', 'polite'); // M4 fix: origin status announced
 
   if (origin) {
-    mailcowForm.action = origin + '/';
-    $('#admin-link').href = origin + '/';
+    mailcowForm.action = origin + '/home';
+    $('#admin-link').href = origin + '/home';
   } else {
     const submit = mailcowForm.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
@@ -65,7 +65,7 @@
     ncSubmit.textContent = 'Connecting…';
     let res;
     try {
-      res = await fetch('api/connect', {
+      res = await fetch('/landingpage/api/connect', {
         method: 'POST',
         body,
         headers: { 'X-Landing-CSRF': csrf },

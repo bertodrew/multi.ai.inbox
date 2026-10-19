@@ -13,7 +13,7 @@
 
   async function api(path, opts) {
     try {
-      const r = await fetch(path, opts);
+      const r = await fetch('/landingpage' + path, opts);
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       return { httpOk: r.ok, status: r.status, data };
@@ -99,7 +99,7 @@
 
   /* topbar + session card */
   $('#connected-as').textContent = status.username || '';
-  if (status.mailcow_origin) $('#admin-link').href = status.mailcow_origin + '/';
+  if (status.mailcow_origin) $('#admin-link').href = status.mailcow_origin + '/home';
   $('#kv-user').textContent = status.username || 'unknown';
   $('#kv-sandbox').textContent = status.sandbox ? 'sandbox' : 'production';
   $('#kv-origin').textContent = status.mailcow_origin || 'not configured';

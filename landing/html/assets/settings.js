@@ -17,7 +17,7 @@
 
   async function api(path, opts) {
     try {
-      const r = await fetch(path, opts);
+      const r = await fetch('/landingpage' + path, opts);
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       return { httpOk: r.ok, status: r.status, data };
@@ -101,7 +101,7 @@
 
   /* topbar */
   $('#connected-as').textContent = status.username || '';
-  if (status.mailcow_origin) $('#admin-link').href = status.mailcow_origin + '/';
+  if (status.mailcow_origin) $('#admin-link').href = status.mailcow_origin + '/home';
 
   /* confirm-modal helper (B8): Escape cancels, focus returns to the opener */
   function confirmModal({ title, body, confirmLabel }) {

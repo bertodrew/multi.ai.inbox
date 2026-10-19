@@ -1,16 +1,75 @@
-# multi.ai.inbox landing page (fork) — incluso dentro il server block via site.*.custom
-# Pagina: /landingpage/ (statico), API: /landingpage/api/ (proxy verso il container Go)
-# CISO: CSP stretta su tutto il statico (nessuna risorsa esterna nel bundle) —
-# nota: form-action 'self' presuppone che il login mailcow resti sullo stesso origin.
+# AImulti.inbox landing (fork) — incluso dentro il server block via site.*.custom
+# Sitemap (2026-10-19):
+#   /                  = landing AImulti.inbox (statico)
+#   /home              = Mail UI (pannello: login se non autenticato, dashboard se sì)
+#   /SOGo/*, /rspamd, ActiveSync, autodiscover = invariati (sopra, nel template)
+#   /landingpage/*     = 301 → root (vecchi link) — tranne l'API (prefisso nascosto)
+#   /landingpage/api/  = API landing (proxy Go): prefisso nascosto per non collidere
+#                        con l'API del pannello (/api/v1/) né con i suoi route.
+# CISO: CSP stretta su tutto il statico (nessuna risorsa esterna nel bundle);
+# form-action 'self' presuppone il login sullo stesso origin (il modal posta a /home).
+# Nota: una query su / (?logout ecc.) passa al pannello; POST / pure (fallback 405).
 
-location = /landingpage { return 301 /landingpage/; }
+# --- API landing (prefisso nascosto, invariato) ---
+location ^~ /landingpage/api/ {
+    proxy_pass http://landing-go:8080/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_read_timeout 60s;
+    proxy_intercept_errors on;
+}
 
-location ^~ /landingpage/ {
-    alias /landingpage-html/;
-    index index.html;
+# --- Landing alla root: / = index, subpagine .html, assets, legal ---
+location = / {
+    if ($args) { rewrite ^ /index.php last; }
+    error_page 405 = @panel_index;
+    root /landingpage-html;
+    try_files /index.html =404;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "no-referrer" always;
+}
+
+location ~ ^/[a-z0-9-]+\.html$ {
+    root /landingpage-html;
+    try_files $uri =404;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+}
+
+location ^~ /assets/ {
+    alias /landingpage-html/assets/;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+}
+
+location ^~ /legal/ {
+    alias /landingpage-html/legal/;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+}
+
+# --- Vecchi link /landingpage/* → root (301) ---
+location = /landingpage { return 301 /; }
+location ^~ /landingpage/ {
+    rewrite ^/landingpage/(.*)$ /$1 permanent;
+}
+
+# --- Mail UI a /home (pannello: login quando non autenticato, dashboard quando sì) ---
+location = /home {
+    rewrite ^ /index.php last;
+}
+location = /home/ {
+    return 301 /home;
+}
+
+# Fallback: POST / (form di login del pannello servito altrove) → pannello
+location @panel_index {
+    rewrite ^ /index.php last;
 }
 
 # 502/503/504 dedicate: il backend Go giù non deve mostrare la pagina nginx
@@ -22,13 +81,4 @@ location = /landingpage/502.html {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "no-referrer" always;
-}
-
-location ^~ /landingpage/api/ {
-    proxy_pass http://landing-go:8080/api/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_read_timeout 60s;
-    proxy_intercept_errors on;
 }

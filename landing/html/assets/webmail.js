@@ -11,7 +11,7 @@
 
   async function api(path, opts) {
     try {
-      const r = await fetch(path, opts);
+      const r = await fetch('/landingpage' + path, opts);
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       return { httpOk: r.ok, status: r.status, data };
@@ -45,7 +45,7 @@
     if (origin) {
       sogoOpen.href = origin + '/SOGo/';
       const adminLink = $('#admin-link');
-      if (adminLink) adminLink.href = origin + '/';
+      if (adminLink) adminLink.href = origin + '/home';
     }
   }
 })();

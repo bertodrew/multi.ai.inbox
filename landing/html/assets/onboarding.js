@@ -16,7 +16,7 @@
      network failures both resolve to ok:false instead of throwing */
   async function api(path, opts) {
     try {
-      const r = await fetch(path, opts);
+      const r = await fetch('/landingpage' + path, opts);
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       return { httpOk: r.ok, status: r.status, data };
@@ -116,14 +116,14 @@
 
   /* topbar: mail UI link */
   const adminLink = $('#admin-link');
-  if (status.mailcow_origin) adminLink.href = status.mailcow_origin + '/';
+  if (status.mailcow_origin) adminLink.href = status.mailcow_origin + '/home';
 
   /* ---------------- step 1 — mailcow origin ---------------- */
 
   $('#origin-value').textContent = status.mailcow_origin || 'not configured';
   $('#api-state').textContent = 'reachable';
   $('#origin-state').textContent = status.mailcow_origin ? 'origin resolved' : 'origin missing';
-  if (status.mailcow_origin) $('#open-mailcow').href = status.mailcow_origin + '/';
+  if (status.mailcow_origin) $('#open-mailcow').href = status.mailcow_origin + '/home';
 
   $('#to-step-2').addEventListener('click', () => showStep(2));
 

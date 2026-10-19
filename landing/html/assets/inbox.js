@@ -18,7 +18,7 @@
 
   async function api(path, opts) {
     try {
-      const r = await fetch(path, opts);
+      const r = await fetch('/landingpage' + path, opts);
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       return { httpOk: r.ok, status: r.status, data };
@@ -104,9 +104,9 @@
   /* topbar + mailcow links */
   $('#connected-as').textContent = status.username || '';
   if (status.mailcow_origin) {
-    $('#admin-link').href = status.mailcow_origin + '/';
-    $('#mailcow-link').href = status.mailcow_origin + '/';
-    $('#open-mailcow').href = status.mailcow_origin + '/';
+    $('#admin-link').href = status.mailcow_origin + '/home';
+    $('#mailcow-link').href = status.mailcow_origin + '/home';
+    $('#open-mailcow').href = status.mailcow_origin + '/home';
   }
 
   /* ---------------- domains + per-domain state ---------------- */

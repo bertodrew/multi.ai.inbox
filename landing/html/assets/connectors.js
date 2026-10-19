@@ -3,7 +3,7 @@
 
   let status;
   try {
-    status = await fetch('api/status').then((r) => r.json());
+    status = await fetch('/landingpage/api/status').then((r) => r.json());
   } catch (e) {
     location.replace('index.html');
     return;
@@ -14,7 +14,7 @@
   }
 
   const csrf = status.csrf;
-  const endpoint = location.origin + '/api/mcp.php';
+  const endpoint = location.origin + '/landingpage/api/mcp.php';
 
   // M4 fix: error box and session status announced to screen readers
   const domainsError = $('#domains-error');
@@ -23,7 +23,7 @@
   if (connectedAs) connectedAs.setAttribute('aria-live', 'polite');
 
   $('#connected-as').textContent = 'Connected as ' + status.username + (status.sandbox ? ' (sandbox)' : '');
-  $('#admin-link').href = status.mailcow_origin ? status.mailcow_origin + '/' : '#';
+  $('#admin-link').href = status.mailcow_origin ? status.mailcow_origin + '/home' : '#';
   $('#mcp-endpoint').textContent = endpoint;
 
   const config = JSON.stringify({
@@ -99,7 +99,7 @@
     btn.textContent = 'Loading…';
     let res;
     try {
-      res = await fetch('api/domains').then((r) => r.json());
+      res = await fetch('/landingpage/api/domains').then((r) => r.json());
     } catch (e) {
       res = { ok: false, error: 'Network error: ' + e.message };
     }
@@ -144,7 +144,7 @@
     dnsOut.hidden = true;
     let res;
     try {
-      res = await fetch('api/dns?domain=' + encodeURIComponent(domain)).then((r) => r.json());
+      res = await fetch('/landingpage/api/dns?domain=' + encodeURIComponent(domain)).then((r) => r.json());
     } catch (e) {
       res = { ok: false, error: 'Network error: ' + e.message };
     }
@@ -174,7 +174,7 @@
     if (!window.confirm('Disconnect Namecheap? The stored API key will be removed from this session. You can reconnect at any time.')) return;
     const body = new URLSearchParams();
     body.set('csrf', csrf);
-    await fetch('api/disconnect', {
+    await fetch('/landingpage/api/disconnect', {
       method: 'POST',
       body,
       headers: { 'X-Landing-CSRF': csrf },
