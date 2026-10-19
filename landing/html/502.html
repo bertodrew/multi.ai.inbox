@@ -4,9 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>502 — Service temporarily unavailable — multi.ai.inbox</title>
+  <title>502 — Service temporarily unavailable — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
   <style>
     .error-wrap { padding: 84px 0 40px; text-align: center; }
     .error-code {
@@ -38,12 +39,32 @@
   </style>
 </head>
 <body>
-  <main class="wrap error-wrap">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="/landingpage/">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <nav aria-label="Main">
+        <a class="btn ghost" href="/landingpage/use-cases.html">Use cases</a>
+        <a class="btn ghost" href="/landingpage/webmail.html">Webmail</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap error-wrap" id="main">
     <p class="error-code" aria-hidden="true">502</p>
     <div class="error-card">
       <h1 tabindex="-1">Service temporarily unavailable</h1>
       <p>
-        The multi.ai.inbox backend is not responding right now. Static pages
+        The AImulti.inbox backend is not responding right now. Static pages
         still load; data backed by the API is unavailable.
       </p>
       <ul>
@@ -56,6 +77,14 @@
       </div>
     </div>
   </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
+      <span><a href="/landingpage/legal/terms.html">Terms</a> &middot; <a href="/landingpage/legal/privacy.html">Privacy</a> &middot; <a href="/landingpage/legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
   <script src="assets/502.js"></script>
 </body>
 </html>

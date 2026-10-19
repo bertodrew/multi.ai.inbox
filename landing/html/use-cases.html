@@ -30,7 +30,7 @@
         <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="settings.html">Settings</a>
         <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" href="onboarding.html">Setup</a>
+        <a class="btn ghost" id="admin-link" href="/" rel="noopener">Mail UI</a>
       </nav>
     </div>
   </header>
@@ -111,7 +111,7 @@
           <p class="uc-for">Brand operator</p>
           <ul>
             <li><b>Domain-scoped view</b>: operators see only their brand's domains, mailboxes and audit trail.</li>
-            <li><b>Provisioning</b>: create and remove mailboxes via API or MCP &mdash; no shared admin login.</li>
+            <li><b>Provisioning</b>: create and remove mailboxes via API or MCP &mdash; no shared admin credentials.</li>
             <li><b>Honest states</b>: empty, loading and error states never fake success.</li>
           </ul>
         </article>
@@ -179,6 +179,7 @@
           <li><b>Billing</b> &mdash; metered monthly, flat plan, EU/CH payment rails.</li>
         </ol>
         <p class="uc-note">Every step is auditable: connections, zone mutations and key grants land in the audit log.</p>
+        <div class="form-actions"><a class="btn primary" href="onboarding.html">Start setup</a></div>
       </div>
     </section>
   </main>

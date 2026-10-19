@@ -26,8 +26,8 @@
       <nav class="bar-nav" aria-label="Main">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
-        <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="inbox.html" aria-current="page">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="settings.html">Settings</a>
         <a class="btn ghost" href="admin.html">Admin</a>
         <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
@@ -74,7 +74,8 @@
         </div>
         <p>
           Mailboxes of the selected domain with usage and state. The mailbox listing
-          ships with the API gateway; today mailbox operations run agent-side via MCP.
+          ships with the API gateway; today mailbox operations run agent-side via MCP
+          (see <a href="connectors.html">Connectors</a> for the setup).
         </p>
         <p class="msg notice" id="list-note" role="status" aria-live="polite" hidden></p>
         <div id="list-output"></div>
@@ -84,11 +85,10 @@
       <section class="card" aria-labelledby="actions-title">
         <div class="card-head">
           <h2 id="actions-title">Basic actions</h2>
-          <span class="card-meta" id="actions-meta"></span>
         </div>
         <p>
           Prepare the next mailbox address and copy it &mdash; creation itself is applied
-          in the <a id="mailcow-link" href="#" target="_blank" rel="noopener">mail UI</a>
+          in the <a id="mailcow-link" href="#" target="_blank" rel="noopener">Mail UI</a>
           (Mailboxes &rarr; Add mailbox) until the gateway takes writes.
         </p>
         <form id="new-mailbox-form" novalidate>
@@ -106,7 +106,8 @@
           </div>
           <div class="form-actions">
             <button class="btn ghost" type="button" id="btn-copy-address">Copy address</button>
-            <a class="btn primary" id="open-mailcow" href="#" target="_blank" rel="noopener">Open mail UI</a>
+            <a class="btn primary" id="open-mailcow" href="#" target="_blank" rel="noopener">Open Mail UI</a>
+            <a class="btn ghost" href="webmail.html">Open Webmail</a>
           </div>
         </form>
         <p class="msg ok" id="copy-ok" role="status" aria-live="polite" hidden></p>
@@ -118,6 +119,7 @@
     <div class="wrap footer-inner">
       <span>AImulti.inbox &mdash; self-hosted mail platform</span>
       <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
     </div>
   </footer>
 

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Step-by-step guides for AImulti.inbox: create your first mailbox, connect a domain, use the webmail, automate with agents over MCP and manage tenants.">
+  <title>Docs — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <nav class="bar-nav" aria-label="Main">
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="settings.html">Settings</a>
+        <a class="btn ghost" href="admin.html">Admin</a>
+        <a class="btn ghost" id="admin-link" href="/" rel="noopener">Mail UI</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap narrow">
+      <div class="page-head">
+        <div>
+          <h1>Docs</h1>
+          <p class="lede small">Self-service quick start &mdash; five step-by-step guides, from the first mailbox to tenant management. No tickets: every step is self-serve.</p>
+        </div>
+      </div>
+
+      <nav class="card" aria-label="Docs contents">
+        <ul class="kv">
+          <li><span class="k">Guide 1</span><span class="v"><a href="#first-mailbox">Create your first mailbox</a></span></li>
+          <li><span class="k">Guide 2</span><span class="v"><a href="#connect-domain">Connect a domain</a></span></li>
+          <li><span class="k">Guide 3</span><span class="v"><a href="#webmail">Use the webmail</a></span></li>
+          <li><span class="k">Guide 4</span><span class="v"><a href="#agents">Automate with agents</a></span></li>
+          <li><span class="k">Guide 5</span><span class="v"><a href="#tenants">Manage tenants</a></span></li>
+        </ul>
+      </nav>
+
+      <!-- Guide 1 — first mailbox -->
+      <section class="card" id="first-mailbox" aria-labelledby="first-mailbox-title">
+        <div class="card-head">
+          <h2 id="first-mailbox-title">Create your first mailbox</h2>
+          <span class="card-meta">Guide 1 &middot; Setup wizard</span>
+        </div>
+        <p>
+          A mailbox lives on a mail domain of yours. The Setup wizard walks the whole
+          path &mdash; origin, DNS, done &mdash; in three screens; the mailbox itself is
+          created from the Mailboxes page.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Origin</b> &mdash; open the <a href="onboarding.html">Setup</a> wizard and confirm the mail origin: the mail UI on this host, reached with your admin credentials.</span></li>
+          <li><code>Step 2</code><span><b>DNS</b> &mdash; connect Namecheap with your API key (validated and stored server-side only) so the wizard can read DNS records for your domains. Skippable &mdash; you can connect later.</span></li>
+          <li><code>Step 3</code><span><b>First domain</b> &mdash; pick the domain to inspect; MX on the apex, an SPF TXT and a DKIM selector are what inbox placement reads first.</span></li>
+          <li><code>Step 4</code><span><b>Done</b> &mdash; create the mailbox from <a href="inbox.html">Mailboxes</a>: pick the domain, add the address, and the welcome mail goes out.</span></li>
+        </ol>
+        <p class="hint">
+          Records not green yet? Follow <a href="#connect-domain">Guide 2 &mdash; Connect a domain</a>.
+        </p>
+      </section>
+
+      <!-- Guide 2 — connect a domain -->
+      <section class="card" id="connect-domain" aria-labelledby="connect-domain-title">
+        <div class="card-head">
+          <h2 id="connect-domain-title">Connect a domain</h2>
+          <span class="card-meta">Guide 2 &middot; Namecheap DNS</span>
+        </div>
+        <p>
+          A mail domain can send and receive once five records exist at your DNS
+          provider (Namecheap). Add the domain in the mail UI first, then publish
+          the records below.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Add the domain</b> &mdash; add it from the mail UI (it cannot be renamed from these pages), then open <a href="settings.html">Settings</a> &rarr; DNS snippets to see the records as the registrar serves them.</span></li>
+          <li><code>Step 2</code><span><b>A record</b> &mdash; at Namecheap &rarr; Advanced DNS, create host <code>mail</code> pointing to the IPv4 of your host.</span></li>
+          <li><code>Step 3</code><span><b>MX</b> &mdash; on the apex (<code>@</code>), point to <code>mail.yourdomain.com</code> with priority 10.</span></li>
+          <li><code>Step 4</code><span><b>SPF</b> &mdash; a single TXT on the apex: <code>v=spf1 mx ~all</code>.</span></li>
+          <li><code>Step 5</code><span><b>DKIM</b> &mdash; a TXT at <code>&lt;selector&gt;._domainkey</code>; the key is generated per domain &mdash; copy the exact selector and key from the mail UI.</span></li>
+          <li><code>Step 6</code><span><b>DMARC</b> &mdash; a TXT at <code>_dmarc</code>: start with <code>v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code> and tighten the policy after monitoring.</span></li>
+          <li><code>Step 7</code><span><b>Verify</b> &mdash; back on <a href="settings.html">Settings</a> &rarr; DNS snippets (or <a href="connectors.html">Connectors</a> &rarr; Browse domains), refresh and confirm each record resolves. Propagation takes minutes to hours.</span></li>
+        </ol>
+        <p class="table-title">The five records at a glance</p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th scope="col">Record</th><th scope="col">Type</th><th scope="col">Host</th><th scope="col">Value</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Mail host</td><td>A</td><td><code>mail</code></td><td>the IPv4 of your host</td></tr>
+              <tr><td>Delivery</td><td>MX</td><td><code>@</code></td><td><code>mail.yourdomain.com</code> &middot; priority 10</td></tr>
+              <tr><td>Sender policy</td><td>TXT (SPF)</td><td><code>@</code></td><td><code>v=spf1 mx ~all</code></td></tr>
+              <tr><td>Signing</td><td>TXT (DKIM)</td><td><code>&lt;selector&gt;._domainkey</code></td><td>key from the mail UI</td></tr>
+              <tr><td>Inbound policy</td><td>TXT (DMARC)</td><td><code>_dmarc</code></td><td><code>v=DMARC1; p=none; rua=mailto:&hellip;</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="hint">
+          One SPF record only &mdash; extra SPF TXTs void the first.
+        </p>
+      </section>
+
+      <!-- Guide 3 — use the webmail -->
+      <section class="card" id="webmail" aria-labelledby="webmail-title">
+        <div class="card-head">
+          <h2 id="webmail-title">Use the webmail</h2>
+          <span class="card-meta">Guide 3 &middot; Groupware client</span>
+        </div>
+        <p>
+          The groupware client ships with the platform &mdash; mail, folders, compose,
+          calendar, contacts and tasks in one interface. Sign-in is your mailbox
+          address + password, the same authentication as the mail UI.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Sign in</b> &mdash; open <a href="webmail.html">Webmail</a> and log in with your mailbox address + password. If the embedded frame stays empty after sign-in, use &ldquo;Open in new tab&rdquo;.</span></li>
+          <li><code>Step 2</code><span><b>Mail</b> &mdash; read conversations in the Inbox and organise them into folders from the folder tree on the left.</span></li>
+          <li><code>Step 3</code><span><b>Compose</b> &mdash; write, attach files and send; drafts are kept automatically.</span></li>
+          <li><code>Step 4</code><span><b>Calendar</b> &mdash; create events and invitations in the same session.</span></li>
+          <li><code>Step 5</code><span><b>Contacts</b> &mdash; add addresses to your address book; they autocomplete while composing.</span></li>
+          <li><code>Step 6</code><span><b>Tasks</b> &mdash; keep per-mailbox to-dos with due dates.</span></li>
+        </ol>
+        <p class="hint">
+          Switch modules from the toolbar above the frame: Mail &middot; Calendar &middot; Contacts &middot; Tasks.
+        </p>
+      </section>
+
+      <!-- Guide 4 — automate with agents -->
+      <section class="card" id="agents" aria-labelledby="agents-title">
+        <div class="card-head">
+          <h2 id="agents-title">Automate with agents</h2>
+          <span class="card-meta">Guide 4 &middot; MCP</span>
+        </div>
+        <p>
+          Connect Claude or Hermes to the platform&rsquo;s MCP endpoint and let them read
+          and change mail domain settings without opening the panel.
+        </p>
+
+        <div class="endpoint-row">
+          <code>/api/mcp.php</code>
+        </div>
+
+        <ul class="tools-list">
+          <li><code>list_domains</code><span>&mdash; list all mail domains with quota, aliases and active state</span></li>
+          <li><code>get_domain_settings</code><span>&mdash; full settings of one domain (quota, DKIM, relay&hellip;)</span></li>
+          <li><code>set_domain_settings</code><span>&mdash; change only the attributes you pass, e.g. <code>{"active":"1"}</code></span></li>
+        </ul>
+
+        <details>
+          <summary>Connect a client</summary>
+          <p class="hint">
+            Point the MCP client at the endpoint above with the header
+            <code>Authorization: Bearer &lt;platform API key&gt;</code> &mdash; the read-write key from
+            <code>the platform config</code>. Then prompts like &ldquo;list domains and show the settings
+            of <code>example.com</code>&rdquo; call <code>list_domains</code> and
+            <code>get_domain_settings</code>; changes go through <code>set_domain_settings</code>.
+          </p>
+        </details>
+
+        <p class="hint">
+          The mail API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
+          docker subnet allowed in <code>API_ALLOW_FROM</code>. The key is read from
+          <code>the platform config</code> at runtime &mdash; it is never written to this page or the
+          repository. The full connector surface lives on <a href="connectors.html">Connectors</a>.
+        </p>
+      </section>
+
+      <!-- Guide 5 — manage tenants -->
+      <section class="card" id="tenants" aria-labelledby="tenants-title">
+        <div class="card-head">
+          <h2 id="tenants-title">Manage tenants</h2>
+          <span class="card-meta">Guide 5 &middot; Per-domain administration</span>
+        </div>
+        <p>
+          Multi-brand operation means one tenant per domain: configuration on
+          <a href="settings.html">Settings</a>, the operator view on <a href="admin.html">Admin</a>
+          &mdash; everything scoped to the selected domain.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Pick the scope</b> &mdash; choose the tenant&rsquo;s domain from the selector at the top of <a href="settings.html">Settings</a> or <a href="admin.html">Admin</a>; everything below follows that scope.</span></li>
+          <li><code>Step 2</code><span><b>Tune the domain</b> &mdash; on Settings, set branding (description), PTR target and the default/max quota in MiB. The FQDN cannot be renamed here; add or remove domains from the mail UI.</span></li>
+          <li><code>Step 3</code><span><b>Watch the domain</b> &mdash; on Admin, follow the DNS records in scope, the recent audit trail (connector changes, MCP writes, mailbox operations) and the session details.</span></li>
+          <li><code>Step 4</code><span><b>Delegate</b> &mdash; access keys for agents and integrations are scoped per domain; creation and revocation ship with the API gateway. Use them with the MCP endpoint from <a href="#agents">Guide 4</a>.</span></li>
+        </ol>
+        <p class="hint">
+          Operators see only their brand&rsquo;s domains &mdash; the domain-admin view is the same page, narrowed by scope.
+        </p>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+</body>
+</html>

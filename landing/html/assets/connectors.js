@@ -31,7 +31,7 @@
       'multi-ai-inbox': {
         type: 'http',
         url: endpoint,
-        headers: { Authorization: 'Bearer <MAILCOW_API_KEY>' },
+        headers: { Authorization: 'Bearer <read-write API key>' },
       },
     },
   }, null, 2);

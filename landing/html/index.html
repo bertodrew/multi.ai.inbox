@@ -7,11 +7,14 @@
   <title>AImulti.inbox — one inbox, every provider</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
   <header class="topbar">
     <div class="wrap bar-inner">
-      <a class="brand" href="./">
+      <a class="brand" href="./" aria-current="page">
         <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
           <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
           <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
@@ -20,15 +23,15 @@
         </svg>
         <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
-      <nav>
-        <a class="btn ghost" id="admin-link" href="#">Admin panel</a>
+      <nav aria-label="Main">
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
       </nav>
     </div>
   </header>
 
-  <main>
+  <main id="main">
     <section class="hero wrap">
       <h1>One inbox.<br><span class="grad">Every provider.</span></h1>
       <p class="lede">
@@ -57,10 +60,10 @@
             <label for="pass_user">Password</label>
             <input id="pass_user" name="pass_user" type="password"
                    placeholder="Password" autocomplete="current-password" required>
-            <button class="btn primary w100" type="submit">Sign in to the admin panel</button>
+            <button class="btn primary w100" type="submit">Sign in to the Mail UI</button>
           </form>
           <p class="hint" id="mailcow-hint">
-            Same authentication as the UI on <code>/</code> &mdash; you land straight in the admin panel.
+            Same authentication as the UI on <code>/</code> &mdash; you land straight in the Mail UI.
           </p>
         </div>
 
@@ -98,7 +101,7 @@
           </svg>
         </div>
         <h3>Admin auth</h3>
-        <p>The complete mail platform, untouched: the admin login on <code>/</code> works exactly as upstream.</p>
+        <p>The complete mail platform, untouched: the Mailbox login on <code>/</code> works exactly as upstream.</p>
       </article>
       <article class="feature-card">
         <div class="feature-icon">

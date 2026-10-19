@@ -7,8 +7,11 @@
   <title>Connectors — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
   <header class="topbar">
     <div class="wrap bar-inner">
       <a class="brand" href="./">
@@ -20,19 +23,22 @@
         </svg>
         <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
-      <nav class="bar-nav">
+      <nav class="bar-nav" aria-label="Main">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="inbox.html">Mailboxes</a>
         <a class="btn ghost" href="webmail.html">Webmail</a>
-        <a class="btn ghost" id="admin-link" href="#">Admin panel</a>
+        <a class="btn ghost" href="settings.html">Settings</a>
+        <a class="btn ghost" href="admin.html">Admin</a>
+        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
         <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
       </nav>
     </div>
   </header>
 
-  <main>
+  <main id="main">
     <section class="wrap">
-      <h2 class="page-title">Connectors</h2>
+      <h1 class="page-title">Connectors</h1>
       <p class="lede small">Choose what to connect to this instance.</p>
 
       <div class="connector-grid">
@@ -61,7 +67,7 @@
           </div>
           <p>
             Connect Claude or Hermes to this fork&rsquo;s native MCP server to read and change
-            mail domain settings without opening the panel.
+            mail domain settings without opening the Mail UI.
           </p>
 
           <div class="endpoint-row">
@@ -82,20 +88,33 @@
           </details>
 
           <details>
-            <summary>Hermes usage instructions</summary>
+            <summary>Hermes config example</summary>
             <p class="hint">
-              Point the Hermes MCP client at the endpoint above with
-              <code>Authorization: Bearer &lt;platform API key&gt;</code> (the read-write key from
-              <code>the platform config</code>). Then prompts like &ldquo;list domains and show the settings
-              of <code>example.com</code>&rdquo; call <code>list_domains</code> and
-              <code>get_domain_settings</code>; changes go through <code>set_domain_settings</code>.
+              Add the server to <code>~/.hermes/config.yaml</code> under <code>mcp_servers</code>,
+              with the read-write key from the platform config, then restart Hermes so the
+              tools are discovered. Point <code>url</code> at this instance:
+            </p>
+            <pre id="hermes-config">mcp_servers:
+  multi-ai-inbox:
+    url: "https://&lt;instance-host&gt;/api/mcp.php"
+    headers:
+      Authorization: "Bearer &lt;read-write API key&gt;"</pre>
+            <button class="btn ghost small-btn" data-copy="#hermes-config" type="button">Copy</button>
+            <p class="hint">
+              Or from the CLI: <code>hermes mcp add multi-ai-inbox --url https://&lt;instance-host&gt;/api/mcp.php --auth header</code>.
+              The tools register as <code>mcp_multi_ai_inbox_list_domains</code>,
+              <code>mcp_multi_ai_inbox_get_domain_settings</code> and
+              <code>mcp_multi_ai_inbox_set_domain_settings</code>; prompts like
+              &ldquo;list domains and show the settings of <code>example.com</code>&rdquo; call
+              <code>list_domains</code> and <code>get_domain_settings</code>; changes go
+              through <code>set_domain_settings</code>.
             </p>
           </details>
 
           <p class="hint">
-            The mail API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
-            docker subnet allowed in <code>API_ALLOW_FROM</code>. The key is read from
-            <code>the platform config</code> at runtime &mdash; it is never written to this page or the repository.
+            The mail API must be enabled in the Mail UI (System &rarr; Configuration &rarr; Access &rarr; API)
+            with the docker subnet allowed in <code>API_ALLOW_FROM</code>. The read-write key is read from
+            the platform config at runtime &mdash; it is never written to this page or the repository.
           </p>
         </article>
       </div>
