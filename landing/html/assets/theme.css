@@ -585,6 +585,9 @@ tbody tr[role="button"]:focus-visible {
   .form-actions .btn { flex: 1 1 auto; }
 }
 
+/* anchor targets under the sticky topbar — keep the first pixels of the target visible */
+[id] { scroll-margin-top: 72px; }
+
 /* B22 fix: keep the session identity — and the "(sandbox)" marker — visible on
    small screens instead of hiding it with the style.css 560px rule */
 @media (max-width: 560px) {
