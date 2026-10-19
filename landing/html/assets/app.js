@@ -3,7 +3,7 @@
 
   let status = null;
   try {
-    status = await fetch('/api/status.php').then((r) => r.json());
+    status = await fetch('api/status.php').then((r) => r.json());
   } catch (e) {
     status = null;
   }
@@ -67,7 +67,7 @@
     ncSubmit.textContent = 'Connecting…';
     let res;
     try {
-      res = await fetch('/api/connect.php', {
+      res = await fetch('api/connect.php', {
         method: 'POST',
         body,
         headers: { 'X-Landing-CSRF': csrf },

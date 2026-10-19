@@ -1,0 +1,1066 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Strix",
+          "informationUri": "https://strix.ai",
+          "rules": [
+            {
+              "id": "CWE-307",
+              "name": "Brute-force rate limit on POST /api/connect.php bypassed by cookie rotation (per-session counter, no IP/global limiter)",
+              "shortDescription": {
+                "text": "Brute-force rate limit on POST /api/connect.php bypassed by cookie rotation (per-session counter, no IP/global limiter)"
+              },
+              "fullDescription": {
+                "text": "The brute-force protection on the Namecheap API-key connect endpoint is enforced only per browser session. Failed connect attempts are tracked in the PHP session (`$_SESSION['nc_attempts']`) with a 5-attempts/10-minute lockout, but there is no IP-based or global limiter: an attacker who simply does not send the session cookie gets a fresh zero counter on every request and can guess Namecheap API keys through the server indefinitely."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "The brute-force protection on the Namecheap API-key connect endpoint is enforced only per browser session. Failed connect attempts are tracked in the PHP session (`$_SESSION['nc_attempts']`) with a 5-attempts/10-minute lockout, but there is no IP-based or global limiter: an attacker who simply does not send the session cookie gets a fresh zero counter on every request and can guess Namecheap API keys through the server indefinitely.\n\nAn unauthenticated attacker can use the publicly reachable landing server as an unthrottled proxy for Namecheap API-key guessing: every request without a session cookie returns 401 and resets nothing, so the 5-attempts/10-minute lockout never applies. In production (real `api.namecheap.com`), this enables sustained key-guessing campaigns through the server's IP, abuse of the server as a relay to evade Namecheap-side throttling, and service degradation of the landing app itself. The per-session counter provides no real protection against any automated client.\n\nEnforce the failed-attempt invariant outside the session: add an IP-based (or global) failed-attempt counter in `php/bootstrap.php` alongside the existing session counter, so that exceeding the threshold returns 429 regardless of cookie state. The narrowest repository-native change is to extend `register_failed_attempt()` to also record attempts per remote address in a file store under `CRED_DIR` (already a 0700 credential directory with an atomic tmp+rename write precedent in `store_credentials()`), checked before the session counter; `clear_failed_attempts()` should then remove the per-IP entry on successful connect so legitimate users who mistyped a key are not stranded. Complement (not replace) this with nginx `limit_req` on `location /api/` for defense in depth, and consider a small per-request delay or upstream-response cache for repeated identical guesses to blunt relay-abuse. Fix embedded in this report as a one-click suggestion block covering `register_failed_attempt()` and `clear_failed_attempts()`.",
+                "markdown": "The brute-force protection on the Namecheap API-key connect endpoint is enforced only per browser session. Failed connect attempts are tracked in the PHP session (`$_SESSION['nc_attempts']`) with a 5-attempts/10-minute lockout, but there is no IP-based or global limiter: an attacker who simply does not send the session cookie gets a fresh zero counter on every request and can guess Namecheap API keys through the server indefinitely.\n\nAn unauthenticated attacker can use the publicly reachable landing server as an unthrottled proxy for Namecheap API-key guessing: every request without a session cookie returns 401 and resets nothing, so the 5-attempts/10-minute lockout never applies. In production (real `api.namecheap.com`), this enables sustained key-guessing campaigns through the server's IP, abuse of the server as a relay to evade Namecheap-side throttling, and service degradation of the landing app itself. The per-session counter provides no real protection against any automated client.\n\nEnforce the failed-attempt invariant outside the session: add an IP-based (or global) failed-attempt counter in `php/bootstrap.php` alongside the existing session counter, so that exceeding the threshold returns 429 regardless of cookie state. The narrowest repository-native change is to extend `register_failed_attempt()` to also record attempts per remote address in a file store under `CRED_DIR` (already a 0700 credential directory with an atomic tmp+rename write precedent in `store_credentials()`), checked before the session counter; `clear_failed_attempts()` should then remove the per-IP entry on successful connect so legitimate users who mistyped a key are not stranded. Complement (not replace) this with nginx `limit_req` on `location /api/` for defense in depth, and consider a small per-request delay or upstream-response cache for repeated identical guesses to blunt relay-abuse. Fix embedded in this report as a one-click suggestion block covering `register_failed_attempt()` and `clear_failed_attempts()`."
+              },
+              "properties": {
+                "security-severity": "5.3",
+                "tags": [
+                  "security",
+                  "CWE-307",
+                  "stride:T",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/307.html"
+            },
+            {
+              "id": "vuln-0002",
+              "name": "Session fixation on Namecheap connect — client-chosen session ID accepted and never rotated on authenticated transition",
+              "shortDescription": {
+                "text": "Session fixation on Namecheap connect — client-chosen session ID accepted and never rotated on authenticated transition"
+              },
+              "fullDescription": {
+                "text": "The landing app session uses PHP's default non-strict session mode and never rotates the session identifier when a Namecheap API key is connected, so an attacker can pre-set the session cookie to a known value and inherit the authenticated connection established on it."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "The landing app session uses PHP's default non-strict session mode and never rotates the session identifier when a Namecheap API key is connected, so an attacker can pre-set the session cookie to a known value and inherit the authenticated connection established on it.\n\nAny anonymous visitor can be locked into an attacker-known session ID. When the Namecheap connect flow completes on that session, the attacker replays the known cookie value and inherits the connected state, gaining full unauthorized access to the victim's Namecheap account data and domain/DNS configuration through the landing app's connected session.\n\nSet session.use_strict_mode=1 via ini_set before session_start in bootstrap.php so client-supplied session IDs are rejected, and call session_regenerate_id(true) on the nc_connected transition in php/connect.php (and equivalently on any other privilege change) so the anonymous pre-auth session ID is invalidated and a fresh server-issued ID is installed when a connection is established.",
+                "markdown": "The landing app session uses PHP's default non-strict session mode and never rotates the session identifier when a Namecheap API key is connected, so an attacker can pre-set the session cookie to a known value and inherit the authenticated connection established on it.\n\nAny anonymous visitor can be locked into an attacker-known session ID. When the Namecheap connect flow completes on that session, the attacker replays the known cookie value and inherits the connected state, gaining full unauthorized access to the victim's Namecheap account data and domain/DNS configuration through the landing app's connected session.\n\nSet session.use_strict_mode=1 via ini_set before session_start in bootstrap.php so client-supplied session IDs are rejected, and call session_regenerate_id(true) on the nc_connected transition in php/connect.php (and equivalently on any other privilege change) so the anonymous pre-auth session ID is invalidated and a fresh server-issued ID is installed when a connection is established."
+              },
+              "properties": {
+                "security-severity": "9.6",
+                "tags": [
+                  "security",
+                  "stride:T",
+                  "stride:I"
+                ]
+              }
+            },
+            {
+              "id": "vuln-0003",
+              "name": "Global credentials file shared by all sessions — last-connector-wins cross-user overwrite",
+              "shortDescription": {
+                "text": "Global credentials file shared by all sessions — last-connector-wins cross-user overwrite"
+              },
+              "fullDescription": {
+                "text": "All connected sessions share one global credentials file, so each new Namecheap connection silently overwrites every other session's stored key and every connected session acts on whoever connected last."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "All connected sessions share one global credentials file, so each new Namecheap connection silently overwrites every other session's stored key and every connected session acts on whoever connected last.\n\nAny second connection silently replaces the first session's stored Namecheap key. The first session then reports the wrong account owner and proxies its domain/DNS calls through the second user's key, giving unauthorized access to another user's Namecheap account data while the first user's credentials are silently discarded.\n\nScope the credential store to the session that created it: derive the credentials path from the PHP session ID (for example CRED_DIR . '/' . hash('sha256', session_id()) . '.namecheap.json') in store_credentials(), read_credentials(), and delete_credentials(), and keep the existing lock-plus-atomic-rename write pattern. Alternatively, encrypt the stored credentials and bind the encryption key to the session so only the creating session can decrypt them; both approaches remove the last-connector-wins overwrite.",
+                "markdown": "All connected sessions share one global credentials file, so each new Namecheap connection silently overwrites every other session's stored key and every connected session acts on whoever connected last.\n\nAny second connection silently replaces the first session's stored Namecheap key. The first session then reports the wrong account owner and proxies its domain/DNS calls through the second user's key, giving unauthorized access to another user's Namecheap account data while the first user's credentials are silently discarded.\n\nScope the credential store to the session that created it: derive the credentials path from the PHP session ID (for example CRED_DIR . '/' . hash('sha256', session_id()) . '.namecheap.json') in store_credentials(), read_credentials(), and delete_credentials(), and keep the existing lock-plus-atomic-rename write pattern. Alternatively, encrypt the stored credentials and bind the encryption key to the session so only the creating session can decrypt them; both approaches remove the last-connector-wins overwrite."
+              },
+              "properties": {
+                "security-severity": "9.9",
+                "tags": [
+                  "security",
+                  "stride:T",
+                  "stride:I"
+                ]
+              }
+            },
+            {
+              "id": "vuln-0004",
+              "name": "Unauthenticated status.php leaks CSRF token, mailcow origin, public IP, and last connector's username",
+              "shortDescription": {
+                "text": "Unauthenticated status.php leaks CSRF token, mailcow origin, public IP, and last connector's username"
+              },
+              "fullDescription": {
+                "text": "An unauthenticated GET /api/status.php leaks the session CSRF token, mailcow origin, server public egress IP, and the last connector's Namecheap username to any anonymous visitor."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "An unauthenticated GET /api/status.php leaks the session CSRF token, mailcow origin, server public egress IP, and the last connector's Namecheap username to any anonymous visitor.\n\nAny anonymous visitor learns the server's public egress IP (the value a Namecheap operator needs to whitelist), the mailcow origin, and — when a connection exists — the last connector's Namecheap username and sandbox flag, materially aiding the credential-abuse and account-proxying attack chains against this deployment.\n\nGate the connection-state fields behind require_namecheap_session() so connected, username, and sandbox are only reported to connected sessions, and remove detect_public_ip() and the session CSRF token from the unauthenticated response (the CSRF token should only be minted for sessions that actually need it for a state-changing request). Keep Cache-Control: no-store so the gated response is never cached.",
+                "markdown": "An unauthenticated GET /api/status.php leaks the session CSRF token, mailcow origin, server public egress IP, and the last connector's Namecheap username to any anonymous visitor.\n\nAny anonymous visitor learns the server's public egress IP (the value a Namecheap operator needs to whitelist), the mailcow origin, and — when a connection exists — the last connector's Namecheap username and sandbox flag, materially aiding the credential-abuse and account-proxying attack chains against this deployment.\n\nGate the connection-state fields behind require_namecheap_session() so connected, username, and sandbox are only reported to connected sessions, and remove detect_public_ip() and the session CSRF token from the unauthenticated response (the CSRF token should only be minted for sessions that actually need it for a state-changing request). Keep Cache-Control: no-store so the gated response is never cached."
+              },
+              "properties": {
+                "security-severity": "5.3",
+                "tags": [
+                  "security",
+                  "stride:T",
+                  "stride:I"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/ssrf-user-controlled-egress-url",
+              "name": "SSRF / user-controlled egress URL",
+              "shortDescription": {
+                "text": "Coverage: SSRF / user-controlled egress URL"
+              },
+              "fullDescription": {
+                "text": "Coverage of SSRF / user-controlled egress URL across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of SSRF / user-controlled egress URL across the assessed attack surface.",
+                "markdown": "Coverage of SSRF / user-controlled egress URL across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/ssrf-unauthenticated-egress-ip-disclosure",
+              "name": "SSRF / unauthenticated egress IP disclosure",
+              "shortDescription": {
+                "text": "Coverage: SSRF / unauthenticated egress IP disclosure"
+              },
+              "fullDescription": {
+                "text": "Coverage of SSRF / unauthenticated egress IP disclosure across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of SSRF / unauthenticated egress IP disclosure across the assessed attack surface.",
+                "markdown": "Coverage of SSRF / unauthenticated egress IP disclosure across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/bfla-authentication-bypass-method-level-authorization",
+              "name": "BFLA / authentication bypass / method-level authorization",
+              "shortDescription": {
+                "text": "Coverage: BFLA / authentication bypass / method-level authorization"
+              },
+              "fullDescription": {
+                "text": "Coverage of BFLA / authentication bypass / method-level authorization across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of BFLA / authentication bypass / method-level authorization across the assessed attack surface.",
+                "markdown": "Coverage of BFLA / authentication bypass / method-level authorization across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/xxe-entity-expansion-dtd-transclusion-on-upstream-xml",
+              "name": "XXE / entity expansion / DTD transclusion on upstream XML",
+              "shortDescription": {
+                "text": "Coverage: XXE / entity expansion / DTD transclusion on upstream XML"
+              },
+              "fullDescription": {
+                "text": "Coverage of XXE / entity expansion / DTD transclusion on upstream XML across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of XXE / entity expansion / DTD transclusion on upstream XML across the assessed attack surface.",
+                "markdown": "Coverage of XXE / entity expansion / DTD transclusion on upstream XML across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/mass-assignment-unrestricted-attrs-passthrough-to-mailcow-edit-domain",
+              "name": "Mass assignment / unrestricted attrs passthrough to mailcow edit/domain",
+              "shortDescription": {
+                "text": "Coverage: Mass assignment / unrestricted attrs passthrough to mailcow edit/domain"
+              },
+              "fullDescription": {
+                "text": "Coverage of Mass assignment / unrestricted attrs passthrough to mailcow edit/domain across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of Mass assignment / unrestricted attrs passthrough to mailcow edit/domain across the assessed attack surface.",
+                "markdown": "Coverage of Mass assignment / unrestricted attrs passthrough to mailcow edit/domain across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/spoofed-clientip-authz-trust-on-client-supplied-ip",
+              "name": "Spoofed ClientIp / authz-trust on client-supplied IP",
+              "shortDescription": {
+                "text": "Coverage: Spoofed ClientIp / authz-trust on client-supplied IP"
+              },
+              "fullDescription": {
+                "text": "Coverage of Spoofed ClientIp / authz-trust on client-supplied IP across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of Spoofed ClientIp / authz-trust on client-supplied IP across the assessed attack surface.",
+                "markdown": "Coverage of Spoofed ClientIp / authz-trust on client-supplied IP across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/object-level-authz-session-gating",
+              "name": "Object-level authz / session gating",
+              "shortDescription": {
+                "text": "Coverage: Object-level authz / session gating"
+              },
+              "fullDescription": {
+                "text": "Coverage of Object-level authz / session gating across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of Object-level authz / session gating across the assessed attack surface.",
+                "markdown": "Coverage of Object-level authz / session gating across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/object-level-authz-domain-parameter-injection-ssrf-like-smuggle-to-upstream-api",
+              "name": "Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API)",
+              "shortDescription": {
+                "text": "Coverage: Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API)"
+              },
+              "fullDescription": {
+                "text": "Coverage of Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API) across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API) across the assessed attack surface.",
+                "markdown": "Coverage of Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API) across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/xss-reflected-input-injection-via-json-rpc-id-and-unknown-tool-echo",
+              "name": "XSS / reflected input injection via JSON-RPC id and unknown-tool echo",
+              "shortDescription": {
+                "text": "Coverage: XSS / reflected input injection via JSON-RPC id and unknown-tool echo"
+              },
+              "fullDescription": {
+                "text": "Coverage of XSS / reflected input injection via JSON-RPC id and unknown-tool echo across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of XSS / reflected input injection via JSON-RPC id and unknown-tool echo across the assessed attack surface.",
+                "markdown": "Coverage of XSS / reflected input injection via JSON-RPC id and unknown-tool echo across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/csrf-token-single-use-session-bound-timing-safe-cross-site-forgeability",
+              "name": "CSRF (token single-use / session-bound / timing-safe / cross-site forgeability)",
+              "shortDescription": {
+                "text": "Coverage: CSRF (token single-use / session-bound / timing-safe / cross-site forgeability)"
+              },
+              "fullDescription": {
+                "text": "Coverage of CSRF (token single-use / session-bound / timing-safe / cross-site forgeability) across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of CSRF (token single-use / session-bound / timing-safe / cross-site forgeability) across the assessed attack surface.",
+                "markdown": "Coverage of CSRF (token single-use / session-bound / timing-safe / cross-site forgeability) across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/csrf-require-csrf-gate-placement-vs-rate-limit-token-single-use-session-bound-timing-safe",
+              "name": "CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe)",
+              "shortDescription": {
+                "text": "Coverage: CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe)"
+              },
+              "fullDescription": {
+                "text": "Coverage of CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe) across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe) across the assessed attack surface.",
+                "markdown": "Coverage of CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe) across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            },
+            {
+              "id": "strix-coverage/csrf-token-issuance-session-binding",
+              "name": "CSRF token issuance & session binding",
+              "shortDescription": {
+                "text": "Coverage: CSRF token issuance & session binding"
+              },
+              "fullDescription": {
+                "text": "Coverage of CSRF token issuance & session binding across the assessed attack surface."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "help": {
+                "text": "Coverage of CSRF token issuance & session binding across the assessed attack surface.",
+                "markdown": "Coverage of CSRF token issuance & session binding across the assessed attack surface."
+              },
+              "properties": {
+                "tags": [
+                  "coverage"
+                ]
+              }
+            }
+          ],
+          "version": "1.7.0"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CWE-307",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "Brute-force rate limit on POST /api/connect.php bypassed by cookie rotation (per-session counter, no IP/global limiter)\n\nThe brute-force protection on the Namecheap API-key connect endpoint is enforced only per browser session. Failed connect attempts are tracked in the PHP session (`$_SESSION['nc_attempts']`) with a 5-attempts/10-minute lockout, but there is no IP-based or global limiter: an attacker who simply does not send the session cookie gets a fresh zero counter on every request and can guess Namecheap API keys through the server indefinitely."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "php/bootstrap.php"
+                },
+                "region": {
+                  "startLine": 98,
+                  "endLine": 108,
+                  "snippet": {
+                    "text": "function register_failed_attempt(): void\n{\n    $now = time();\n    $attempts = is_array($_SESSION['nc_attempts'] ?? null) ? $_SESSION['nc_attempts'] : [];\n    $attempts = array_values(array_filter($attempts, static fn($t): bool => is_int($t) && ($now - $t) < NC_ATTEMPT_WINDOW));\n    $attempts[] = $now;\n    $_SESSION['nc_attempts'] = $attempts;\n    if (count($attempts) > NC_MAX_ATTEMPTS) {\n        json_err('Too many failed attempts, wait 10 minutes and retry', 429);\n    }\n}"
+                  }
+                }
+              },
+              "message": {
+                "text": "Primary fix: extend register_failed_attempt() with a per-IP file-based counter checked before the session counter"
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "php/bootstrap.php"
+                },
+                "region": {
+                  "startLine": 110,
+                  "endLine": 113,
+                  "snippet": {
+                    "text": "function clear_failed_attempts(): void\n{\n    unset($_SESSION['nc_attempts']);\n}"
+                  }
+                }
+              },
+              "message": {
+                "text": "Supporting fix: clear_failed_attempts() must also remove the per-IP entry so legitimate users reset after a successful connect"
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/api/connect.php",
+                  "kind": "endpoint"
+                }
+              ]
+            }
+          ],
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "php/bootstrap.php"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "startLine": 98,
+                        "endLine": 108
+                      },
+                      "insertedContent": {
+                        "text": "function register_failed_attempt(): void\n{\n    $now = time();\n    $remote = $_SERVER['REMOTE_ADDR'] ?? '';\n    if (!is_string($remote) || filter_var($remote, FILTER_VALIDATE_IP) === false) {\n        $remote = 'unknown';\n    }\n    $store_dir = CRED_DIR . '/.nc-attempts';\n    if (!is_dir($store_dir)) {\n        @mkdir($store_dir, 0700, true);\n    }\n    if (is_dir($store_dir)) {\n        $store = $store_dir . '/' . $remote . '.json';\n        $remote_attempts = [];\n        if (is_file($store)) {\n            $remote_attempts = json_decode((string)file_get_contents($store), true);\n            $remote_attempts = is_array($remote_attempts) ? $remote_attempts : [];\n        }\n        $remote_attempts = array_values(array_filter($remote_attempts, static fn($t): bool => is_int($t) && ($now - $t) < NC_ATTEMPT_WINDOW));\n        $remote_attempts[] = $now;\n        if (count($remote_attempts) > NC_MAX_ATTEMPTS) {\n            json_err('Too many failed attempts, wait 10 minutes and retry', 429);\n        }\n        $tmp = $store . '.' . bin2hex(random_bytes(6));\n        if (@file_put_contents($tmp, json_encode($remote_attempts), LOCK_EX) !== false) {\n            @rename($tmp, $store);\n        }\n    }\n    $attempts = is_array($_SESSION['nc_attempts'] ?? null) ? $_SESSION['nc_attempts'] : [];\n    $attempts = array_values(array_filter($attempts, static fn($t): bool => is_int($t) && ($now - $t) < NC_ATTEMPT_WINDOW));\n    $attempts[] = $now;\n    $_SESSION['nc_attempts'] = $attempts;\n    if (count($attempts) > NC_MAX_ATTEMPTS) {\n        json_err('Too many failed attempts, wait 10 minutes and retry', 429);\n    }\n}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "artifactLocation": {
+                    "uri": "php/bootstrap.php"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "startLine": 110,
+                        "endLine": 113
+                      },
+                      "insertedContent": {
+                        "text": "function clear_failed_attempts(): void\n{\n    unset($_SESSION['nc_attempts']);\n    $remote = $_SERVER['REMOTE_ADDR'] ?? '';\n    if (!is_string($remote) || filter_var($remote, FILTER_VALIDATE_IP) === false) {\n        $remote = 'unknown';\n    }\n    $store = CRED_DIR . '/.nc-attempts/' . $remote . '.json';\n    if (is_file($store)) {\n        @unlink($store);\n    }\n}"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "Enforce the failed-attempt invariant outside the session: add an IP-based (or global) failed-attempt counter in `php/bootstrap.php` alongside the existing session counter, so that exceeding the threshold returns 429 regardless of cookie state. The narrowest repository-native change is to extend `register_failed_attempt()` to also record attempts per remote address in a file store under `CRED_DIR` (already a 0700 credential directory with an atomic tmp+rename write precedent in `store_credentials()`), checked before the session counter; `clear_failed_attempts()` should then remove the per-IP entry on successful connect so legitimate users who mistyped a key are not stranded. Complement (not replace) this with nginx `limit_req` on `location /api/` for defense in depth, and consider a small per-request delay or upstream-response cache for repeated identical guesses to blunt relay-abuse. Fix embedded in this report as a one-click suggestion block covering `register_failed_attempt()` and `clear_failed_attempts()`.",
+                "markdown": "Enforce the failed-attempt invariant outside the session: add an IP-based (or global) failed-attempt counter in `php/bootstrap.php` alongside the existing session counter, so that exceeding the threshold returns 429 regardless of cookie state. The narrowest repository-native change is to extend `register_failed_attempt()` to also record attempts per remote address in a file store under `CRED_DIR` (already a 0700 credential directory with an atomic tmp+rename write precedent in `store_credentials()`), checked before the session counter; `clear_failed_attempts()` should then remove the per-IP entry on successful connect so legitimate users who mistyped a key are not stranded. Complement (not replace) this with nginx `limit_req` on `location /api/` for defense in depth, and consider a small per-request delay or upstream-response cache for repeated identical guesses to blunt relay-abuse. Fix embedded in this report as a one-click suggestion block covering `register_failed_attempt()` and `clear_failed_attempts()`."
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "2089ada256cae342d2d1ca6e5841f44f3e4a4857787976c4cfb6cc67df6bb297"
+          },
+          "properties": {
+            "security-severity": "5.3",
+            "strix_vuln_class_hash": "d2586cc48b60f0af099e31c6a9e04d4339e98d919579da5a168de166790135e8",
+            "strix": {
+              "id": "vuln-0001",
+              "severity": "medium",
+              "cvss": 5.3,
+              "timestamp": "2026-10-18 21:16:26 UTC",
+              "target": "http://host.docker.internal:8080 (multi.ai.inbox landing app; source: /workspace/landing)",
+              "endpoint": "/api/connect.php",
+              "cwe": "CWE-307",
+              "impact": "An unauthenticated attacker can use the publicly reachable landing server as an unthrottled proxy for Namecheap API-key guessing: every request without a session cookie returns 401 and resets nothing, so the 5-attempts/10-minute lockout never applies. In production (real `api.namecheap.com`), this enables sustained key-guessing campaigns through the server's IP, abuse of the server as a relay to evade Namecheap-side throttling, and service degradation of the landing app itself. The per-session counter provides no real protection against any automated client.",
+              "technical_analysis": "`php/bootstrap.php:98-108` — `register_failed_attempt()` stores attempt timestamps exclusively in the PHP session: it reads `$_SESSION['nc_attempts']`, drops timestamps older than `NC_ATTEMPT_WINDOW` (600s), appends the current time, and returns 429 when more than `NC_MAX_ATTEMPTS` (5) attempts remain. The counter lives and dies with the session: a request that carries no `MULTIAI_LANDING` session cookie gets a fresh session with no `nc_attempts` key, so the count is always zero and the lockout can never engage. `php/connect.php:29` calls `register_failed_attempt()` before `nc_call()` (the relay to `NAMECHEAP_API_URL`), and `php/connect.php:42` calls `clear_failed_attempts()` after a successful connect, so a found valid key immediately clears the counter. Because the threshold is per-session, an attacker rotating sessions (or never sending the cookie) bypasses the limiter entirely — verified dynamically. A `rg` sweep across `/workspace/landing/php` (bootstrap.php, connect.php, domains.php, dns.php, mcp.php, namecheap.php, status.php, disconnect.php) confirms no IP-based or global limiter exists anywhere in the application. A minimal repository-native fix extends `register_failed_attempt()` to track attempts per remote address in a file-based store under `CRED_DIR` (already a 0700 directory with an atomic tmp+rename precedent), checked before the session counter, with `clear_failed_attempts()` unlinking the entry on success.",
+              "remediation_steps": "Enforce the failed-attempt invariant outside the session: add an IP-based (or global) failed-attempt counter in `php/bootstrap.php` alongside the existing session counter, so that exceeding the threshold returns 429 regardless of cookie state. The narrowest repository-native change is to extend `register_failed_attempt()` to also record attempts per remote address in a file store under `CRED_DIR` (already a 0700 credential directory with an atomic tmp+rename write precedent in `store_credentials()`), checked before the session counter; `clear_failed_attempts()` should then remove the per-IP entry on successful connect so legitimate users who mistyped a key are not stranded. Complement (not replace) this with nginx `limit_req` on `location /api/` for defense in depth, and consider a small per-request delay or upstream-response cache for repeated identical guesses to blunt relay-abuse. Fix embedded in this report as a one-click suggestion block covering `register_failed_attempt()` and `clear_failed_attempts()`.",
+              "counterevidence": "Actively checked for controls that would neutralize the finding: (1) nginx layer — `/workspace/landing/nginx/landing.conf` applies only body-size and security-header directives; no `limit_req`/`limit_conn` zones are configured for `/api/`, and PHP-FPM has no per-IP throttling; (2) application layer — `rg -i \"fail|attempt|limit|throttl|rate|429|lockout\"` across `/workspace/landing` (excluding node_modules) finds attempt tracking only in `bootstrap.php:98-108` and `connect.php:29/42`, all session-scoped, with no `REMOTE_ADDR`-based counter and no shared store; (3) session hardening does not mitigate — `bootstrap.php:5-17` makes the session cookie HttpOnly/SameSite=Lax, which does not prevent a scripted client from simply omitting it; (4) upstream dependency — no WAF, CDN, or reverse-proxy layer is part of this deployment that would throttle per-IP request volume before PHP. The one legitimate mitigation remaining is Namecheap's own whitelisting model (its API requires a whitelisted ClientIp), which constrains successful key compromise in some configurations but does not throttle the guessing channel itself. No constraint meaningfully limits the bypass.",
+              "confidence": "high",
+              "severity_change_conditions": "A production deployment of this app relaying to the real api.namecheap.com (instead of the internal nc-mock) would raise this to critical, because the landing server then functions as a confirmed unauthenticated unthrottled relay for real Namecheap API-key guessing. Conversely, demonstration that the live 8080 deployment is internal-only (not internet-reachable) would reduce severity to low.",
+              "fix_verification": "Applied the suggested patch to a throwaway copy of `php/bootstrap.php` (the live mount at /workspace/landing is read-only for this run, so the repo itself was not modified). Verification per gate: (1) Applicability — diff of copy vs repo shows only the two intended hunks (`register_failed_attempt()` lines 98-108, `clear_failed_attempts()` lines 110-113); `php -l` (PHP 8.4.24) reports \"No syntax errors detected\". (2) Security closure — local regression harness (landed CRED_DIR via LANDING_CRED_DIR): 8 successive `register_failed_attempt()` calls → attempts 1-5 pass, attempt 6 exits with 429 \"Too many failed attempts\"; a FRESH process then immediately gets 429, proving the counter persists across sessions and kills the cookie-drop bypass; remote address normalization falls back to a shared 'unknown' key when REMOTE_ADDR is absent (CLI) and uses the validated client IP under php-fpm. (3) Bypass review — checked sibling sink: connect.php calls register_failed_attempt() once (line 29) before nc_call(); the exceed check runs on every call before any upstream relay; encoding/verb variation is irrelevant because the counter keys on REMOTE_ADDR only; an attacker rotating source IPs defeats any per-IP limiter by design, which is why the suggestion keeps the session counter and adds the IP store — for true global throttling an operator-grade limiter (nginx limit_req/limit_conn, or a shared Redis store) is the recommended complement, noted in remediation prose. (4) Preserved behavior — clear_failed_attempts() still unsets the session key and additionally unlinks the per-IP file (verified: after clear, next attempt passes and counter json contains exactly 1 timestamp); legit 5-fail-then-connect flow resets fully. (5) Repository checks — `php -l` on the patched copy passed; the app's own test suite is not present in the mounted tree. Gap: the patch could not be applied to the real checkout or exercised through nginx+php-fpm in this environment (read-only mount, no docker); the regression was run against the patched copy with PHP CLI only.",
+              "poc": {
+                "description": "1. Obtain a session CSRF token: GET http://host.docker.internal:8080/api/status.php (first call sets the MULTIAI_LANDING session cookie, second returns the csrf token).\n2. In-window lockout test (single cookie jar): POST /api/connect.php six times with `username=testuser1`, `api_key=INVALID<n>` (fails the key format check, so no upstream call is made), header `X-Landing-CSRF: <csrf>`, sending the session cookie each time. Attempts 1-5 return 401; attempt 6 returns 429 \"Too many failed attempts, wait 10 minutes and retry\" — the per-session lockout works.\n3. Cookie-drop bypass test: repeat the same bad attempts, but use a completely fresh HTTP session (no cookie) for every single attempt — fetch a csrf token from status.php and POST connect.php once per session, 8 times, about 1 second apart. Every attempt returns 401; no attempt ever returns 429. The failed-attempt counter never accumulates because each new session starts at zero, so the limiter is fully bypassed by rotating/not sending the session cookie.\n4. Total volume kept modest (≤ 20 connect attempts, ~1s apart) and no valid Namecheap key was used at any point — the PoC keys are format-invalid and rejected before any upstream request.",
+                "script_available": true
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "vuln-0002",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Session fixation on Namecheap connect — client-chosen session ID accepted and never rotated on authenticated transition\n\nThe landing app session uses PHP's default non-strict session mode and never rotates the session identifier when a Namecheap API key is connected, so an attacker can pre-set the session cookie to a known value and inherit the authenticated connection established on it."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "php/bootstrap.php"
+                },
+                "region": {
+                  "startLine": 5,
+                  "endLine": 14,
+                  "snippet": {
+                    "text": "session_name('MULTIAI_LANDING');\nsession_set_cookie_params([\n    'lifetime' => 0,\n    'path' => '/',\n    'domain' => '',\n    'secure' => (($_SERVER['HTTPS'] ?? '') === 'on') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'),\n    'httponly' => true,\n    'samesite' => 'Lax',\n]);\nsession_start();"
+                  }
+                }
+              },
+              "message": {
+                "text": "Enforce strict session mode before session_start"
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "php/connect.php"
+                },
+                "region": {
+                  "startLine": 42,
+                  "endLine": 50,
+                  "snippet": {
+                    "text": "clear_failed_attempts();\nstore_credentials([\n    'username' => $username,\n    'api_key' => $api_key,\n    'client_ip' => $client_ip,\n    'sandbox' => $sandbox,\n]);\n$_SESSION['nc_connected'] = true;\n$_SESSION['nc_username'] = $username;"
+                  }
+                }
+              },
+              "message": {
+                "text": "Rotate session ID on authenticated transition"
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/api/connect.php",
+                  "kind": "endpoint"
+                }
+              ]
+            }
+          ],
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "php/bootstrap.php"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "startLine": 5,
+                        "endLine": 14
+                      },
+                      "insertedContent": {
+                        "text": "ini_set('session.use_strict_mode', '1');\nsession_name('MULTIAI_LANDING');\nsession_set_cookie_params([\n    'lifetime' => 0,\n    'path' => '/',\n    'domain' => '',\n    'secure' => (($_SERVER['HTTPS'] ?? '') === 'on') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'),\n    'httponly' => true,\n    'samesite' => 'Lax',\n]);\nsession_start();"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "artifactLocation": {
+                    "uri": "php/connect.php"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "startLine": 42,
+                        "endLine": 50
+                      },
+                      "insertedContent": {
+                        "text": "clear_failed_attempts();\nstore_credentials([\n    'username' => $username,\n    'api_key' => $api_key,\n    'client_ip' => $client_ip,\n    'sandbox' => $sandbox,\n]);\nsession_regenerate_id(true);\n$_SESSION['nc_connected'] = true;\n$_SESSION['nc_username'] = $username;"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "Set session.use_strict_mode=1 via ini_set before session_start in bootstrap.php so client-supplied session IDs are rejected, and call session_regenerate_id(true) on the nc_connected transition in php/connect.php (and equivalently on any other privilege change) so the anonymous pre-auth session ID is invalidated and a fresh server-issued ID is installed when a connection is established.",
+                "markdown": "Set session.use_strict_mode=1 via ini_set before session_start in bootstrap.php so client-supplied session IDs are rejected, and call session_regenerate_id(true) on the nc_connected transition in php/connect.php (and equivalently on any other privilege change) so the anonymous pre-auth session ID is invalidated and a fresh server-issued ID is installed when a connection is established."
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "e1625c6620de9908bcce83ed83316876488bdac6d455a2404a94300e456f480c"
+          },
+          "properties": {
+            "security-severity": "9.6",
+            "strix_vuln_class_hash": "39779cd860c01f3b71408a3817038f22fb31c693a6993aba22a2e4d22853f29c",
+            "strix": {
+              "id": "vuln-0002",
+              "severity": "critical",
+              "cvss": 9.6,
+              "timestamp": "2026-10-18 21:45:53 UTC",
+              "target": "http://host.docker.internal:8080",
+              "endpoint": "/api/connect.php",
+              "method": "POST",
+              "impact": "Any anonymous visitor can be locked into an attacker-known session ID. When the Namecheap connect flow completes on that session, the attacker replays the known cookie value and inherits the connected state, gaining full unauthorized access to the victim's Namecheap account data and domain/DNS configuration through the landing app's connected session.",
+              "technical_analysis": "`php/bootstrap.php` calls `session_start()` with no `ini_set('session.use_strict_mode', '1')` hardening, so PHP adopts any client-presented session ID for `MULTIAI_LANDING` (verified dynamically: GET /api/status.php with a 32-hex tester-chosen cookie returned HTTP 200 with no Set-Cookie, and minted a CSRF token for that chosen session). `php/connect.php` sets `$_SESSION['nc_connected'] = true` and `$_SESSION['nc_username']` on that same session ID; no `session_regenerate_id()` occurs anywhere in the repository. Because the session ID is never regenerated on the authenticated transition, an attacker who fixates the cookie value obtains the connected session the victim establishes on it. The session cookie is HttpOnly and SameSite=Lax, which does not prevent an attacker from fixating the value on a plain-HTTP deployment.",
+              "remediation_steps": "Set session.use_strict_mode=1 via ini_set before session_start in bootstrap.php so client-supplied session IDs are rejected, and call session_regenerate_id(true) on the nc_connected transition in php/connect.php (and equivalently on any other privilege change) so the anonymous pre-auth session ID is invalidated and a fresh server-issued ID is installed when a connection is established.",
+              "counterevidence": "Actively checked: (1) whether nginx or PHP config enforces session strict mode — no ini_set and no php.ini override in the repo, and the server accepted the chosen ID; (2) whether connect.php or bootstrap.php rotates the ID on the authenticated transition — zero occurrences repo-wide; (3) whether the cookie Secure flag limits fixation — HTTPS is optional in this deployment, the cookie Secure attribute depends on protocol detection and plain HTTP was used; (4) whether the CSRF token would block the replay — hash_equals against the same session's token, which the attacker fixed, so it does not. Residual limitation: the mock Namecheap endpoint is unreachable from the test container, so the connect-success replay of a mocked credential could not be driven end-to-end; every mechanical step before it was executed against the live target.",
+              "confidence": "high",
+              "confidence_rationale": "Dynamic PoC against the live target for every mechanical step: client-chosen session ID accepted (200, no reissued cookie), CSRF minted on it, and the CSRF gate passing on the fixed session (401 from the Namecheap call, not 403). The final connect-success replay was blocked because the mock Namecheap endpoint is unreachable from the test container; the PHP-side transition is fully traceable in source.",
+              "severity_change_conditions": "If the target were confirmed to enforce session.use_strict_mode or to rotate the session ID on the authenticated transition, the fixation story would collapse and this would drop to informational.",
+              "fix_verification": "Applicability: fix_before hunks are verbatim copies of php/bootstrap.php lines 5-14 and php/connect.php lines 42-50 (read from the mounted checkout); the change adds one ini_set line before session_start and one session_regenerate_id(true) line before the nc_connected flags — nothing unrelated. Security closure (re-traced through the patched source; live replay blocked): after the patch, session.use_strict_mode=1 makes the runtime reject a client-chosen MULTIAI_LANDING ID (the accepted 32-hex value on GET /api/status.php with no Set-Cookie reissue is rejected instead of adopted), and session_regenerate_id(true) on the nc_connected transition destroys the pre-auth session ID the attacker fixed and installs a fresh server-issued one — the known-cookie replay that defines the fixation story now resolves to an unrelated empty session. Bypass review: sibling transition points are disconnect.php (privilege-losing, no rebind required) and dns.php/domains.php (read-only consumers of the already-authenticated state, no new principal installed), and equivalent malicious input classes were checked — a null byte, a 128-hex overlong ID, and an empty cookie value all fall under the same strict-mode rejection since PHP validates the ID format before opening the store. Preserved behavior: the anonymous session (cookie issuance, CSRF minting, status.php responses) is unchanged, and the connect flow's success path keeps its rate limiting, credential validation, and store_credentials() call; only the ID value changes. Repository checks: the extracted hunk compiles standalone — `php -l` clean on PHP 8.4.24, and the authenticated transition executed correctly in a /tmp sandbox build of the same lines. Gap: the mock Namecheap endpoint is unreachable from this test container, so the connect-success replay of a mocked credential against the patched app could not be driven end-to-end.",
+              "poc": {
+                "description": "1. Pick a 32-hex session ID (the \"fixed\" value).\n2. GET /api/status.php with only that fixed MULTIAI_LANDING cookie — confirm HTTP 200, no Set-Cookie reissue, and a CSRF token returned for the chosen session (proves session.use_strict_mode is off).\n3. POST /api/connect.php with the same fixed cookie, the X-Landing-CSRF header set to that CSRF token, and valid-format credential fields — confirm the CSRF gate passes (the response is the Namecheap result, not \"Invalid CSRF token\").\n4. In a real two-client scenario, the attacker would now replay the known cookie value and inherit the connected session created on it.",
+                "script_available": true
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "vuln-0003",
+          "ruleIndex": 2,
+          "level": "error",
+          "message": {
+            "text": "Global credentials file shared by all sessions — last-connector-wins cross-user overwrite\n\nAll connected sessions share one global credentials file, so each new Namecheap connection silently overwrites every other session's stored key and every connected session acts on whoever connected last."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/api/connect.php",
+                  "kind": "endpoint"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "0b82a08ed8011674dce7aa9d7550b2f1133b4435733caad2c7d7e444dd3789b2"
+          },
+          "properties": {
+            "security-severity": "9.9",
+            "strix_vuln_class_hash": "8b804984ad2c3a2f2c49aa425eba8c6899a269986cbdd1897bb01c63e66a01e3",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0003",
+              "severity": "critical",
+              "cvss": 9.9,
+              "timestamp": "2026-10-18 21:46:17 UTC",
+              "target": "http://host.docker.internal:8080",
+              "endpoint": "/api/connect.php",
+              "impact": "Any second connection silently replaces the first session's stored Namecheap key. The first session then reports the wrong account owner and proxies its domain/DNS calls through the second user's key, giving unauthorized access to another user's Namecheap account data while the first user's credentials are silently discarded.",
+              "technical_analysis": "php/bootstrap.php defines CRED_FILE as a single global path (bootstrap.php:16-17). store_credentials() (bootstrap.php:52-64) wholesale-overwrites that one file via tmp+rename on every successful connect; read_credentials() (bootstrap.php:66-76) returns that same file to any session that passes require_namecheap_session(). php/connect.php:43-50 calls store_credentials() on the authenticated transition and sets $_SESSION['nc_connected']=true, but never keys the stored credentials to the session that created them. php/domains.php and php/dns.php call require_namecheap_session() and pass the shared credentials to nc_domains()/nc_dns_hosts(), so every connected session acts on whoever connected last. php/disconnect.php deletes the shared file for everyone. This pairs with the session-fixation finding (client-chosen session IDs are accepted), which lets an attacker replay a known cookie value and land on a connected session backed by the shared credentials.",
+              "remediation_steps": "Scope the credential store to the session that created it: derive the credentials path from the PHP session ID (for example CRED_DIR . '/' . hash('sha256', session_id()) . '.namecheap.json') in store_credentials(), read_credentials(), and delete_credentials(), and keep the existing lock-plus-atomic-rename write pattern. Alternatively, encrypt the stored credentials and bind the encryption key to the session so only the creating session can decrypt them; both approaches remove the last-connector-wins overwrite.",
+              "counterevidence": "Actively checked: (1) whether read_credentials() or require_namecheap_session() keys stored credentials to the session that created them — no session binding exists in bootstrap.php; (2) whether store_credentials() writes per-session paths — it writes one global path via tmp+rename; (3) whether domains.php/dns.php re-verify the caller owns the stored key — they only check the nc_connected flag; (4) whether disconnect.php scopes deletion to one session — it deletes the shared file for everyone. Residual limitation: the mock Namecheap endpoint is unreachable from the test container, so the A/B connect-success chain could not be replayed end-to-end.",
+              "confidence": "medium",
+              "confidence_rationale": "The mechanism is statically conclusive from source (global single-file credential store read by every connected session), and the pairable-session mechanism (client-chosen session IDs accepted) is dynamically validated on the live target. The full A/B connect-success chain was not replayed because the mock Namecheap endpoint is unreachable from the test container.",
+              "severity_change_conditions": "If the target were confirmed to be deployed strictly single-user (one landing session at a time), the cross-user impact would collapse to wrong-account attribution and this would drop to low.",
+              "fix_verification": "Security closure (reasoned, not executed): after the patch, read_credentials() resolves the per-session file sid(session_id()).namecheap.json under CRED_DIR, so session A's status/domains/dns calls resolve only A's own stored credential and can no longer resolve B's overwrite; wholesale overwrite of another session's credential file is eliminated by construction because every write is scoped to the writing session's SID. Bypass review: sibling call sites are store_credentials (scoped by the helper), read_credentials (scoped by the helper), and delete_credentials, which is updated in the same hunk to unlink only the calling session's file — the shared-file deletion path (one user's disconnect removing another user's stored key) is closed by the same scoping. Preserved behavior: a fresh session has no stored file, so require_namecheap_session() already fails closed with 401 \"Stored connection is gone, connect again\" before the change and after it, so the legitimate flow is unchanged. Repository checks: the proposed hunk compiles standalone — `php -l` clean in a /tmp sandbox build of the same lines (session_regenerate_id and per-session file resolution both valid PHP 8.4). Gap: no live A/B replay against the patched app because the mock Namecheap endpoint is unreachable from this test container.",
+              "poc": {
+                "description": "1. Session A connects with a first Namecheap key (the global creds file now holds A).\n2. Session B connects with a second key — store_credentials() wholesale-overwrites the shared file with B.\n3. Session A calls /api/status.php and /api/domains.php — A now reports B's username and proxies its calls through B's key.\n4. This chain was not replayed end-to-end in this test environment because the mock Namecheap endpoint is unreachable from the test container; the mechanism is statically conclusive from source and the pairable-session mechanism it rides on is dynamically confirmed in vuln-0002.",
+                "script_available": true
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "vuln-0004",
+          "ruleIndex": 3,
+          "level": "warning",
+          "message": {
+            "text": "Unauthenticated status.php leaks CSRF token, mailcow origin, public IP, and last connector's username\n\nAn unauthenticated GET /api/status.php leaks the session CSRF token, mailcow origin, server public egress IP, and the last connector's Namecheap username to any anonymous visitor."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/api/status.php",
+                  "kind": "endpoint"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "426c06427d360d1891dcf8570a2322609f94d058d6d8003301272a164cf706bb"
+          },
+          "properties": {
+            "security-severity": "5.3",
+            "strix_vuln_class_hash": "d3ea961915823d6e0df71da44421c828c778bcf7d20e7bab9a213f648cd166a8",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0004",
+              "severity": "medium",
+              "cvss": 5.3,
+              "timestamp": "2026-10-18 21:46:34 UTC",
+              "target": "http://host.docker.internal:8080",
+              "endpoint": "/api/status.php",
+              "method": "GET",
+              "impact": "Any anonymous visitor learns the server's public egress IP (the value a Namecheap operator needs to whitelist), the mailcow origin, and — when a connection exists — the last connector's Namecheap username and sandbox flag, materially aiding the credential-abuse and account-proxying attack chains against this deployment.",
+              "technical_analysis": "php/status.php is a GET-only handler that never calls require_csrf() or require_namecheap_session(). It reads $_SESSION['nc_connected'] and the global credentials file (defined as one global path shared by every session in bootstrap.php:16-17), reports the last connector's username and the sandbox flag in the same unauthenticated response, and mints a fresh session CSRF token via ensure_csrf() plus the server's public egress IP via detect_public_ip() (fetched from api.ipify.org and cached under CRED_DIR). The session cookie is HttpOnly and SameSite=Lax, which does not prevent an anonymous visitor from receiving the CSRF token, mailcow origin, public IP, and last-connector username. This is a live oracle for the session-fixation finding (vuln-0002) and the cross-user credential overwrite (vuln-0003): the leaked IP is the exact client_ip value connect.php auto-detects for Namecheap whitelisting, and the last-connector username confirms a fixed session is attached to the previous connector's account.",
+              "remediation_steps": "Gate the connection-state fields behind require_namecheap_session() so connected, username, and sandbox are only reported to connected sessions, and remove detect_public_ip() and the session CSRF token from the unauthenticated response (the CSRF token should only be minted for sessions that actually need it for a state-changing request). Keep Cache-Control: no-store so the gated response is never cached.",
+              "counterevidence": "Actively checked: (1) whether require_csrf or any auth gate covers status.php — it is a GET-only handler that never calls require_csrf or require_namecheap_session; (2) whether Cache-Control no-store or httponly mitigate — no-store affects caching only and does not hide the response; (3) whether the leaked IP is intended client-side data — it is the server's public egress IP fetched from api.ipify.org and exposed to any anonymous visitor. Residual limitation: the username field was null in this run because no successful Namecheap connection existed in the shared store during the test window.",
+              "confidence": "high",
+              "confidence_rationale": "Working PoC against the live target: unauthenticated request returned HTTP 200 with the session CSRF token, mailcow origin, and public IP in the response body, and the endpoint reads the last connector's username and sandbox flag from the shared global creds store whenever a connection exists (php/status.php:61-72).",
+              "severity_change_conditions": "If the target were confirmed to serve only an internal audience (no anonymous internet visitors), the leaked username/IP would no longer materially aid the attack chains and this would drop to informational.",
+              "poc": {
+                "description": "1. GET /api/status.php with no cookies at all.\n2. Confirm HTTP 200 and that the response body includes csrf, mailcow_origin, and public_ip, and reports connected/username/sandbox for the last connector when a connection exists.\n3. Repeat with a fixed cookie value to confirm the response reports a CSRF token minted for an attacker-chosen session ID.",
+                "script_available": true
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/ssrf-user-controlled-egress-url",
+          "ruleIndex": 4,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "SSRF / user-controlled egress URL — Ruled out: POST /api/connect.php use_sandbox param\n\nControl: nc_api_url() at php/namecheap.php:5-12 accepts only a bool; the URL string is entirely from getenv('NAMECHEAP_SANDBOX_API_URL'/'NAMECHEAP_API_URL') with hardcoded Namecheap defaults (lines 7-11), and nc_call() at php/namecheap.php:23 calls curl_init(nc_api_url((bool)($creds['sandbox'] ?? false))). connect.php:14 maps use_sandbox POST field to a boolean via `(string)$_POST['use_sandbox'] === '1'` — no URL string from user input ever exists. Repo-wide rg over php/ shows the only curl_init sinks are namecheap.php:23 (nc_api_url), bootstrap.php:124 (fixed https://api.ipify.org), and mcp.php:10 (MAILCOW_API_URL env + internal path); no user field (username, api_key, client_ip, domain, JSON-RPC params, headers) reaches any URL. Dynamic: connect.php tested with use_sandbox=1 vs 0 — only operator-configured endpoints are contacted; neither is attacker-chosen."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "POST /api/connect.php use_sandbox param"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "ruled_out",
+              "risk_area": "SSRF / user-controlled egress URL",
+              "surface": "POST /api/connect.php use_sandbox param",
+              "recorded_by": "SSRF-XML-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/ssrf-unauthenticated-egress-ip-disclosure",
+          "ruleIndex": 5,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "SSRF / unauthenticated egress IP disclosure — No issue identified: GET /api/status.php public_ip field (detect_public_ip)\n\nControl: detect_public_ip() at php/bootstrap.php:117-139 has no user input — curl_init('https://api.ipify.org') is a hardcoded string on line 124. Triggered via GET /api/status.php pre-auth (response captured: HTTP 200, {\"ok\":true,\"connected\":false,\"username\":null,\"sandbox\":false,\"csrf\":\"9c09...\",\"mailcow_origin\":\"https://host.docker.internal\",\"public_ip\":\"146.70.126.61\"}). The response leaks: server egress IP, session CSRF token (session-bound, not a static secret), mailcow_origin built from HTTP_HOST (reflects the request, not new info). Cache file CRED_DIR/.publicip written with default perms (no chmod, unlike store_credentials which chmods to 0600) — inside CRED_DIR which store_credentials chmods to 0700; not an additional exposure beyond the pre-auth status.php disclosure itself. Assessed as info disclosure only."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "GET /api/status.php public_ip field (detect_public_ip)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "SSRF / unauthenticated egress IP disclosure",
+              "surface": "GET /api/status.php public_ip field (detect_public_ip)",
+              "recorded_by": "SSRF-XML-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/bfla-authentication-bypass-method-level-authorization",
+          "ruleIndex": 6,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "BFLA / authentication bypass / method-level authorization — No issue identified: POST /api/mcp.php (php/mcp.php)\n\nAuth gate confirmed at php/mcp.php:107-114 (getenv('MAILCOW_API_KEY') → Bearer regex → hash_equals → json_err 401), executed before ALL method dispatch (initialize:129, notifications/:137, tools/call:144). Dynamic: POST initialize no auth → 401, wrong Bearer → 401, GET wrong Bearer → 401 (order: auth before POST check — wrong-key GET leaks only the 401 body, never the 405 method hint), tools/call no auth → 401, notifications/initialized no auth → 401. Proxy ids 18,19,20,28,29,91,92,33. hash_equals timing-safe; Bearer regex (multi-token 'Bearer x y' fails match → 401); empty/unset key short-circuits to 401 (verified live PHP 8.4 harness, fail-closed). Correct-key control passes gate (reaches 400 Invalid JSON-RPC), proving the gate is the only barrier. No BFLA/bypass found."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "POST /api/mcp.php (php/mcp.php)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "BFLA / authentication bypass / method-level authorization",
+              "surface": "POST /api/mcp.php (php/mcp.php)",
+              "recorded_by": "MCP-Authz-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/xxe-entity-expansion-dtd-transclusion-on-upstream-xml",
+          "ruleIndex": 7,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "XXE / entity expansion / DTD transclusion on upstream XML — Ruled out: php/namecheap.php nc_call simplexml_load_string (upstream XML parse)\n\nControl: PHP's libxml2 >= 2.9 disables external entity loading by default. nc_call() at php/namecheap.php:39 parses with @simplexml_load_string($body) — no LIBXML_NOENT flag passed (the only flags bit used is default 0), so external entity resolution is off. Verified this runtime build: PHP 8.4.24 CLI in the sandbox with libxml 2.15.3 (LIBXML_VERSION=21503), simplexml external-entity file read against a real local canary returned empty content by default; adding LIBXML_NOENT fetched the canary content — proving the flag is what enables it and it is absent in namecheap.php. Dynamic local snippet: php /tmp/xxe_probe.php + /tmp/xxe_probe3.php. The XML body comes from an operator-configured endpoint (nc-mock:8088 in this deployment), not directly from attacker input; no DTD/parameter-entity transclusion path is enabled."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "php/namecheap.php nc_call simplexml_load_string (upstream XML parse)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "ruled_out",
+              "risk_area": "XXE / entity expansion / DTD transclusion on upstream XML",
+              "surface": "php/namecheap.php nc_call simplexml_load_string (upstream XML parse)",
+              "recorded_by": "SSRF-XML-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/mass-assignment-unrestricted-attrs-passthrough-to-mailcow-edit-domain",
+          "ruleIndex": 8,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "Mass assignment / unrestricted attrs passthrough to mailcow edit/domain — Ruled out: mcp_tool_call set_domain_settings (php/mcp.php:97-102)\n\nphp/mcp.php:97-102 forwards the caller's attrs object 1:1 as {'items':[$domain],'attr':$attrs} to mailcow POST /api/v1/edit/domain — no key allowlist (verified: no array_intersect_key in file). Dangerous keys ARE forwardable (active:\"0\", backupmx/relay_all_recipients:\"1\", maxquota/defquota overrides, rl_value/rl_frame per the tool description at line 69) — verified by encoding a hostile attrs payload. However the only caller must hold the read-write MAILCOW_API_KEY (php/mcp.php:112 gate), which could call mailcow's own admin API directly with identical effect — no privilege added, and the tool contract documents read/write domain management. Cannot dynamically confirm (no real key); assessed source-only within the trust boundary. Not a vulnerability by itself."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "mcp_tool_call set_domain_settings (php/mcp.php:97-102)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "ruled_out",
+              "risk_area": "Mass assignment / unrestricted attrs passthrough to mailcow edit/domain",
+              "surface": "mcp_tool_call set_domain_settings (php/mcp.php:97-102)",
+              "recorded_by": "MCP-Authz-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/spoofed-clientip-authz-trust-on-client-supplied-ip",
+          "ruleIndex": 9,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "Spoofed ClientIp / authz-trust on client-supplied IP — No issue identified: POST /api/connect.php client_ip param\n\nconnect.php:13 reads user-supplied client_ip, validates with FILTER_VALIDATE_IP (400 on invalid), passes to nc_call as ClientIp param. detect_public_ip() only runs when client_ip is empty (connect.php:33-34). Server-side consequence: none — client_ip is never read back for any authz or trust decision; rg over php/ shows its only readers are nc_call param building (namecheap.php:12) and the IP-not-whitelisted error message construction (namecheap.php:44-46). Namecheap gates by the real source IP of the server, not this parameter. Attacker can claim any IP in the outbound call; assessed honestly as low/info."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "POST /api/connect.php client_ip param"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "Spoofed ClientIp / authz-trust on client-supplied IP",
+              "surface": "POST /api/connect.php client_ip param",
+              "recorded_by": "SSRF-XML-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/object-level-authz-session-gating",
+          "ruleIndex": 10,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "Object-level authz / session gating — No issue identified: GET /api/domains.php (php/domains.php)\n\nphp/domains.php:158 → require_namecheap_session() (bootstrap.php:85-96): empty($_SESSION['nc_connected']) → 401 'Not connected'; missing creds file → unset flags + 401 'Stored connection is gone' (no leak). Dynamic: GET /api/domains.php no cookie → 401 (proxy ids 83/84); POST → 405 method-first (id 87). Creds-file-gone path verified by reading (cannot touch /credentials). Cross-session global-creds risk is a connect.php-owned issue (threat model), not this endpoint's gate."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "GET /api/domains.php (php/domains.php)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "Object-level authz / session gating",
+              "surface": "GET /api/domains.php (php/domains.php)",
+              "recorded_by": "MCP-Authz-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/object-level-authz-domain-parameter-injection-ssrf-like-smuggle-to-upstream-api",
+          "ruleIndex": 11,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API) — No issue identified: GET /api/dns.php?domain= (php/dns.php)\n\nphp/dns.php:158 gates on require_namecheap_session() before any domain handling. Dynamic: no cookie → 401 (proxy ids 85/86, 9). Domain regex (php/dns.php:161, same pattern as mcp.php:86) validated with PHP 8.4 against 26 payloads — ALL rejected except benign: query smuggle (example.com?x=1), '-a- evil.com', '../etc/passwd', encoded traversal, null bytes, fragments, slashes, unicode raw, punycode-no-TLD, 64-char labels, 313-char names, cloud metadata IP, [::1], empty/leading labels, uppercase, trailing dot — all rejected. Legit punycode (xn--80ak6aa92e.com) and 63-char labels accepted; 4-label 253-char name ACCEPTED, 255 rejected (length boundary enforced). DomainName reaches Namecheap only post-regex (php/dns.php:165 → php/namecheap.php:85 passes ['DomainName' => $domain]). No injection/smuggle vector."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "GET /api/dns.php?domain= (php/dns.php)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API)",
+              "surface": "GET /api/dns.php?domain= (php/dns.php)",
+              "recorded_by": "MCP-Authz-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/xss-reflected-input-injection-via-json-rpc-id-and-unknown-tool-echo",
+          "ruleIndex": 12,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "XSS / reflected input injection via JSON-RPC id and unknown-tool echo — No issue identified: mcp.php JSON-RPC response echo (mcp_result/mcp_error)\n\n$payload['id'] and unknown-tool names echo verbatim into JSON responses (mcp.php:35-41, 149), but all responses flow through json_out() (bootstrap.php:21-29) with Content-Type application/json; charset=utf-8 + X-Content-Type-Options: nosniff + Cache-Control: no-store and json_encode — harness-replicated echo of <img src=x onerror=alert(1)> id + <script>alert(2)</script> tool name arrives as JSON strings, inert. nginx adds nosniff + X-Frame-Options SAMEORIGIN globally (landing.conf:193-195). Post-auth reflection probes blocked pre-auth (proxy ids 91/92 returned 401); harness-verified echo path. No XSS vector."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "mcp.php JSON-RPC response echo (mcp_result/mcp_error)"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "XSS / reflected input injection via JSON-RPC id and unknown-tool echo",
+              "surface": "mcp.php JSON-RPC response echo (mcp_result/mcp_error)",
+              "recorded_by": "MCP-Authz-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/csrf-token-single-use-session-bound-timing-safe-cross-site-forgeability",
+          "ruleIndex": 13,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "CSRF (token single-use / session-bound / timing-safe / cross-site forgeability) — No issue identified: POST /api/disconnect.php\n\nCSRF forgery blocked by hash_equals() compare of a 128-bit random token bound to the victim session (php/bootstrap.php:44-49), SameSite=Lax session cookie (bootstrap.php:8-16), and POST-only enforcement. Probes: valid token via header -> 200 (x3, token non-rotating but replay requires knowing it); attacker token + victim cookie -> 403; empty header -> 403; no cookie + no token -> 403; GET -> 405. No Origin/Referer check exists (residual defense-in-depth gap, noted)."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "POST /api/disconnect.php"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "CSRF (token single-use / session-bound / timing-safe / cross-site forgeability)",
+              "surface": "POST /api/disconnect.php",
+              "recorded_by": "CSRF-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/csrf-require-csrf-gate-placement-vs-rate-limit-token-single-use-session-bound-timing-safe",
+          "ruleIndex": 14,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe) — No issue identified: POST /api/connect.php\n\nCSRF gate confirmed on this endpoint: POST /api/connect.php without any token -> 403 'Invalid CSRF token, reload the page'; require_csrf() runs BEFORE register_failed_attempt() per source (php/connect.php:9), so the gate is not affected by and does not burn the per-session rate limit. Same control set as disconnect.php (hash_equals + session-bound token + SameSite=Lax); forgery not demonstrated. Token non-rotating and pre-auth fetchable per-session (status.php) — residual risks noted in findings note 7fa3e2; session fixation is the compounding weakness (Session-Validator's scope)."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "POST /api/connect.php"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe)",
+              "surface": "POST /api/connect.php",
+              "recorded_by": "CSRF-Validator",
+              "source": "agent_reported"
+            }
+          }
+        },
+        {
+          "ruleId": "strix-coverage/csrf-token-issuance-session-binding",
+          "ruleIndex": 15,
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "CSRF token issuance & session binding — No issue identified: GET /api/status.php\n\nGET /api/status.php returns the session csrf to any unauthenticated visitor: 32 hex chars (16 random bytes via bin2hex(random_bytes(16)), php/bootstrap.php:36-42), stored in $_SESSION — same cookie returns the same token (persistent, non-rotating), different cookie returns a different token. Set-Cookie: MULTIAI_LANDING=...; path=/; HttpOnly; SameSite=Lax (no Secure flag over plain HTTP). Pre-auth fetchability is session-scoped and harmless alone; compounding risk only with session fixation (documented in findings note 7fa3e2)."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "GET /api/status.php"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "strix": {
+              "coverage_outcome": "no_issue_found",
+              "risk_area": "CSRF token issuance & session binding",
+              "surface": "GET /api/status.php",
+              "recorded_by": "CSRF-Validator",
+              "source": "agent_reported"
+            }
+          }
+        }
+      ],
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
+      "properties": {
+        "syntheticLocationCount": 2
+      }
+    }
+  ]
+}

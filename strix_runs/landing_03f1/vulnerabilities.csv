@@ -1,0 +1,5 @@
+id,title,severity,timestamp,file
+vuln-0002,Session fixation on Namecheap connect — client-chosen session ID accepted and never rotated on authenticated transition,CRITICAL,2026-10-18 21:45:53 UTC,vulnerabilities/vuln-0002.md
+vuln-0003,Global credentials file shared by all sessions — last-connector-wins cross-user overwrite,CRITICAL,2026-10-18 21:46:17 UTC,vulnerabilities/vuln-0003.md
+vuln-0001,"Brute-force rate limit on POST /api/connect.php bypassed by cookie rotation (per-session counter, no IP/global limiter)",MEDIUM,2026-10-18 21:16:26 UTC,vulnerabilities/vuln-0001.md
+vuln-0004,"Unauthenticated status.php leaks CSRF token, mailcow origin, public IP, and last connector's username",MEDIUM,2026-10-18 21:46:34 UTC,vulnerabilities/vuln-0004.md

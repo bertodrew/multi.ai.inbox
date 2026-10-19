@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-18 21:55:38 UTC",
+  "run_id": "landing_03f1",
+  "run_name": "landing_03f1",
+  "scope": {
+    "targets": [
+      {
+        "type": "local_code",
+        "details": {
+          "target_path": "/Volumes/4TB SSD/Users/Andrea/Projects/mailcow-dockerized/landing",
+          "workspace_subdir": "landing"
+        },
+        "original": "/Volumes/4TB SSD/Users/Andrea/Projects/mailcow-dockerized/landing"
+      },
+      {
+        "type": "web_application",
+        "details": {
+          "target_url": "http://host.docker.internal:8080"
+        },
+        "original": "http://localhost:8080"
+      }
+    ],
+    "scan_mode": "standard",
+    "scope_mode": "auto",
+    "diff_scope": {
+      "active": false,
+      "mode": "auto"
+    },
+    "instruction": "White-box review of the multi.ai.inbox landing app (landing/): (1) Namecheap API key handling — connect.php, credentials storage in /credentials/namecheap.json (permissions, leak in logs?); (2) CSRF protection (X-Landing-CSRF + status.php token) — is the token single-use, session-bound, timing-safe?; (3) session handling for the domains/dns endpoints (auth gating, session fixation); (4) the mailcow login path (credential handling, API key usage); (5) SSRF risk: NAMECHEAP_API_URL points at an internal mock host — can a user influence the API URL?; (6) multi-tenant readiness: anything that would leak one user's Namecheap key or domains to another. The live app runs at http://localhost:8080 (mock Namecheap API at nc-mock:8088). Report with PoC per finding."
+  },
+  "summary": {
+    "surfaces_reviewed": 16,
+    "outcomes": {
+      "reported": 4,
+      "no_issue_found": 9,
+      "ruled_out": 3
+    },
+    "findings_filed": 4,
+    "gaps": 3
+  },
+  "machine_observed": {
+    "agents": [
+      {
+        "agent_id": "833d9e45",
+        "agent_name": "CSRF-Validator",
+        "status": "completed",
+        "skills": [
+          "vulnerabilities/csrf"
+        ],
+        "task": "White-box validation on the multi.ai.inbox landing app. Target: http://host.docker.internal:8080. Source at /workspace/landing (read-only .git; do NOT edit files in /workspace/landing). Read the threat model first: get_threat_model on http://host.docker.internal:8080.\n\nYour scope: CSRF PROTECTION on the landing app. Endpoints: POST /api/connect.php and POST /api/disconnect.php call require_csrf() in php/bootstrap.php. The user asked specifically: is the X-Landing-CSRF token single-use, session-bound, timing-safe?\n\nValidate each property dynamically (fresh cookie jar; keep request volume modest — the connect endpoint has a per-session rate limit and another agent is testing connect flows; prefer disconnect.php + status.php for most probes and at most 1-2 connect.php attempts):\n\n1. **Token issuance & binding** — GET /api/status.php (unauthenticated) returns a csrf. Confirm the token is stored in $_SESSION (bootstrap.php ensure_csrf) — i.e. it IS session-bound and 16 random bytes (32 hex chars), returned to any unauthenticated visitor. Confirm a second GET with the SAME cookie returns the same token (persistent, not rotating) and a different cookie returns a different token.\n\n2. **Single-use?** — the token is never rotated after use: confirm the same token remains valid across multiple POSTs (e.g. disconnect.php twice with the same session) → NOT single-use by design; assess what that means combined with the token being fetchable pre-auth by any visitor (an attacker can always obtain their own valid token — the protection rests on SameSite=Lax + the X-Landing-CSRF custom header, which cross-site forms cannot set).\n\n3. **Timing-safe compare?** — require_csrf() uses hash_equals($_SESSION['csrf'], $sent) — confirm in source (php/bootstrap.php, around line 44-49) and state honestly that comparison is timing-safe. Check the FALLBACK: require_csrf() also accepts $_POST['csrf'] when the header is absent (bootstrap.php line ~46). Confirm via dynamic test: POST disconnect.php with csrf in the body only, no header → accepted; and with neither → 403.\n\n4. **Cross-site forgeability** — SameSite=Lax cookie means a cross-site top-level POST does NOT carry the cookie, and the fetch/JS flow always sends the custom header. Test the practical barriers: (a) POST disconnect.php from a cross-origin context WITHOUT the header but WITH the cookie (e.g. curl with the victim's cookie jar and no X-Landing-CSRF header, body csrf='' ) → should 403 (body fallback exists but token unknown to attacker); (b) confirm the server does not rely on Origin/Referer checks (no such check in source) — note that the protection is: unknown-token + SameSite=Lax + custom-header-only-in-JS. Assess residual risk: token is obtainable pre-auth (status.php no auth) so the ONLY barrier for an attacker who can run JS on another origin is SameSite; an attacker who can set the victim's cookie (fixation — another agent validates that) can fetch status.php with the same fixed cookie and learn the token, making CSRF fully forgeable.\n\n5. Also verify disconnect.php state change is genuinely CSRF-relevant: it deletes the global /credentials/namecheap.json for ALL users (see bootstrap.php delete_credentials) — a forged disconnect is a cross-user DoS.\n\nRecord your closure with record_coverage for POST /api/disconnect.php (CSRF) and POST /api/connect.php (CSRF). Write confirmed findings to notes (create_note, category findings) with exact commands/responses, then file reports with create_vulnerability_report. For any finding, include the inline fix in code_locations (fix_before/fix_after verbatim from php/bootstrap.php — read the file for exact lines; e.g. rotate the token per state-change or bind to a per-connect nonce, add Origin/Referer check as defense-in-depth, and consider rejecting the POST-body fallback so the token must come via the header). If no vulnerability is confirmed (e.g. SameSite=Lax + custom header genuinely holds), record record_coverage outcome no_issue_found with the named controls, and write a short findings note explaining the residual risk that the token is non-rotating and pre-auth-fetchable — do not file a report without a demonstrable forgery. Mark confidence honestly.",
+        "is_root": false
+      },
+      {
+        "agent_id": "8d013021",
+        "agent_name": "MCP-Authz-Validator",
+        "status": "completed",
+        "skills": [
+          "vulnerabilities/broken_function_level_authorization",
+          "vulnerabilities/mass_assignment"
+        ],
+        "task": "White-box validation on the multi.ai.inbox landing app. Target: http://host.docker.internal:8080. Source at /workspace/landing (read-only .git; do NOT edit files in /workspace/landing). Read the threat model first: get_threat_model on http://host.docker.internal:8080.\n\nYour scope: MCP ENDPOINT + AUTHZ on POST /api/mcp.php (php/mcp.php) plus the domains/dns gating.\n\nValidate dynamically (curl; the MCP key is the operator's MAILCOW_API_KEY — you do NOT have its value, so most tests are unauthenticated-rejection tests; treat 'Bearer <anything>' as wrong):\n\n1. **Auth gating before any method** — the auth check is at the bottom of php/mcp.php and runs for EVERY request (verify by reading the file; also confirm 'notifications/' shortcut and 'initialize' cannot be reached pre-auth). Dynamic: POST /api/mcp.php with Content-Type application/json, body {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"} and (a) no Authorization header → expect 401; (b) Authorization: Bearer wrongkey → 401; (c) GET /api/mcp.php with wrong Bearer → 401 (order: auth check runs before the POST method check — confirm what leaks).\n\n2. **Timing-safe key compare** — hash_equals($expected_key, $provided_key) in php/mcp.php — confirm in source and state it is timing-safe; also confirm the Bearer regex parse (Bearer\\s+(\\S+)) can't smuggle (e.g. 'Bearer x y' → trim($m[1]) = 'x'). Note: hash_equals on empty expected key — if MAILCOW_API_KEY env is unset/empty the endpoint returns 401 always (check: if expected is '' and provided is '' — the check `!is_string($expected_key) || $expected_key === ''` short-circuits → 401; confirm).\n\n3. **Mass assignment via attrs passthrough** — mcp_tool_call 'set_domain_settings' passes an ARBITRARY attrs object to mailcow POST /api/v1/edit/domain as {'items':[$domain],'attr':$attrs}. The caller holds the read-write MAILCOW_API_KEY by design, so within the MCP trust boundary this is intended — but assess: can attrs contain keys mailcow would interpret dangerously (e.g. 'active' flips a domain off, 'backupmx', 'relay_all_recipients', 'maxquota' — the MCP description even advertises rl_value/rl_frame)? You cannot call it without the real key; assess via source only and decide whether this is a finding (caller is already privileged — likely NOT a vulnerability by itself; record as ruled_out with the control being 'the endpoint requires the read-write MAILCOW_API_KEY, and the tools are documented read/write domain management').\n\n4. **domains.php / dns.php gating** — GET /api/domains.php and /api/dns.php?domain= require require_namecheap_session() (bootstrap.php: checks $_SESSION['nc_connected'] + creds file exists). Dynamic: (a) no cookie → 401 'Not connected'; (b) with a session where nc_connected is true but the creds file is gone — you cannot delete the file (don't touch /credentials); instead verify the code path by reading. (c) dns.php with domain=INJECTION payloads (e.g. example.com?x=1, -a- evil.com, unicode homoglyph, ../etc/passwd, xn-- tests, 253-char limit) → confirm the regex rejects each (401 expected BEFORE regex — send WITH a connected session if another agent has connected one, otherwise expect 401 pre-auth and validate regex by reading php/dns.php). Also confirm nc_dns_hosts passes DomainName only after regex.\n\n5. **mcp.php JSON-RPC reflection** — $payload['id'] and unknown-tool names are echoed into JSON responses — confirm Content-Type application/json + nosniff (bootstrap.php json_out) make this inert.\n\nRecord your closure with record_coverage for POST /api/mcp.php (BFLA/auth), set_domain_settings attrs (mass assignment), GET /api/domains.php + GET /api/dns.php (object-level authz). For confirmed findings write notes (create_note, category findings) with exact commands/responses, then file reports with create_vulnerability_report including inline fixes (code_locations fix_before/fix_after verbatim from php/mcp.php / php/dns.php — read exact lines first). For candidates that hold (auth gate solid, hash_equals timing-safe, attrs within trust boundary), record ruled_out/no_issue_found WITH the named control at file:line. Confidence honestly.",
+        "is_root": false
+      },
+      {
+        "agent_id": "0816b8a4",
+        "agent_name": "RateLimit-Validator",
+        "status": "completed",
+        "skills": [
+          "vulnerabilities/weak_password_detection",
+          "vulnerabilities/business_logic"
+        ],
+        "task": "White-box validation on the multi.ai.inbox landing app. Target: http://host.docker.internal:8080. Source at /workspace/landing (read-only .git; do NOT edit files in /workspace/landing). Read the threat model first: get_threat_model on http://host.docker.internal:8080.\n\nYour scope: BRUTE-FORCE / RATE-LIMIT on POST /api/connect.php. php/bootstrap.php implements register_failed_attempt(): failed connect attempts are tracked in $_SESSION['nc_attempts'] with NC_MAX_ATTEMPTS=5 per NC_ATTEMPT_WINDOW=600s; exceeding returns 429 'Too many failed attempts'. The counter is PER-SESSION only — there is no IP-based or global limiter anywhere (verify with rg across /workspace/landing/php).\n\nValidate dynamically:\n1. **In-window lockout works** — with ONE cookie jar, POST connect.php 6 times with a bad api_key (valid format, e.g. 11111111) + X-Landing-CSRF + csrf from that session's status.php; observe 401s turning into 429 by the 6th attempt.\n2. **Cookie-drop bypass** — then with a FRESH cookie jar (no cookie / new session each attempt) issue ~8 more bad attempts; observe every one returns 401 (never 429) → the limiter is bypassed by simply not sending the session cookie. Keep total volume modest (≤ 20 connect attempts overall, ~1s apart).\n3. Assess impact honestly: the landing server relays the guessing to the Namecheap API (mock nc-mock:8088 in this deployment — the mock accepts the mock key 'mockkey' style creds; the attack matters in production against real api.namecheap.com). An attacker can use this server as an unthrottled proxy for Namecheap API-key guessing, and also degrade the service. Note: 429 responses are per-session so the same attacker can rotate indefinitely.\n\nAlso check: does register_failed_attempt count VALIDATION failures (invalid username format etc.)? In php/connect.php validation errors happen BEFORE register_failed_attempt — confirm the limiter only counts attempts that reach the Namecheap call (that is fine), and confirm a successful connect clears the counter (clear_failed_attempts) — meaning an attacker who finds a valid key is not blocked.\n\nRecord your closure with record_coverage for POST /api/connect.php (brute-force protection). Write the finding to notes (create_note, category findings) with exact commands/responses, then file the report with create_vulnerability_report. The inline fix: an IP-based (or global) failed-attempt limiter in php/bootstrap.php or php/connect.php — propose it in code_locations with verbatim fix_before/fix_after (read the exact lines from php/connect.php around register_failed_attempt and bootstrap.php for a helper; keep the patch minimal — e.g. extend register_failed_attempt to also track remote address in a file-based store, or add a simple CRED_DIR-based per-IP counter). If the fix cannot be validated safely, file remediation prose only and explain in fix_verification. Confidence: dynamic PoC = high for the bypass.",
+        "is_root": false
+      },
+      {
+        "agent_id": "aa5a20e4",
+        "agent_name": "Root Agent",
+        "status": "completed",
+        "skills": [],
+        "task": "\n\nLocal Codebases: - /Volumes/4TB SSD/Users/Andrea/Projects/mailcow-dockerized/landing (available at: /workspace/landing; this is the user's real directory, mounted live and writable — .git/.agents/.codex are read-only) \n\nURLs: - http://host.docker.internal:8080\n\nSpecial instructions: White-box review of the multi.ai.inbox landing app (landing/): (1) Namecheap API key handling — connect.php, credentials storage in /credentials/namecheap.json (permissions, leak in logs?); (2) CSRF protection (X-Landing-CSRF + status.php token) — is the token single-use, session-bound, timing-safe?; (3) session handling for the domains/dns endpoints (auth gating, session fixation); (4) the mailcow login path (credential handling, API key usage); (5) SSRF risk: NAMECHEAP_API_URL points at an internal mock host — can a user influence the API URL?; (6) multi-tenant readiness: anything that would leak one user's Namecheap key or domains to another. The live app runs at http://localhost:8080 (mock Namecheap API at nc-mock:8088). Report with PoC per finding.",
+        "is_root": true
+      },
+      {
+        "agent_id": "882999f5",
+        "agent_name": "SSRF-XML-Validator",
+        "status": "completed",
+        "skills": [
+          "vulnerabilities/ssrf",
+          "vulnerabilities/xxe"
+        ],
+        "task": "White-box validation on the multi.ai.inbox landing app. Target: http://host.docker.internal:8080. Source at /workspace/landing (read-only .git; do NOT edit files in /workspace/landing). Read the threat model first: get_threat_model on http://host.docker.internal:8080.\n\nYour scope: SSRF/EGRESS + XML PARSING. The user asked specifically: NAMECHEAP_API_URL points at an internal mock host (nc-mock:8088) — can a user influence the API URL?\n\nValidate:\n1. **URL-influence sink** — php/namecheap.php nc_api_url(bool $sandbox): the URL comes from getenv('NAMECHEAP_API_URL')/getenv('NAMECHEAP_SANDBOX_API_URL') with hardcoded defaults. nc_call() in php/namecheap.php builds the curl handle from nc_api_url((bool)($creds['sandbox'] ?? false)). The ONLY user influence is the use_sandbox POST field at connect.php (values '1'/anything-else → boolean) and the persisted sandbox flag in /credentials/namecheap.json. Confirm with rg that no other input (username, api_key, client_ip, domain, headers, JSON-RPC params) ever flows into a URL. Dynamic test: POST connect.php twice with use_sandbox=1 and use_sandbox=0 (mock creds: username demo-user, api_key 0123456789abcdef, client_ip 1.2.3.4) and compare behavior — both point at operator-configured endpoints; neither is attacker-chosen. Conclusion: this is likely NOT user-controlled SSRF — name the control precisely (nc_api_url ignores user input except a boolean; connect.php never accepts a URL) and close it ruled_out or no_issue_found, NOT needs_follow_up, if you can complete the trace.\n\n2. **detect_public_ip egress** — php/bootstrap.php detect_public_ip() calls a FIXED https://api.ipify.org (no input), caches to CRED_DIR/.publicip. Confirm no input reaches the URL. Trigger via GET /api/status.php and observe public_ip returned pre-auth. Assess as info disclosure only (server egress IP exposed pre-auth) — check whether the response leaks anything else. Note the cache file is written with default perms (no chmod, unlike store_credentials) — check whether that matters (it's inside a 0700 dir).\n\n3. **XXE / entity expansion on upstream XML** — php/namecheap.php nc_call parses the upstream response with @simplexml_load_string($body). No LIBXML_NOENT, no DTD handling; PHP's libxml ≥ 2.9 disables external entity loading by default — verify the libxml version assumption and state the control (external entities disabled by default in libxml2 2.9+; no LIBXML_NOENT flag passed). The XML comes from an operator-configured endpoint (nc-mock in this deployment), not directly from the user. Dynamic probe if feasible: you cannot control the mock's response; instead verify via source + a local PHP snippet (php -r with simplexml_load_string on an XXE doc) that entity expansion/external entities are disabled in this PHP build (php -v, php -i | grep libxml). Close with the named control.\n\n4. **client_ip param** — connect.php accepts user-supplied client_ip and passes it to the Namecheap API as ClientIp. Confirm no server-side consequence (it is not an IP the server trusts for authz; detect_public_ip only runs when client_ip is empty). Note any spoofing angle (attacker can claim any IP in the Namecheap call) and assess honestly (likely low/info — the Namecheap API gates by real source IP, not this parameter).\n\nRecord your closure with record_coverage for each surface (connect.php use_sandbox → SSRF, status.php public_ip disclosure, namecheap.php XML parsing XXE, connect.php client_ip handling). For confirmed findings write notes (create_note, category findings) with exact commands/responses and file reports with create_vulnerability_report including inline fixes (code_locations fix_before/fix_after verbatim — read the exact lines first). For ruled_out candidates record record_coverage outcome ruled_out WITH the named control at a file:line in evidence. Confidence honestly — dynamic PoC = high; static-only = medium with the gap named.",
+        "is_root": false
+      },
+      {
+        "agent_id": "3660a557",
+        "agent_name": "Session-Validator",
+        "status": "completed",
+        "skills": [
+          "vulnerabilities/idor",
+          "vulnerabilities/information_disclosure"
+        ],
+        "task": "White-box validation on the multi.ai.inbox landing app. Target: http://host.docker.internal:8080 (also http://localhost:8080). Source at /workspace/landing (read-only .git; do NOT edit files in /workspace/landing). Read the threat model first: get_threat_model on http://host.docker.internal:8080.\n\nYour scope: SESSION HANDLING + MULTI-TENANT leakage. Three candidates to validate dynamically:\n\n1. **Session fixation** — /workspace/landing/php/bootstrap.php starts the session but NO file ever calls session_regenerate_id(). connect.php (php/connect.php) sets $_SESSION['nc_connected']=true on the same session ID the anonymous visitor arrived with. Attack: attacker obtains/fixes session cookie MULTIAI_LANDING=<known-id> (PHP accepts client-supplied session IDs by default unless session.use_strict_mode=1 — test it), victim connects... you cannot drive a second human victim, so validate the mechanics directly: (a) issue a request with a fixed cookie value MULTIAI_LANDING=attacker-chosen-32-hex-chars to GET /api/status.php and confirm the server ACCEPTS the chosen ID (proving use_strict_mode is off) and returns a csrf for that session; (b) with that same fixed cookie, POST /api/connect.php with X-Landing-CSRF header + csrf from that session, username=any valid-format name (e.g. demo-user), api_key=any 8+ alnum string like 0123456789abcdef, client_ip=1.2.3.4, use_sandbox=1 — the mock Namecheap API (nc-mock:8088) is reachable from the target side and accepts mock creds; observe whether connect succeeds and nc_connected lands on the attacker-fixed session ID; (c) confirm a SECOND separate client reusing the same cookie value sees connected=true and can call /api/domains.php. Use a fresh cookie jar per step; cookie via -b/-c curl or python requests. Note timing: connect.php→nc_call can take a few seconds.\n\n2. **Global creds-file cross-user overwrite** — php/bootstrap.php defines CRED_FILE as ONE global file /credentials/namecheap.json shared by every session; store_credentials() overwrites it wholesale. Validate: session A connects with key A (e.g. aaaaaaaaaa), then session B connects with key B (e.g. bbbbbbbb) and its own username; then session A calls /api/status.php and /api/domains.php — observe that A's session now proxies B's account (status shows B's username; domains come from B's key) and A's key is silently gone. This is the multi-tenant leak: any connected user's domains.php calls run against whoever connected last.\n\n3. **status.php unauthenticated info disclosure** — GET /api/status.php with NO cookie: record exactly what leaks (csrf token for a brand-new session, connected username of the last connector, sandbox flag, server public IP via api.ipify.org). Assess whether the leaked username/IP materially aids the stories above.\n\nConstraints: do not run port scans against the compose network, do not touch /credentials on disk, keep request volume modest (the rate limiter is per-session — a finding for another agent). Record your closure with record_coverage for each surface you test (session fixation on POST /api/connect.php, cross-user overwrite on connect.php+domains.php, info disclosure on GET /api/status.php). When a candidate is confirmed, write a findings note (create_note, category findings) with the exact curl/python commands and responses so the reporting agent can cite them, then file the vulnerability report yourself with create_vulnerability_report INCLUDING the inline fix: code_locations with verbatim fix_before/fix_after for php/bootstrap.php (add session_regenerate_id(true) on the nc_connected transition; options: also session.use_strict_mode=1 via ini_set before session_start) — pull exact line numbers by reading the file. For the multi-tenant finding the fix is per-session credential scoping (e.g. store creds under a per-session/per-user path or key the file by session) — if that fix is too large to propose safely, file the finding with remediation prose only and drop fix_after, stating why in fix_verification. Mark confidence honestly: dynamic PoC = high.",
+        "is_root": false
+      }
+    ],
+    "skills_exercised": [
+      "broken_function_level_authorization",
+      "business_logic",
+      "csrf",
+      "idor",
+      "information_disclosure",
+      "mass_assignment",
+      "ssrf",
+      "weak_password_detection",
+      "xxe"
+    ],
+    "findings_filed": 4,
+    "source": "runtime"
+  },
+  "completeness": {
+    "complete": true,
+    "scan_status": "completed",
+    "exit_reason": "finished_by_tool",
+    "caveats": []
+  },
+  "entries": [
+    {
+      "surface": "POST /api/connect.php use_sandbox param",
+      "risk_area": "SSRF / user-controlled egress URL",
+      "outcome": "ruled_out",
+      "outcome_label": "Ruled out",
+      "evidence": "Control: nc_api_url() at php/namecheap.php:5-12 accepts only a bool; the URL string is entirely from getenv('NAMECHEAP_SANDBOX_API_URL'/'NAMECHEAP_API_URL') with hardcoded Namecheap defaults (lines 7-11), and nc_call() at php/namecheap.php:23 calls curl_init(nc_api_url((bool)($creds['sandbox'] ?? false))). connect.php:14 maps use_sandbox POST field to a boolean via `(string)$_POST['use_sandbox'] === '1'` — no URL string from user input ever exists. Repo-wide rg over php/ shows the only curl_init sinks are namecheap.php:23 (nc_api_url), bootstrap.php:124 (fixed https://api.ipify.org), and mcp.php:10 (MAILCOW_API_URL env + internal path); no user field (username, api_key, client_ip, domain, JSON-RPC params, headers) reaches any URL. Dynamic: connect.php tested with use_sandbox=1 vs 0 — only operator-configured endpoints are contacted; neither is attacker-chosen.",
+      "recorded_by": "SSRF-XML-Validator",
+      "recorded_at": "2026-10-18 20:29:38 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "GET /api/status.php public_ip field (detect_public_ip)",
+      "risk_area": "SSRF / unauthenticated egress IP disclosure",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "Control: detect_public_ip() at php/bootstrap.php:117-139 has no user input — curl_init('https://api.ipify.org') is a hardcoded string on line 124. Triggered via GET /api/status.php pre-auth (response captured: HTTP 200, {\"ok\":true,\"connected\":false,\"username\":null,\"sandbox\":false,\"csrf\":\"9c09...\",\"mailcow_origin\":\"https://host.docker.internal\",\"public_ip\":\"146.70.126.61\"}). The response leaks: server egress IP, session CSRF token (session-bound, not a static secret), mailcow_origin built from HTTP_HOST (reflects the request, not new info). Cache file CRED_DIR/.publicip written with default perms (no chmod, unlike store_credentials which chmods to 0600) — inside CRED_DIR which store_credentials chmods to 0700; not an additional exposure beyond the pre-auth status.php disclosure itself. Assessed as info disclosure only.",
+      "recorded_by": "SSRF-XML-Validator",
+      "recorded_at": "2026-10-18 20:30:44 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/mcp.php (php/mcp.php)",
+      "risk_area": "BFLA / authentication bypass / method-level authorization",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "Auth gate confirmed at php/mcp.php:107-114 (getenv('MAILCOW_API_KEY') → Bearer regex → hash_equals → json_err 401), executed before ALL method dispatch (initialize:129, notifications/:137, tools/call:144). Dynamic: POST initialize no auth → 401, wrong Bearer → 401, GET wrong Bearer → 401 (order: auth before POST check — wrong-key GET leaks only the 401 body, never the 405 method hint), tools/call no auth → 401, notifications/initialized no auth → 401. Proxy ids 18,19,20,28,29,91,92,33. hash_equals timing-safe; Bearer regex (multi-token 'Bearer x y' fails match → 401); empty/unset key short-circuits to 401 (verified live PHP 8.4 harness, fail-closed). Correct-key control passes gate (reaches 400 Invalid JSON-RPC), proving the gate is the only barrier. No BFLA/bypass found.",
+      "recorded_by": "MCP-Authz-Validator",
+      "recorded_at": "2026-10-18 20:30:47 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "php/namecheap.php nc_call simplexml_load_string (upstream XML parse)",
+      "risk_area": "XXE / entity expansion / DTD transclusion on upstream XML",
+      "outcome": "ruled_out",
+      "outcome_label": "Ruled out",
+      "evidence": "Control: PHP's libxml2 >= 2.9 disables external entity loading by default. nc_call() at php/namecheap.php:39 parses with @simplexml_load_string($body) — no LIBXML_NOENT flag passed (the only flags bit used is default 0), so external entity resolution is off. Verified this runtime build: PHP 8.4.24 CLI in the sandbox with libxml 2.15.3 (LIBXML_VERSION=21503), simplexml external-entity file read against a real local canary returned empty content by default; adding LIBXML_NOENT fetched the canary content — proving the flag is what enables it and it is absent in namecheap.php. Dynamic local snippet: php /tmp/xxe_probe.php + /tmp/xxe_probe3.php. The XML body comes from an operator-configured endpoint (nc-mock:8088 in this deployment), not directly from attacker input; no DTD/parameter-entity transclusion path is enabled.",
+      "recorded_by": "SSRF-XML-Validator",
+      "recorded_at": "2026-10-18 20:30:48 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "mcp_tool_call set_domain_settings (php/mcp.php:97-102)",
+      "risk_area": "Mass assignment / unrestricted attrs passthrough to mailcow edit/domain",
+      "outcome": "ruled_out",
+      "outcome_label": "Ruled out",
+      "evidence": "php/mcp.php:97-102 forwards the caller's attrs object 1:1 as {'items':[$domain],'attr':$attrs} to mailcow POST /api/v1/edit/domain — no key allowlist (verified: no array_intersect_key in file). Dangerous keys ARE forwardable (active:\"0\", backupmx/relay_all_recipients:\"1\", maxquota/defquota overrides, rl_value/rl_frame per the tool description at line 69) — verified by encoding a hostile attrs payload. However the only caller must hold the read-write MAILCOW_API_KEY (php/mcp.php:112 gate), which could call mailcow's own admin API directly with identical effect — no privilege added, and the tool contract documents read/write domain management. Cannot dynamically confirm (no real key); assessed source-only within the trust boundary. Not a vulnerability by itself.",
+      "recorded_by": "MCP-Authz-Validator",
+      "recorded_at": "2026-10-18 20:31:53 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/connect.php client_ip param",
+      "risk_area": "Spoofed ClientIp / authz-trust on client-supplied IP",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "connect.php:13 reads user-supplied client_ip, validates with FILTER_VALIDATE_IP (400 on invalid), passes to nc_call as ClientIp param. detect_public_ip() only runs when client_ip is empty (connect.php:33-34). Server-side consequence: none — client_ip is never read back for any authz or trust decision; rg over php/ shows its only readers are nc_call param building (namecheap.php:12) and the IP-not-whitelisted error message construction (namecheap.php:44-46). Namecheap gates by the real source IP of the server, not this parameter. Attacker can claim any IP in the outbound call; assessed honestly as low/info.",
+      "recorded_by": "SSRF-XML-Validator",
+      "recorded_at": "2026-10-18 20:31:54 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "GET /api/domains.php (php/domains.php)",
+      "risk_area": "Object-level authz / session gating",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "php/domains.php:158 → require_namecheap_session() (bootstrap.php:85-96): empty($_SESSION['nc_connected']) → 401 'Not connected'; missing creds file → unset flags + 401 'Stored connection is gone' (no leak). Dynamic: GET /api/domains.php no cookie → 401 (proxy ids 83/84); POST → 405 method-first (id 87). Creds-file-gone path verified by reading (cannot touch /credentials). Cross-session global-creds risk is a connect.php-owned issue (threat model), not this endpoint's gate.",
+      "recorded_by": "MCP-Authz-Validator",
+      "recorded_at": "2026-10-18 20:31:56 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "GET /api/dns.php?domain= (php/dns.php)",
+      "risk_area": "Object-level authz / domain parameter injection (SSRF-like smuggle to upstream API)",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "php/dns.php:158 gates on require_namecheap_session() before any domain handling. Dynamic: no cookie → 401 (proxy ids 85/86, 9). Domain regex (php/dns.php:161, same pattern as mcp.php:86) validated with PHP 8.4 against 26 payloads — ALL rejected except benign: query smuggle (example.com?x=1), '-a- evil.com', '../etc/passwd', encoded traversal, null bytes, fragments, slashes, unicode raw, punycode-no-TLD, 64-char labels, 313-char names, cloud metadata IP, [::1], empty/leading labels, uppercase, trailing dot — all rejected. Legit punycode (xn--80ak6aa92e.com) and 63-char labels accepted; 4-label 253-char name ACCEPTED, 255 rejected (length boundary enforced). DomainName reaches Namecheap only post-regex (php/dns.php:165 → php/namecheap.php:85 passes ['DomainName' => $domain]). No injection/smuggle vector.",
+      "recorded_by": "MCP-Authz-Validator",
+      "recorded_at": "2026-10-18 20:33:02 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "mcp.php JSON-RPC response echo (mcp_result/mcp_error)",
+      "risk_area": "XSS / reflected input injection via JSON-RPC id and unknown-tool echo",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "$payload['id'] and unknown-tool names echo verbatim into JSON responses (mcp.php:35-41, 149), but all responses flow through json_out() (bootstrap.php:21-29) with Content-Type application/json; charset=utf-8 + X-Content-Type-Options: nosniff + Cache-Control: no-store and json_encode — harness-replicated echo of <img src=x onerror=alert(1)> id + <script>alert(2)</script> tool name arrives as JSON strings, inert. nginx adds nosniff + X-Frame-Options SAMEORIGIN globally (landing.conf:193-195). Post-auth reflection probes blocked pre-auth (proxy ids 91/92 returned 401); harness-verified echo path. No XSS vector.",
+      "recorded_by": "MCP-Authz-Validator",
+      "recorded_at": "2026-10-18 20:34:07 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/disconnect.php",
+      "risk_area": "CSRF (token single-use / session-bound / timing-safe / cross-site forgeability)",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "CSRF forgery blocked by hash_equals() compare of a 128-bit random token bound to the victim session (php/bootstrap.php:44-49), SameSite=Lax session cookie (bootstrap.php:8-16), and POST-only enforcement. Probes: valid token via header -> 200 (x3, token non-rotating but replay requires knowing it); attacker token + victim cookie -> 403; empty header -> 403; no cookie + no token -> 403; GET -> 405. No Origin/Referer check exists (residual defense-in-depth gap, noted).",
+      "recorded_by": "CSRF-Validator",
+      "recorded_at": "2026-10-18 20:35:20 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/connect.php",
+      "risk_area": "CSRF (require_csrf gate placement vs rate limit; token single-use / session-bound / timing-safe)",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "CSRF gate confirmed on this endpoint: POST /api/connect.php without any token -> 403 'Invalid CSRF token, reload the page'; require_csrf() runs BEFORE register_failed_attempt() per source (php/connect.php:9), so the gate is not affected by and does not burn the per-session rate limit. Same control set as disconnect.php (hash_equals + session-bound token + SameSite=Lax); forgery not demonstrated. Token non-rotating and pre-auth fetchable per-session (status.php) — residual risks noted in findings note 7fa3e2; session fixation is the compounding weakness (Session-Validator's scope).",
+      "recorded_by": "CSRF-Validator",
+      "recorded_at": "2026-10-18 20:36:25 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "GET /api/status.php",
+      "risk_area": "CSRF token issuance & session binding",
+      "outcome": "no_issue_found",
+      "outcome_label": "No issue identified",
+      "evidence": "GET /api/status.php returns the session csrf to any unauthenticated visitor: 32 hex chars (16 random bytes via bin2hex(random_bytes(16)), php/bootstrap.php:36-42), stored in $_SESSION — same cookie returns the same token (persistent, non-rotating), different cookie returns a different token. Set-Cookie: MULTIAI_LANDING=...; path=/; HttpOnly; SameSite=Lax (no Secure flag over plain HTTP). Pre-auth fetchability is session-scoped and harmless alone; compounding risk only with session fixation (documented in findings note 7fa3e2).",
+      "recorded_by": "CSRF-Validator",
+      "recorded_at": "2026-10-18 20:36:27 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/connect.php",
+      "risk_area": "brute-force / rate-limit protection (per-session counter, no IP or global limiter)",
+      "outcome": "reported",
+      "outcome_label": "Finding reported",
+      "evidence": "Dynamic PoC against live target: 6 bad connect attempts with one cookie jar → 401×5 then 429 \"Too many failed attempts\" on attempt 6 (per-session lockout works). Then 8 bad attempts with a fresh session each → all 401, zero 429 (limiter bypassed by cookie rotation). Static review of /workspace/landing/php (rg across bootstrap.php, connect.php, domains.php, dns.php, mcp.php, status.php, disconnect.php) confirms no IP-based or global limiter exists anywhere; attempts tracked only in $_SESSION['nc_attempts'] (bootstrap.php:98-108). Validation errors (400) occur before register_failed_attempt (connect.php:22-29), so only Namecheap-reaching attempts are counted; clear_failed_attempts() on success resets the counter. No valid Namecheap key was used — bad api_key formats rejected client-side, zero upstream guessing traffic.",
+      "recorded_by": "RateLimit-Validator",
+      "recorded_at": "2026-10-18 21:14:43 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/connect.php (session fixation)",
+      "risk_area": "Session fixation (client-chosen session ID accepted, no ID rotation on authenticated transition)",
+      "outcome": "reported",
+      "outcome_label": "Finding reported",
+      "evidence": "Dynamic PoC against live target: GET /api/status.php with fixed cookie MULTIAI_LANDING=9cdc672410784680891ec7a3d76d84d4 returned 200 with Set-Cookie None (server accepted client-chosen session ID, use_strict_mode off) and minted csrf f0dc2a006b4f97bfc9cded8dc533d0b8 for that session; POST /api/connect.php with that csrf on the fixed session passed the CSRF gate (401 from the Namecheap call, not 403). Connect-success replay blocked — mock Namecheap host unreachable from test container. Filed as vuln-0002 with inline fix (strict mode + session_regenerate_id on transition).",
+      "recorded_by": "Session-Validator",
+      "recorded_at": "2026-10-18 21:49:49 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "POST /api/connect.php + GET /api/domains.php (cross-user overwrite)",
+      "risk_area": "Cross-user credential overwrite / multi-tenant leakage (last-connector-wins global creds file)",
+      "outcome": "reported",
+      "outcome_label": "Finding reported",
+      "evidence": "Static conclusive mechanism from source: CRED_FILE is one global path (php/bootstrap.php:16-17); store_credentials() wholesale-overwrites it (bootstrap.php:52-64) and read_credentials() returns it to any connected session (bootstrap.php:66-76); connect.php:43-50 sets nc_connected without keying creds to the session. Pairable-session mechanism (client-chosen session IDs accepted) dynamically confirmed in vuln-0002 against the live target. Full A/B connect-success chain blocked — mock Namecheap host unreachable from test container. Filed as vuln-0003.",
+      "recorded_by": "Session-Validator",
+      "recorded_at": "2026-10-18 21:49:52 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    },
+    {
+      "surface": "GET /api/status.php (unauthenticated)",
+      "risk_area": "Unauthenticated info disclosure (CSRF token, last connector's username, sandbox flag, public IP)",
+      "outcome": "reported",
+      "outcome_label": "Finding reported",
+      "evidence": "Dynamic PoC against live target: GET /api/status.php with no cookie returned 200 with fresh-session csrf 4af774d5e8a3124c70dd41576f8f7e9e, mailcow_origin https://host.docker.internal, and public_ip 146.70.126.61 (server egress IP via api.ipify.org); with a fixed cookie the same unauthenticated response returned a csrf token minted for an attacker-chosen session. Username was null in this run because no successful Namecheap connection existed in the shared store during the test window; the endpoint reads the last connector's username and sandbox flag from the global creds store whenever a connection exists (php/status.php:61-72). Filed as vuln-0004.",
+      "recorded_by": "Session-Validator",
+      "recorded_at": "2026-10-18 21:50:57 UTC",
+      "updated_at": "",
+      "previous_outcomes": [],
+      "source": "agent_reported"
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "unrecorded_risk_class",
+      "risk_area": "business logic",
+      "detail": "Agent(s) RateLimit-Validator were assigned the 'business_logic' skill, but no coverage entry records this class being assessed. Treat it as unexamined, not as clean."
+    },
+    {
+      "kind": "unrecorded_risk_class",
+      "risk_area": "idor",
+      "detail": "Agent(s) Session-Validator were assigned the 'idor' skill, but no coverage entry records this class being assessed. Treat it as unexamined, not as clean."
+    },
+    {
+      "kind": "unrecorded_risk_class",
+      "risk_area": "information disclosure",
+      "detail": "Agent(s) Session-Validator were assigned the 'information_disclosure' skill, but no coverage entry records this class being assessed. Treat it as unexamined, not as clean."
+    }
+  ]
+}

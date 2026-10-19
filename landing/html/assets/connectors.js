@@ -3,7 +3,7 @@
 
   let status;
   try {
-    status = await fetch('/api/status.php').then((r) => r.json());
+    status = await fetch('api/status.php').then((r) => r.json());
   } catch (e) {
     location.replace('index.html');
     return;
@@ -93,7 +93,7 @@
     btn.textContent = 'Loading…';
     let res;
     try {
-      res = await fetch('/api/domains.php').then((r) => r.json());
+      res = await fetch('api/domains.php').then((r) => r.json());
     } catch (e) {
       res = { ok: false, error: 'Network error: ' + e.message };
     }
@@ -138,7 +138,7 @@
     dnsOut.hidden = true;
     let res;
     try {
-      res = await fetch('/api/dns.php?domain=' + encodeURIComponent(domain)).then((r) => r.json());
+      res = await fetch('api/dns.php?domain=' + encodeURIComponent(domain)).then((r) => r.json());
     } catch (e) {
       res = { ok: false, error: 'Network error: ' + e.message };
     }
@@ -166,7 +166,7 @@
   $('#btn-disconnect').addEventListener('click', async () => {
     const body = new URLSearchParams();
     body.set('csrf', csrf);
-    await fetch('/api/disconnect.php', {
+    await fetch('api/disconnect.php', {
       method: 'POST',
       body,
       headers: { 'X-Landing-CSRF': csrf },
