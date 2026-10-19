@@ -3,11 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="AImulti.inbox plans for tenants: Solo, Studio and Custom tiers with per-brand identity, per-tenant billing and sovereign EU/CH inference. Pricing finalised at launch.">
+  <meta name="description" content="AImulti.inbox plans: pick a shared or dedicated environment at signup and switch anytime. Packages by mailboxes, domains and users; enterprise is contact-sales only.">
   <title>Pricing — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
   <link rel="stylesheet" href="assets/theme.css">
+  <style>
+    /* scoped to this page — shared stylesheets untouched */
+    .env-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
+    @media (max-width: 720px) { .env-grid { grid-template-columns: 1fr; } }
+    .env-card { border: 1px solid var(--border); border-radius: 14px; padding: 24px; background: var(--card); }
+    .env-card h2 { margin-top: 0; }
+    .plan-grid { display: grid; gap: 20px; margin: 20px 0; }
+    .plan-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .plan-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 880px) { .plan-grid.cols-3, .plan-grid.cols-2 { grid-template-columns: 1fr; } }
+    .plan { border: 1px solid var(--border); border-radius: 14px; padding: 22px; background: var(--card); display: flex; flex-direction: column; }
+    .plan.flag { border-color: var(--accent); }
+    .plan-price { font-size: 1.7rem; font-weight: 700; margin: 6px 0 2px; }
+    .plan-price small { font-size: 0.85rem; font-weight: 500; color: var(--muted-foreground); }
+    .plan-unit { color: var(--muted-foreground); font-size: 0.85rem; margin-bottom: 12px; }
+    .plan ul { margin: 0 0 16px; padding-left: 1.1em; }
+    .plan .form-actions { margin-top: auto; }
+    .env-hint { color: var(--muted-foreground); font-size: 0.85rem; }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -29,7 +48,7 @@
         <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="settings.html">Settings</a>
         <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" id="admin-link" href="/" rel="noopener">Mail UI</a>
+        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
       </nav>
     </div>
   </header>
@@ -39,104 +58,159 @@
       <div class="page-head">
         <div>
           <h1>Pricing</h1>
-          <p class="lede small">Three service tiers for tenants of the multi-brand inbox
-          platform. Every plan is per tenant and carries the same core: branding per brand,
-          per-tenant billing and sovereign EU/CH inference.</p>
+          <p class="lede small">Pick a <strong>shared</strong> or <strong>dedicated</strong> environment at signup &mdash;
+          switch at any time, in either direction. Packages scale by mailboxes, domains and users.
+          Enterprise is contact-sales only.</p>
         </div>
       </div>
 
       <p class="msg notice" role="status">
-        Pre-launch: plans are qualitative until launch &mdash; Pricing finalised at launch.
-        The comparison below shows what each tier covers, without prices.
+        Pre-launch: prices are indicative list prices and are finalised at launch. All figures exclude VAT.
       </p>
 
-      <div class="stat-strip">
-        <div class="stat">
-          <span class="stat-label">Tier</span>
-          <span class="stat-value">Solo</span>
-          <span class="stat-label">One brand</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Tier</span>
-          <span class="stat-value">Studio</span>
-          <span class="stat-label">Brand group</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Tier</span>
-          <span class="stat-value">Custom</span>
-          <span class="stat-label">Tailored shape</span>
-        </div>
+      <h2 class="page-sub">Choose your environment</h2>
+      <div class="env-grid">
+        <article class="env-card" aria-labelledby="env-shared">
+          <h2 id="env-shared">Shared environment</h2>
+          <p>
+            Your inboxes run on a multi-tenant cluster in EU datacenters. Cheapest entry,
+            billed by active mailboxes &mdash; the platform handles capacity for you.
+          </p>
+          <p class="env-hint">
+            Cost basis: Hetzner CX-class shared nodes (8 vCPU &middot; 16 GB) at &euro;15.99/mo
+            + 5&nbsp;TB Storage Box at &euro;10.90/mo &mdash; Hetzner list prices, October 2026, excl.&nbsp;VAT.
+          </p>
+        </article>
+        <article class="env-card" aria-labelledby="env-dedicated">
+          <h2 id="env-dedicated">Dedicated environment</h2>
+          <p>
+            Your own isolated instance: dedicated vCPU and RAM, your own IP, your own
+            TLS and DKIM reputation. No neighbours, full control, billed as one flat plan.
+          </p>
+          <p class="env-hint">
+            Cost basis: Hetzner CCX-class dedicated-vCPU instances from &euro;45/mo or
+            AX-class root servers from &euro;57.30/mo &mdash; list prices, October 2026, excl.&nbsp;VAT.
+          </p>
+        </article>
       </div>
 
-      <article class="card" aria-labelledby="tier-solo-title">
-        <div class="card-head">
-          <h2 id="tier-solo-title">Solo</h2>
-          <span class="badge">One brand</span>
-        </div>
-        <p>
-          For a single brand that wants its mail back under its own control: one domain,
-          a small team and one agent, on shared EU/CH infrastructure.
-        </p>
-        <ul class="kv">
-          <li><span class="k">Domains</span><span class="v">A single domain</span></li>
-          <li><span class="k">Mailboxes</span><span class="v">Small-team inboxes on one domain</span></li>
-          <li><span class="k">AI agents</span><span class="v">One agent inbox connection</span></li>
-          <li><span class="k">Branding per brand</span><span class="v">Brand identity on webmail and outbound mail</span></li>
-          <li><span class="k">Billing per tenant</span><span class="v">One flat plan, metered active mailboxes</span></li>
-          <li><span class="k">Sovereign inference</span><span class="v">Included &mdash; OpenAI-compatible keys, default Phoeniqs MaaS (Switzerland)</span></li>
-          <li><span class="k">Support</span><span class="v">Community and email support</span></li>
-        </ul>
-        <div class="form-actions">
-          <a class="btn primary" href="onboarding.html">Start onboarding</a>
-          <a class="btn ghost" href="docs.html">Read the docs</a>
-        </div>
-      </article>
+      <h2 class="page-sub">Shared environment</h2>
+      <div class="plan-grid cols-3">
+        <article class="plan" aria-labelledby="plan-solo">
+          <h3 id="plan-solo">Solo</h3>
+          <p class="plan-price">&euro;9<small> / month</small></p>
+          <p class="plan-unit">per tenant</p>
+          <ul>
+            <li>1 domain</li>
+            <li>3 mailboxes included</li>
+            <li>1 agent connection</li>
+            <li>AI triage + MCP gateway</li>
+            <li>Groupware webmail</li>
+            <li>Sovereign EU/CH inference</li>
+            <li>Extra mailbox &euro;2.50/mo</li>
+          </ul>
+          <div class="form-actions">
+            <a class="btn primary" href="onboarding.html">Start onboarding</a>
+          </div>
+        </article>
 
-      <article class="card" aria-labelledby="tier-studio-title">
-        <div class="card-head">
-          <h2 id="tier-studio-title">Studio</h2>
-          <span class="badge">Multi-brand</span>
-        </div>
-        <p>
-          For brand groups running several identities on one platform: each brand keeps
-          its own domain, inboxes and agent layer, billed to the tenant as one plan.
-        </p>
-        <ul class="kv">
-          <li><span class="k">Domains</span><span class="v">Several domains, one per brand</span></li>
-          <li><span class="k">Mailboxes</span><span class="v">Inboxes across every brand</span></li>
-          <li><span class="k">AI agents</span><span class="v">Several agents, triage across brands</span></li>
-          <li><span class="k">Branding per brand</span><span class="v">Per-brand identity on shared infrastructure</span></li>
-          <li><span class="k">Billing per tenant</span><span class="v">Per-tenant billing with metering and automated dunning</span></li>
-          <li><span class="k">Sovereign inference</span><span class="v">Included &mdash; OpenAI-compatible keys, default Phoeniqs MaaS (Switzerland)</span></li>
-          <li><span class="k">Support</span><span class="v">Priority email support</span></li>
-        </ul>
-        <div class="form-actions">
-          <a class="btn primary" href="onboarding.html">Start onboarding</a>
-          <a class="btn ghost" href="docs.html">Read the docs</a>
-        </div>
-      </article>
+        <article class="plan flag" aria-labelledby="plan-studio">
+          <h3 id="plan-studio">Studio</h3>
+          <p class="plan-price">&euro;25<small> / month</small></p>
+          <p class="plan-unit">per tenant</p>
+          <ul>
+            <li>3 domains, one per brand</li>
+            <li>10 mailboxes included</li>
+            <li>3 agent connections</li>
+            <li>AI triage across brands</li>
+            <li>Per-brand identity &amp; billing</li>
+            <li>Priority email support</li>
+            <li>Extra mailbox &euro;2.50/mo</li>
+          </ul>
+          <div class="form-actions">
+            <a class="btn primary" href="onboarding.html">Start onboarding</a>
+          </div>
+        </article>
 
-      <article class="card" aria-labelledby="tier-custom-title">
+        <article class="plan" aria-labelledby="plan-scale">
+          <h3 id="plan-scale">Scale</h3>
+          <p class="plan-price">&euro;55<small> / month</small></p>
+          <p class="plan-unit">per tenant</p>
+          <ul>
+            <li>10 domains</li>
+            <li>25 mailboxes included</li>
+            <li>Agent fleet, triage across brands</li>
+            <li>Dedicated 1&nbsp;TB storage pool</li>
+            <li>Automated dunning</li>
+            <li>Priority email support</li>
+            <li>Extra mailbox &euro;2/mo</li>
+          </ul>
+          <div class="form-actions">
+            <a class="btn primary" href="onboarding.html">Start onboarding</a>
+          </div>
+        </article>
+      </div>
+
+      <h2 class="page-sub">Dedicated environment</h2>
+      <div class="plan-grid cols-2">
+        <article class="plan" aria-labelledby="plan-dedicated">
+          <h3 id="plan-dedicated">Dedicated</h3>
+          <p class="plan-price">&euro;149<small> / month</small></p>
+          <p class="plan-unit">per instance &middot; flat</p>
+          <ul>
+            <li>Your own instance: 8 dedicated vCPU, 32&nbsp;GB RAM</li>
+            <li>10&nbsp;TB storage pool</li>
+            <li>50 mailboxes included, unlimited domains</li>
+            <li>Isolated IP, own TLS &amp; DKIM reputation</li>
+            <li>Per-brand identity &amp; billing</li>
+            <li>Extra mailbox &euro;1/mo</li>
+          </ul>
+          <div class="form-actions">
+            <a class="btn primary" href="onboarding.html">Start onboarding</a>
+            <a class="btn ghost" href="docs.html">Read the docs</a>
+          </div>
+        </article>
+
+        <article class="plan" aria-labelledby="plan-dedicated-xl">
+          <h3 id="plan-dedicated-xl">Dedicated XL</h3>
+          <p class="plan-price">&euro;249<small> / month</small></p>
+          <p class="plan-unit">per instance &middot; flat</p>
+          <ul>
+            <li>Dedicated root server: 16 cores, 128&nbsp;GB RAM</li>
+            <li>20&nbsp;TB storage pool</li>
+            <li>150 mailboxes included, unlimited domains</li>
+            <li>Unmetered 1&nbsp;Gbps uplink, own IP subnet</li>
+            <li>Per-brand identity &amp; billing</li>
+            <li>Extra mailbox &euro;0.50/mo</li>
+          </ul>
+          <div class="form-actions">
+            <a class="btn primary" href="onboarding.html">Start onboarding</a>
+            <a class="btn ghost" href="docs.html">Read the docs</a>
+          </div>
+        </article>
+      </div>
+
+      <article class="card" aria-labelledby="tier-enterprise-title">
         <div class="card-head">
-          <h2 id="tier-custom-title">Custom</h2>
-          <span class="badge">Tailored</span>
+          <h2 id="tier-enterprise-title">Enterprise</h2>
+          <span class="badge">Contact sales</span>
         </div>
         <p>
-          For tenants whose shape does not fit a plan: the domain set, mailbox capacity
-          and agent fleet are scoped together at onboarding and written into the agreement.
+          Enterprise plans are scoped together with our team and written into the agreement &mdash;
+          they are not self-serve. This is where the premium options live:
         </p>
         <ul class="kv">
-          <li><span class="k">Domains</span><span class="v">Domain set agreed at onboarding</span></li>
-          <li><span class="k">Mailboxes</span><span class="v">Capacity agreed at onboarding</span></li>
-          <li><span class="k">AI agents</span><span class="v">Agent fleet scoped to your workflows</span></li>
-          <li><span class="k">Branding per brand</span><span class="v">Per-brand identity, custom requirements included</span></li>
-          <li><span class="k">Billing per tenant</span><span class="v">Contractual terms agreed per tenant</span></li>
-          <li><span class="k">Sovereign inference</span><span class="v">Included &mdash; providers screened so no US CLOUD Act exposure</span></li>
+          <li><span class="k">Infrastructure</span><span class="v">Dedicated root servers (AX-class) or your own hardware / private cloud, on-prem option</span></li>
+          <li><span class="k">High availability</span><span class="v">Redundant design with standby capacity</span></li>
+          <li><span class="k">Retention</span><span class="v">Custom retention and legal hold policies</span></li>
+          <li><span class="k">Identity</span><span class="v">SSO / SCIM provisioning</span></li>
+          <li><span class="k">Compliance</span><span class="v">Custom DPA (Art. 28), providers screened so no US CLOUD Act exposure</span></li>
           <li><span class="k">Support</span><span class="v">Dedicated channel, backed by the SLA</span></li>
+          <li><span class="k">Migration</span><span class="v">Migration service included</span></li>
         </ul>
         <div class="form-actions">
-          <a class="btn primary" href="onboarding.html">Start onboarding</a>
-          <a class="btn ghost" href="docs.html">Read the docs</a>
+          <a class="btn primary" href="onboarding.html">Contact sales</a>
+          <a class="btn ghost" href="legal/sla.html">Read the SLA</a>
         </div>
       </article>
 
@@ -151,15 +225,15 @@
           payment rails are EU/CH. A DPA (Art. 28) is ready before the first invoice.
         </p>
         <ul class="kv">
-          <li><span class="k">Unit</span><span class="v">Per tenant</span></li>
+          <li><span class="k">Unit</span><span class="v">Per tenant (shared) or per instance (dedicated)</span></li>
           <li><span class="k">Metered</span><span class="v">Active mailboxes</span></li>
           <li><span class="k">Cadence</span><span class="v">Monthly</span></li>
           <li><span class="k">Payment rails</span><span class="v">EU/CH</span></li>
+          <li><span class="k">Switching</span><span class="v">Shared &harr; dedicated at any time, no lock-in</span></li>
           <li><span class="k">DPA</span><span class="v">Ready before the first invoice</span></li>
-          <li><span class="k">Prices</span><span class="v">Finalised at launch</span></li>
         </ul>
         <p class="hint">
-          Not sure which tier fits? Onboarding walks through domains, mailboxes and agents
+          Not sure which shape fits? Onboarding walks through domains, mailboxes and agents
           step by step &mdash; see <a href="onboarding.html">onboarding</a>.
         </p>
       </article>

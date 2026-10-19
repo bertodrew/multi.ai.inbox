@@ -53,6 +53,22 @@
       </div>
 
       <!-- Mail-domain settings (writes go through the API gateway, in costruzione) -->
+      <section class="card" id="env-choice" aria-labelledby="env-choice-title">
+        <div class="card-head">
+          <h2 id="env-choice-title">Environment</h2>
+          <span class="card-meta">shared or dedicated</span>
+        </div>
+        <p>
+          Your inboxes run in a <strong>shared environment</strong> on the multi-tenant cluster.
+          A <strong>dedicated environment</strong> &mdash; your own isolated instance with its own
+          IP and mail reputation &mdash; can be switched on at any time, in either direction.
+        </p>
+        <p class="hint">
+          Shared is billed by active mailboxes; dedicated as one flat plan per instance.
+          Compare the two on <a href="pricing.html">pricing</a>.
+        </p>
+      </section>
+
       <section class="card" aria-labelledby="mail-title">
         <div class="card-head">
           <h2 id="mail-title">Mail domain</h2>

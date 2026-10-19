@@ -125,10 +125,43 @@
       </article>
     </section>
 
+    <section class="wrap tour" id="tour">
+      <div class="page-head">
+        <div>
+          <h2>See it in action</h2>
+          <p class="lede small">Click a screen to walk through it &mdash; no signup needed for the tour.</p>
+        </div>
+      </div>
+      <div class="tour-grid">
+        <button class="tour-card" type="button" data-open-tour="tour-webmail" data-reveal>
+          <span class="miniwin" aria-hidden="true">
+            <span class="mw-bar"><i></i><i></i><i></i><b>mail.brand-one.com</b></span>
+            <span class="mw-row"><b>billing@brand-one.com</b><em>Invoice #4213 &mdash; paid</em><u class="chip-a">AI triage</u></span>
+            <span class="mw-row"><b>hello@brand-two.com</b><em>Re: launch timeline</em><u class="chip-b">Flagged</u></span>
+            <span class="mw-row"><b>team@brand-one.com</b><em>Sprint notes attached</em></span>
+            <span class="mw-row"><b>no-reply@brand-three.com</b><em>Your receipt</em></span>
+          </span>
+          <span class="tour-k">The web-inbox</span>
+          <span class="tour-d">Every brand&rsquo;s mail in one client &mdash; how the unified inbox, per-brand identity and AI triage fit together.</span>
+        </button>
+        <button class="tour-card" type="button" data-open-tour="tour-agents" data-reveal>
+          <span class="miniterm" aria-hidden="true">
+            <span class="mt-bar"><i></i><i></i><i></i><b>agent &mdash; mcp</b></span>
+            <span class="mt-line"><em>$</em> hermes mcp add multi-ai-inbox \</span>
+            <span class="mt-line cont">--url https://&lt;instance-host&gt;/&hellip;/mcp.php</span>
+            <span class="mt-line ok">&check; tools: list_domains &middot; set_domain_settings</span>
+            <span class="mt-line"><em>$</em> _</span>
+          </span>
+          <span class="tour-k">Agent-native setup</span>
+          <span class="tour-d">Connect a domain, mint a key, one command &mdash; your agents work the mail over MCP.</span>
+        </button>
+      </div>
+    </section>
+
     <section class="wrap cta-band" id="cta" data-reveal>
       <div>
         <h2>Ready to run your brands on it?</h2>
-        <p class="lede small">Onboarding walks origin, DNS and the first domain in three screens. Pricing is finalised at launch &mdash; the tiers are indicative.</p>
+        <p class="lede small">Pick a shared or dedicated environment at signup and switch anytime. Onboarding walks origin, DNS and the first domain in three screens.</p>
       </div>
       <div class="cta-actions">
         <button class="btn primary" type="button" data-open-login>Get started</button>
@@ -188,6 +221,50 @@
           Namecheap has no third-party OAuth login, so an API-key connection is the honest way.
         </p>
         <p class="hint" id="nc-ip-hint">Detecting server IP&hellip;</p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="tour-webmail" class="tour-modal" aria-labelledby="tour-webmail-title">
+    <div class="tour-body">
+      <button class="modal-close" type="button" data-close-tour aria-label="Close the web-inbox tour">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="tour-webmail-title" class="login-title">Inside the web-inbox</h2>
+      <ol class="tour-steps">
+        <li><strong>Sign in once.</strong> The Mailbox login opens the webmail session &mdash; same credentials as the Mail UI on <code>/home</code>.</li>
+        <li><strong>One client, every brand.</strong> Mail, folders, compose, calendar, contacts and tasks in one place; each brand&rsquo;s domain is its own identity.</li>
+        <li><strong>Pick the right sender.</strong> Outbound mail leaves with the brand&rsquo;s own domain and signature, so SPF, DKIM and DMARC stay clean per brand.</li>
+        <li><strong>AI triage.</strong> Agents file, flag and draft replies over MCP &mdash; inference stays on sovereign EU/CH providers.</li>
+        <li><strong>Search and archive.</strong> Full-text search across brands, with retention you control.</li>
+      </ol>
+      <div class="form-actions">
+        <a class="btn primary" href="webmail.html">Open the webmail</a>
+        <a class="btn ghost" href="inbox.html">See mailboxes</a>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="tour-agents" class="tour-modal" aria-labelledby="tour-agents-title">
+    <div class="tour-body">
+      <button class="modal-close" type="button" data-close-tour aria-label="Close the agent setup tour">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="tour-agents-title" class="login-title">Set it up agent-native</h2>
+      <ol class="tour-steps">
+        <li><strong>Connect a domain.</strong> The connector verifies the DNS records &mdash; MX, SPF, DKIM, DMARC &mdash; before anything ships.</li>
+        <li><strong>Mint a read-write key.</strong> Settings issues a per-tenant key; it is stored server-side only, never in the repository or logs.</li>
+        <li><strong>One command.</strong> Point your agent at the MCP gateway &mdash; the exact endpoint and config snippet are in the <a href="docs.html">docs</a>.</li>
+        <li><strong>Work the mail.</strong> Tools <code>list_domains</code>, <code>get_domain_settings</code>, <code>set_domain_settings</code>: agents read and update settings; mail itself flows over IMAP/SMTP.</li>
+        <li><strong>Everything audited.</strong> Connections, zone mutations and key grants land in the audit log.</li>
+      </ol>
+      <div class="form-actions">
+        <a class="btn primary" href="connectors.html">Agent setup</a>
+        <a class="btn ghost" href="docs.html">Read the docs</a>
       </div>
     </div>
   </dialog>

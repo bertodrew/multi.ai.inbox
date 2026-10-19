@@ -49,6 +49,35 @@
         <li id="step-ind-3"><span class="step-dot" aria-hidden="true">3</span>First domain</li>
       </ol>
 
+      <section class="card" id="env-choice" aria-labelledby="env-choice-title">
+        <div class="card-head">
+          <h2 id="env-choice-title">Your environment</h2>
+          <span class="card-meta">pick now or later</span>
+        </div>
+        <p>
+          Decide where your inboxes run: a <strong>shared environment</strong> on the
+          multi-tenant cluster, or your own <strong>dedicated environment</strong>.
+          You can switch at any time &mdash; see <a href="pricing.html">pricing</a>.
+        </p>
+        <fieldset class="env-pick" aria-label="Environment">
+          <label class="env-opt">
+            <input type="radio" name="env" value="shared" checked>
+            <span><strong>Shared</strong> &mdash; multi-tenant cluster in EU datacenters, billed by active mailboxes</span>
+          </label>
+          <label class="env-opt">
+            <input type="radio" name="env" value="dedicated">
+            <span><strong>Dedicated</strong> &mdash; your own isolated instance, flat per-instance billing, own mail reputation</span>
+          </label>
+        </fieldset>
+        <style>
+          .env-pick { border: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
+          .env-opt { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border);
+                     border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+          .env-opt:has(input:checked) { border-color: var(--accent); }
+          .env-opt input { margin-top: 3px; accent-color: var(--accent); }
+        </style>
+      </section>
+
       <div id="wizard">
         <!-- Step 1 — mailcow origin -->
         <section class="card" id="step-1" aria-labelledby="step-1-title">

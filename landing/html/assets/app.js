@@ -101,6 +101,22 @@
     if (closeBtn) closeBtn.addEventListener('click', () => loginModal.close());
   }
 
+  // Product tour: every [data-open-tour] opens its <dialog id>; backdrop and
+  // close buttons dismiss it (Esc is native to <dialog>).
+  document.querySelectorAll('[data-open-tour]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const dlg = document.getElementById(el.dataset.openTour);
+      if (dlg && typeof dlg.showModal === 'function') dlg.showModal();
+    });
+  });
+  document.querySelectorAll('.tour-modal').forEach((dlg) => {
+    dlg.addEventListener('click', (e) => {
+      if (e.target === dlg) dlg.close();
+    });
+    const closer = dlg.querySelector('[data-close-tour]');
+    if (closer) closer.addEventListener('click', () => dlg.close());
+  });
+
   // Scroll reveal: elements marked data-reveal fade/slide in on first view.
   if ('IntersectionObserver' in window) {
     const io = new IntersectionObserver((entries) => {
