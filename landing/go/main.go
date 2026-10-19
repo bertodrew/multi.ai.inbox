@@ -57,7 +57,13 @@ const (
 	protocolOrigin = "landing-go"
 )
 
-var domainRe = regexp.MustCompile(`^(?=.{1,253}$)([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{4,59})$`)
+var domainRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{4,59})$`)
+
+// validDomain mirrors the PHP check: full-length <= 253 + per-label grammar
+// (Go/RE2 has no lookaheads, so the length guard lives here).
+func validDomain(d string) bool {
+	return len(d) >= 1 && len(d) <= 253 && domainRe.MatchString(d)
+}
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -832,7 +838,7 @@ func handleDNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("domain")))
-	if !domainRe.MatchString(domain) {
+	if !validDomain(domain) {
 		jsonErr(w, "Invalid domain name", http.StatusBadRequest)
 		return
 	}
@@ -889,7 +895,7 @@ func mcpTools() []map[string]any {
 
 func mcpToolCall(name string, args map[string]any) (map[string]any, error) {
 	domain := strings.ToLower(strings.TrimSpace(str(args["domain"])))
-	if domain != "" && !domainRe.MatchString(domain) {
+	if domain != "" && !validDomain(domain) {
 		return nil, fmt.Errorf("Invalid domain name: %s", domain)
 	}
 	switch name {
