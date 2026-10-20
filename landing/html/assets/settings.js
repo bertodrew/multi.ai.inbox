@@ -1,16 +1,15 @@
 /* settings.js — per-domain settings page
-   READS today (existing landing API):
+   READS (existing landing API):
      GET api/status, api/connect (session), api/domains, api/dns
-   WRITES: the API gateway is being built in parallel. Save posts to
-   GATEWAY_WRITE_BASE ('api/gateway/domains/<domain>') behind a feature flag:
-   - USE_GATEWAY_WRITES false  -> the form is read-only: Save explains that the
-     gateway is not live yet (honest state, no fake success),
-   - USE_GATEWAY_WRITES true   -> real PATCH, 501/503 surfaces as "not live".
-   Flip one constant when the gateway ships. */
+   WRITES (live since 20/10): Save PATCHes GATEWAY_WRITE_BASE
+   ('api/gateway/domains/<domain>', session + X-Landing-CSRF). Only fields the
+   mail platform accepts are written (branding, defquota, maxquota); ptr_target
+   is network-level rDNS — the gateway answers with a warning, never a fake
+   success. UseGatewayWrites must stay true in production. */
 (async () => {
   'use strict';
 
-  const USE_GATEWAY_WRITES = false;
+  const USE_GATEWAY_WRITES = true;
   const GATEWAY_WRITE_BASE = 'api/gateway/domains/';
 
   const $ = (sel, el = document) => el.querySelector(sel);
@@ -217,7 +216,7 @@
     if (rec) {
       note.hidden = true;
     } else {
-      showMsg(note, 'Mail-domain fields show registrar data only \u2014 platform values will appear once the API gateway is live.');
+      showMsg(note, 'Mail-domain fields are empty \u2014 this domain may not be provisioned on the mail platform yet.');
     }
     fillForm(current.record);
 
@@ -282,7 +281,7 @@
     btn.textContent = 'Saving\u2026';
     const res = await api(GATEWAY_WRITE_BASE + encodeURIComponent(current.domain), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Landing-CSRF': status.csrf || '' },
       body: JSON.stringify(payload),
     });
     btn.disabled = false;
@@ -290,7 +289,9 @@
     if (res.data && res.data.ok) {
       current.record = res.data.domain || payload;
       fillForm(current.record);
-      showMsg($('#save-ok'), 'Changes saved.');
+      let msg = 'Changes saved.';
+      if (res.data.warnings && res.data.warnings.length) msg += ' Note: ' + res.data.warnings[0];
+      showMsg($('#save-ok'), msg);
     } else {
       showMsg($('#save-error'), (res.data && res.data.error) || 'Save failed \u2014 the gateway did not answer.');
     }

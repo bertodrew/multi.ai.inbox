@@ -1036,6 +1036,124 @@ func handleMCP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+// gateway domain settings — per-domain read + write (live 20/10)
+// ---------------------------------------------------------------------------
+
+// gwDomainRE: FQDN-safe domain names only (no path tricks into panel calls).
+var gwDomainRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+
+// gwSessionDomain validates the path domain and the connected session; it
+// writes the error response and returns ok=false when either fails.
+func gwSessionDomain(w http.ResponseWriter, r *http.Request) (string, *session, bool) {
+	domain := strings.ToLower(strings.TrimSpace(r.PathValue("domain")))
+	if !gwDomainRE.MatchString(domain) {
+		jsonErr(w, "Invalid domain name", http.StatusBadRequest)
+		return "", nil, false
+	}
+	sid, sess := getSession(r)
+	if sid == "" || !sess.connected {
+		jsonErr(w, "Not connected — sign in with your API key first", http.StatusUnauthorized)
+		return "", nil, false
+	}
+	return domain, sess, true
+}
+
+// handleGatewayDomainGet serves GET api/gateway/domains/<domain>: the mail
+// platform's record for the domain (fqdn, branding ← description, quotas MiB).
+// 404 when the domain is not provisioned yet — the UI surfaces that honestly.
+func handleGatewayDomainGet(w http.ResponseWriter, r *http.Request) {
+	domain, _, ok := gwSessionDomain(w, r)
+	if !ok {
+		return
+	}
+	_, body, err := gwMailcowCall(http.MethodGet, "/api/v1/get/domain/"+domain, nil)
+	if err != nil {
+		jsonErr(w, fmt.Sprintf("mail platform did not answer: %v", err), http.StatusBadGateway)
+		return
+	}
+	var d mcDomain
+	if err := json.Unmarshal(body, &d); err != nil || d.DomainName == "" {
+		jsonErr(w, "Domain is not provisioned on the mail platform yet", http.StatusNotFound)
+		return
+	}
+	jsonOut(w, map[string]any{"ok": true, "domain": map[string]any{
+		"fqdn":       d.DomainName,
+		"branding":   d.Description,
+		"defquota":   d.DefQuota,
+		"maxquota":   d.MaxQuota,
+		"ptr_target": "",
+	}})
+}
+
+// handleGatewayDomainPatch serves PATCH api/gateway/domains/<domain> (session
+// + CSRF). Only fields the mail API accepts are written: maxquota/defquota
+// (MiB) and branding → description. ptr_target (rDNS) is set at the network
+// provider — sent values surface as a warning, never a fake success.
+func handleGatewayDomainPatch(w http.ResponseWriter, r *http.Request) {
+	domain, sess, ok := gwSessionDomain(w, r)
+	if !ok {
+		return
+	}
+	if !requireCSRF(w, r, sess) {
+		return
+	}
+	var payload struct {
+		Branding  string   `json:"branding"`
+		PTRTarget string   `json:"ptr_target"`
+		DefQuota  *float64 `json:"defquota"`
+		MaxQuota  *float64 `json:"maxquota"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		jsonErr(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if (payload.DefQuota != nil && *payload.DefQuota < 0) || (payload.MaxQuota != nil && *payload.MaxQuota < 0) {
+		jsonErr(w, "Quotas cannot be negative", http.StatusBadRequest)
+		return
+	}
+	attr := map[string]any{}
+	if payload.MaxQuota != nil {
+		attr["maxquota"] = fmt.Sprint(*payload.MaxQuota)
+	}
+	if payload.DefQuota != nil {
+		attr["defquota"] = fmt.Sprint(*payload.DefQuota)
+	}
+	if payload.Branding != "" {
+		attr["description"] = payload.Branding
+	}
+	var warnings []string
+	if payload.PTRTarget != "" {
+		warnings = append(warnings, "PTR (rDNS) is a network-level setting at your hosting provider — it cannot be changed here.")
+	}
+	record := map[string]any{
+		"fqdn":       domain,
+		"branding":   payload.Branding,
+		"defquota":   payload.DefQuota,
+		"maxquota":   payload.MaxQuota,
+		"ptr_target": payload.PTRTarget,
+	}
+	if len(attr) == 0 {
+		// nothing writable sent — honest no-op with the warning if any
+		jsonOut(w, map[string]any{"ok": true, "domain": record, "warnings": warnings})
+		return
+	}
+	_, body, err := gwMailcowCall(http.MethodPost, "/api/v1/edit/domain", map[string]any{
+		"items": []string{domain},
+		"attr":  attr,
+	})
+	if err != nil {
+		jsonErr(w, fmt.Sprintf("mail platform refused: %v", err), http.StatusBadGateway)
+		return
+	}
+	if err := mcSuccess(body); err != nil {
+		jsonErr(w, fmt.Sprintf("mail platform refused: %v", err), http.StatusBadGateway)
+		return
+	}
+	auditLog("domain_settings_patch", map[string]any{"ok": true, "domain": domain, "fields": attr})
+	jsonOut(w, map[string]any{"ok": true, "domain": record, "warnings": warnings})
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -1053,6 +1171,8 @@ func main() {
 	mux.HandleFunc("/api/dns", handleDNS)
 	mux.HandleFunc("/api/mcp", handleMCP)
 	registerGatewayRoutes(mux, MailcowRegistrar{}) // gateway agenti con chiavi scoped (decisione founder 19/10)
+	mux.HandleFunc("GET /api/gateway/domains/{domain}", handleGatewayDomainGet)
+	mux.HandleFunc("PATCH /api/gateway/domains/{domain}", handleGatewayDomainPatch)
 
 	srv := &http.Server{
 		Addr:              internalAddr,

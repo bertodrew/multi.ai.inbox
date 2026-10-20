@@ -5,6 +5,7 @@ package main
 // by the CTO review on 19/10/2026.
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -120,5 +121,140 @@ func TestConnectFailureLeavesNoCredentials(t *testing.T) {
 	}
 	if _, err := readCreds(sid); err == nil {
 		t.Fatalf("credential file written despite failed connect")
+	}
+}
+
+// gwConnect boots a session, runs a successful connect through handleConnect,
+// and returns the rotated session id.
+func gwConnect(t *testing.T) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	handleConnect(rec, newVisitor(t, ncOKXML))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("connect failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == cookieName && c.Value != "" {
+			return c.Value
+		}
+	}
+	t.Fatalf("no rotated session cookie on connect response")
+	return ""
+}
+
+// TestGatewayDomainRequiresSession: the per-domain gateway surface answers 401
+// without a connected session (GET and PATCH both).
+func TestGatewayDomainRequiresSession(t *testing.T) {
+	testEnv(t, ncOKXML)
+	t.Setenv("MAILCOW_API_KEY", "test-super-admin-key")
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "http://t.test/landingpage/api/gateway/domains/example.org", nil)
+	req.SetPathValue("domain", "example.org")
+	handleGatewayDomainGet(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET without session: expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest(http.MethodPatch, "http://t.test/landingpage/api/gateway/domains/example.org",
+		strings.NewReader(`{"maxquota":1024}`))
+	req2.SetPathValue("domain", "example.org")
+	handleGatewayDomainPatch(rec2, req2)
+	if rec2.Code != http.StatusUnauthorized {
+		t.Fatalf("PATCH without session: expected 401, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+// TestGatewayDomainPatchGuardsCSRF: a connected session with a wrong CSRF
+// token gets 403 — the write path never trusts the cookie alone.
+func TestGatewayDomainPatchGuardsCSRF(t *testing.T) {
+	testEnv(t, ncOKXML)
+	t.Setenv("MAILCOW_API_KEY", "test-super-admin-key")
+	sid := gwConnect(t)
+
+	req, _ := http.NewRequest(http.MethodPatch, "http://t.test/landingpage/api/gateway/domains/example.org",
+		strings.NewReader(`{"maxquota":1024}`))
+	req.SetPathValue("domain", "example.org")
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	req.Header.Set("X-Landing-CSRF", "wrong-token")
+	rec := httptest.NewRecorder()
+	handleGatewayDomainPatch(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("PATCH with wrong CSRF: expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestGatewayDomainWriteFlow: connected session reads the mail-platform record
+// and PATCHes it; ptr_target surfaces as a warning, never a fake success.
+func TestGatewayDomainWriteFlow(t *testing.T) {
+	testEnv(t, ncOKXML)
+	t.Setenv("MAILCOW_API_KEY", "test-super-admin-key")
+	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/v1/get/domain/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"domain_name":"example.org","description":"Brand one","maxquota":"1024","defquota":"512"}`))
+		case r.URL.Path == "/api/v1/edit/domain":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"type":"success","msg":["domain edited"]}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Setenv("MAILCOW_API_URL", panel.URL)
+	t.Cleanup(panel.Close)
+	sid := gwConnect(t)
+	csrf := ensureCSRF(sessions.m[sid])
+
+	// GET: the mail-platform record lands in the form fields
+	req, _ := http.NewRequest(http.MethodGet, "http://t.test/landingpage/api/gateway/domains/example.org", nil)
+	req.SetPathValue("domain", "example.org")
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	handleGatewayDomainGet(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		OK     bool `json:"ok"`
+		Domain struct {
+			FQDN     string `json:"fqdn"`
+			Branding string `json:"branding"`
+		} `json:"domain"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if !got.OK || got.Domain.FQDN != "example.org" || got.Domain.Branding != "Brand one" {
+		t.Fatalf("GET record wrong: %s", rec.Body.String())
+	}
+
+	// PATCH: writable fields applied, ptr_target → warning
+	req3, _ := http.NewRequest(http.MethodPatch, "http://t.test/landingpage/api/gateway/domains/example.org",
+		strings.NewReader(`{"branding":"Brand one","ptr_target":"mail.example.org","maxquota":1024,"defquota":512}`))
+	req3.SetPathValue("domain", "example.org")
+	req3.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	req3.Header.Set("X-Landing-CSRF", csrf)
+	rec3 := httptest.NewRecorder()
+	handleGatewayDomainPatch(rec3, req3)
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("PATCH: expected 200, got %d: %s", rec3.Code, rec3.Body.String())
+	}
+	var wrote struct {
+		OK       bool     `json:"ok"`
+		Warnings []string `json:"warnings"`
+	}
+	_ = json.Unmarshal(rec3.Body.Bytes(), &wrote)
+	if !wrote.OK || len(wrote.Warnings) != 1 {
+		t.Fatalf("PATCH result wrong: %s", rec3.Body.String())
+	}
+
+	// Invalid domain name → 400 (no path tricks reach the panel call)
+	req4, _ := http.NewRequest(http.MethodGet, "http://t.test/landingpage/api/gateway/domains/..%2fetc", nil)
+	req4.SetPathValue("domain", "../etc")
+	req4.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec4 := httptest.NewRecorder()
+	handleGatewayDomainGet(rec4, req4)
+	if rec4.Code != http.StatusBadRequest {
+		t.Fatalf("invalid domain: expected 400, got %d: %s", rec4.Code, rec4.Body.String())
 	}
 }

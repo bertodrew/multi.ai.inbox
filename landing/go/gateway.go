@@ -611,7 +611,10 @@ type mcOverride struct {
 }
 
 type mcDomain struct {
-	DomainName string `json:"domain_name"`
+	DomainName  string `json:"domain_name"`
+	Description string `json:"description"`
+	MaxQuota    any    `json:"maxquota"`
+	DefQuota    any    `json:"defquota"`
 }
 
 func gwActive(v any) bool {
