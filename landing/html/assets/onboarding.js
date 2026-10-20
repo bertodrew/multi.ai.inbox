@@ -118,6 +118,43 @@
   const adminLink = $('#admin-link');
   if (status.mailcow_origin) adminLink.href = status.mailcow_origin + '/home';
 
+  /* ---------------- environment choice (persisted per account) ---------------- */
+
+  const envFieldset = $('#env-choice fieldset.env-pick');
+  if (envFieldset) {
+    let envState = envFieldset.nextElementSibling;
+    if (!envState || !envState.classList.contains('env-save-state')) {
+      envState = el('p', 'hint env-save-state', '');
+      envFieldset.after(envState);
+    }
+    // saved choice pre-selected on load
+    api('api/env').then((res) => {
+      if (res.data && res.data.ok && res.data.env) {
+        const want = envFieldset.querySelector('input[name="env"][value="' + res.data.env + '"]');
+        if (want) {
+          envFieldset.querySelectorAll('input[name="env"]').forEach((i) => { i.checked = i === want; });
+          envState.textContent = 'Saved: ' + res.data.env + '.';
+        }
+      }
+    });
+    envFieldset.addEventListener('change', async (e) => {
+      if (e.target.name !== 'env') return;
+      envState.textContent = 'Saving\u2026';
+      const res = await api('api/env', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Landing-CSRF': status.csrf || '' },
+        body: JSON.stringify({ env: e.target.value }),
+      });
+      if (res.httpOk && res.data && res.data.ok) {
+        envState.textContent = 'Saved: ' + res.data.env + '.';
+      } else if (res.status === 401) {
+        envState.textContent = 'Connect your API key to save this choice.';
+      } else {
+        envState.textContent = (res.data && res.data.error) || 'Could not save the choice \u2014 try again.';
+      }
+    });
+  }
+
   /* ---------------- step 1 — mailcow origin ---------------- */
 
   $('#origin-value').textContent = status.mailcow_origin || 'not configured';

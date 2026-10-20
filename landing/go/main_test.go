@@ -258,3 +258,57 @@ func TestGatewayDomainWriteFlow(t *testing.T) {
 		t.Fatalf("invalid domain: expected 400, got %d: %s", rec4.Code, rec4.Body.String())
 	}
 }
+
+// TestEnvChoiceLifecycle: the shared/dedicated choice is 401 without a
+// session, 400 for unknown values, and round-trips per account (survives a
+// session restart because the file is keyed to the username).
+func TestEnvChoiceLifecycle(t *testing.T) {
+	testEnv(t, ncOKXML)
+	t.Setenv("LANDING_CRED_DIR", t.TempDir())
+
+	// 401 without a session
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "http://t.test/landingpage/api/env", strings.NewReader(`{"env":"shared"}`))
+	handleEnv(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("POST without session: expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// GET before any choice → env:null
+	sid := gwConnect(t)
+	csrf := ensureCSRF(sessions.m[sid])
+	req2, _ := http.NewRequest(http.MethodGet, "http://t.test/landingpage/api/env", nil)
+	req2.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec2 := httptest.NewRecorder()
+	handleEnv(rec2, req2)
+	if rec2.Code != http.StatusOK || !strings.Contains(rec2.Body.String(), `"env":null`) {
+		t.Fatalf("GET before choice: %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	// 400 for an unknown env value
+	req3, _ := http.NewRequest(http.MethodPost, "http://t.test/landingpage/api/env", strings.NewReader(`{"env":"chaos"}`))
+	req3.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	req3.Header.Set("X-Landing-CSRF", csrf)
+	rec3 := httptest.NewRecorder()
+	handleEnv(rec3, req3)
+	if rec3.Code != http.StatusBadRequest {
+		t.Fatalf("unknown env: expected 400, got %d: %s", rec3.Code, rec3.Body.String())
+	}
+
+	// POST then GET: the choice round-trips
+	req4, _ := http.NewRequest(http.MethodPost, "http://t.test/landingpage/api/env", strings.NewReader(`{"env":"dedicated"}`))
+	req4.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	req4.Header.Set("X-Landing-CSRF", csrf)
+	rec4 := httptest.NewRecorder()
+	handleEnv(rec4, req4)
+	if rec4.Code != http.StatusOK || !strings.Contains(rec4.Body.String(), `"env":"dedicated"`) {
+		t.Fatalf("POST choice failed: %d: %s", rec4.Code, rec4.Body.String())
+	}
+	req5, _ := http.NewRequest(http.MethodGet, "http://t.test/landingpage/api/env", nil)
+	req5.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec5 := httptest.NewRecorder()
+	handleEnv(rec5, req5)
+	if !strings.Contains(rec5.Body.String(), `"env":"dedicated"`) {
+		t.Fatalf("choice did not round-trip: %s", rec5.Body.String())
+	}
+}

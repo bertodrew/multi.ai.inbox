@@ -843,6 +843,61 @@ func handleDomains(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "domains": domains})
 }
 
+// ---------------------------------------------------------------------------
+// environment choice — shared vs dedicated, persisted per account (20/10)
+// ---------------------------------------------------------------------------
+
+// envPath keys the choice file to the account (plain JSON — a plan preference,
+// not a credential). Same dir + hashing pattern as the per-session creds.
+func envPath(username string) string {
+	h := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(username))))
+	return filepath.Join(env("LANDING_CRED_DIR", "."), fmt.Sprintf("env_%s.json", hex.EncodeToString(h[:16])))
+}
+
+// handleEnv serves GET/POST api/env: the shared/dedicated environment choice,
+// stored per account so it survives restarts and sessions (billing decision).
+func handleEnv(w http.ResponseWriter, r *http.Request) {
+	sid, sess := getSession(r)
+	if sid == "" || !sess.connected || sess.username == "" {
+		jsonErr(w, "Not connected — sign in with your API key first", http.StatusUnauthorized)
+		return
+	}
+	if r.Method == http.MethodGet {
+		data, err := os.ReadFile(envPath(sess.username))
+		if err != nil {
+			jsonOut(w, map[string]any{"ok": true, "env": nil})
+			return
+		}
+		var saved struct {
+			Env string `json:"env"`
+		}
+		_ = json.Unmarshal(data, &saved)
+		jsonOut(w, map[string]any{"ok": true, "env": saved.Env})
+		return
+	}
+	if r.Method != http.MethodPost {
+		jsonErr(w, "GET or POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireCSRF(w, r, sess) {
+		return
+	}
+	var payload struct {
+		Env string `json:"env"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || (payload.Env != "shared" && payload.Env != "dedicated") {
+		jsonErr(w, "env must be 'shared' or 'dedicated'", http.StatusBadRequest)
+		return
+	}
+	body := fmt.Sprintf(`{"env":%q,"ts":%q}`, payload.Env, time.Now().UTC().Format(time.RFC3339))
+	if err := os.WriteFile(envPath(sess.username), []byte(body), 0600); err != nil {
+		jsonErr(w, "Could not save the environment choice", http.StatusInternalServerError)
+		return
+	}
+	auditLog("env_choice", map[string]any{"ok": true, "env": payload.Env})
+	jsonOut(w, map[string]any{"ok": true, "env": payload.Env})
+}
+
 func handleDNS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonErr(w, "GET required", http.StatusMethodNotAllowed)
@@ -1168,6 +1223,7 @@ func main() {
 	mux.HandleFunc("/api/connect", handleConnect)
 	mux.HandleFunc("/api/disconnect", handleDisconnect)
 	mux.HandleFunc("/api/domains", handleDomains)
+	mux.HandleFunc("/api/env", handleEnv)
 	mux.HandleFunc("/api/dns", handleDNS)
 	mux.HandleFunc("/api/mcp", handleMCP)
 	registerGatewayRoutes(mux, MailcowRegistrar{}) // gateway agenti con chiavi scoped (decisione founder 19/10)
