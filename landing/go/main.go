@@ -117,7 +117,12 @@ type session struct {
 	username  string
 	attempts  []time.Time
 	csrf      string
+	expires   time.Time // zero = anonymous session (no connection to expire)
 }
+
+// sessionTTL: a connected session dies one working day after the connect —
+// stale "connected" cookies never survive overnight (auto-login bug, 20/10).
+const sessionTTL = 24 * time.Hour
 
 type sessionStore struct {
 	mu sync.Mutex
@@ -143,8 +148,20 @@ func getSession(r *http.Request) (sid string, sess *session) {
 		return "", nil
 	}
 	sessions.mu.Lock()
-	defer sessions.mu.Unlock()
-	if s, ok := sessions.m[c.Value]; ok {
+	s, ok := sessions.m[c.Value]
+	expired := ok && s.connected && !s.expires.IsZero() && time.Now().After(s.expires)
+	if expired {
+		delete(sessions.m, c.Value)
+	}
+	sessions.mu.Unlock()
+	if expired {
+		// A connected session past its TTL is anonymous again: drop the record
+		// and its credential file — the cookie identifier is never trusted, only
+		// matched against the live store (S1).
+		removeCredFile(c.Value)
+		return "", nil
+	}
+	if ok {
 		return c.Value, s
 	}
 	return "", nil
@@ -789,6 +806,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	sessions.mu.Lock()
 	sessions.m[newSID].connected = true
 	sessions.m[newSID].username = username
+	sessions.m[newSID].expires = time.Now().Add(sessionTTL)
 	sessions.mu.Unlock()
 	auditLog("namecheap_connect", map[string]any{"ok": true, "username": username, "sandbox": sandbox, "ip": ip})
 	jsonOut(w, map[string]any{"ok": true, "username": username, "sandbox": sandbox})
