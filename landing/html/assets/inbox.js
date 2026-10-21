@@ -18,7 +18,7 @@
 
   async function api(path, opts) {
     try {
-      const r = await fetch('/landingpage' + path, opts);
+      const r = await fetch('/landingpage/' + String(path).replace(/^\/+/, ''), opts);
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       return { httpOk: r.ok, status: r.status, data };
