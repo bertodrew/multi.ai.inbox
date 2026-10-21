@@ -1097,8 +1097,26 @@ func handleMCP(w http.ResponseWriter, r *http.Request) {
 // gwDomainRE: FQDN-safe domain names only (no path tricks into panel calls).
 var gwDomainRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 
+// ncOwnedDomains is a test hook over ncDomains so ownership checks can be
+// mocked without hitting the Namecheap API (same pattern as the panel mock).
+var ncOwnedDomains = ncDomains
+
+// ownedDomain reports whether the FQDN is on the tenant's account
+// (case-insensitive match over the Namecheap domain list).
+func ownedDomain(domain string, owned []map[string]any) bool {
+	for _, d := range owned {
+		if name, _ := d["name"].(string); strings.EqualFold(name, domain) {
+			return true
+		}
+	}
+	return false
+}
+
 // gwSessionDomain validates the path domain and the connected session; it
 // writes the error response and returns ok=false when either fails.
+// Cross-tenant scoping (20/10): the path domain must belong to the connected
+// tenant's Namecheap account — fail-closed, a shared-instance tenant can't
+// read or write another tenant's gateway settings.
 func gwSessionDomain(w http.ResponseWriter, r *http.Request) (string, *session, bool) {
 	domain := strings.ToLower(strings.TrimSpace(r.PathValue("domain")))
 	if !gwDomainRE.MatchString(domain) {
@@ -1108,6 +1126,20 @@ func gwSessionDomain(w http.ResponseWriter, r *http.Request) (string, *session, 
 	sid, sess := getSession(r)
 	if sid == "" || !sess.connected {
 		jsonErr(w, "Not connected — sign in with your API key first", http.StatusUnauthorized)
+		return "", nil, false
+	}
+	c, err := readCreds(sid)
+	if err != nil {
+		jsonErr(w, "Session credentials missing — reconnect", http.StatusUnauthorized)
+		return "", nil, false
+	}
+	owned, fail := ncOwnedDomains(*c)
+	if fail != nil {
+		jsonErr(w, "Cannot verify domain ownership right now — try again", http.StatusBadGateway)
+		return "", nil, false
+	}
+	if !ownedDomain(domain, owned) {
+		jsonErr(w, "Domain is not on your account", http.StatusForbidden)
 		return "", nil, false
 	}
 	return domain, sess, true

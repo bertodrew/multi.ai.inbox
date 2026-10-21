@@ -312,3 +312,76 @@ func TestEnvChoiceLifecycle(t *testing.T) {
 		t.Fatalf("choice did not round-trip: %s", rec5.Body.String())
 	}
 }
+
+// TestGatewayDomainTenantScoping guards the cross-tenant fix (20/10): the
+// path domain must be on the connected tenant's Namecheap account — a
+// shared-instance tenant can't read or write another tenant's gateway.
+func TestGatewayDomainTenantScoping(t *testing.T) {
+	testEnv(t, ncOKXML)
+
+	// Mock panel: accept edits, answer the domain GET with a record.
+	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/get/domain/example.org" {
+			_, _ = w.Write([]byte(`[{"domain_name":"example.org","description":"Demo","max_quota":1024,"def_quota":256}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Setenv("MAILCOW_API_URL", panel.URL)
+	t.Setenv("MAILCOW_API_KEY", "test-key-0123456789")
+	t.Cleanup(panel.Close)
+
+	// Ownership mock: the tenant owns example.org only.
+	restore := ncOwnedDomains
+	ncOwnedDomains = func(c creds) ([]map[string]any, *ncResult) {
+		return []map[string]any{{"name": "example.org"}}, nil
+	}
+	t.Cleanup(func() { ncOwnedDomains = restore })
+
+	rec := httptest.NewRecorder()
+	handleConnect(rec, newVisitor(t, ncOKXML))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("connect returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var sid string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == cookieName && c.Value != "" {
+			sid = c.Value
+		}
+	}
+	if sid == "" {
+		t.Fatalf("no rotated session cookie on connect response")
+	}
+	csrf := ensureCSRF(sessions.m[sid])
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /api/gateway/domains/{domain}", handleGatewayDomainPatch)
+	patch := func(domain string) *httptest.ResponseRecorder {
+		req, err := http.NewRequest(http.MethodPatch, "http://gw.test/api/gateway/domains/"+domain, strings.NewReader(`{"branding":"Demo"}`))
+		if err != nil {
+			t.Fatalf("request build failed: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Landing-CSRF", csrf)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+		out := httptest.NewRecorder()
+		mux.ServeHTTP(out, req)
+		return out
+	}
+
+	if code := patch("example.org").Code; code != http.StatusOK {
+		t.Fatalf("own domain blocked by the scoping: %d", code)
+	}
+	if code := patch("other.com").Code; code != http.StatusForbidden {
+		t.Fatalf("foreign domain not rejected: %d", code)
+	}
+
+	// Fail-closed: an ownership API failure must not unlock the path.
+	ncOwnedDomains = func(c creds) ([]map[string]any, *ncResult) {
+		return nil, &ncResult{Error: "mock down"}
+	}
+	if code := patch("example.org").Code; code != http.StatusBadGateway {
+		t.Fatalf("ownership failure must fail closed, got %d", code)
+	}
+}
