@@ -1202,11 +1202,17 @@ func handleGatewayMailboxes(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, fmt.Sprintf("mail platform did not answer: %v", err), http.StatusBadGateway)
 		return
 	}
-	// The mail API answers with an ARRAY of mailbox rows ([] when empty).
+	// The mail API answers with an ARRAY of mailbox rows when any exist, but
+	// with an empty OBJECT ({} — not []) when the domain has none: accept both,
+	// anything else is unreadable.
 	var list []mcMailbox
 	if err := json.Unmarshal(body, &list); err != nil {
-		jsonErr(w, "mail platform sent an unreadable mailbox listing", http.StatusBadGateway)
-		return
+		var obj map[string]any
+		if err2 := json.Unmarshal(body, &obj); err2 != nil || len(obj) != 0 {
+			jsonErr(w, "mail platform sent an unreadable mailbox listing", http.StatusBadGateway)
+			return
+		}
+		list = nil
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, m := range list {
