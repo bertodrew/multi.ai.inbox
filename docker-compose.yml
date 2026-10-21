@@ -682,6 +682,14 @@ services:
         - MAILCOW_API_KEY=${API_KEY:-}
         - NAMECHEAP_API_URL=${NAMECHEAP_API_URL:-https://api.namecheap.com/xml.response}
         - NAMECHEAP_SANDBOX_API_URL=${NAMECHEAP_SANDBOX_API_URL:-https://api.sandbox.namecheap.com/xml.response}
+        - MOLLIE_API_KEY=${MOLLIE_API_KEY:-}
+        - LANDING_E2E_MODE=${LANDING_E2E_MODE:-}
+        - MAX_MONTHLY_SPEND_EUR=${MAX_MONTHLY_SPEND_EUR:-}
+        - MAX_TENANTS_PER_NODE=${MAX_TENANTS_PER_NODE:-}
+        - PROVISIONING_ENABLED=${PROVISIONING_ENABLED:-}
+        - PROVISIONING_BASE_DOMAIN=${PROVISIONING_BASE_DOMAIN:-}
+        - PROVISIONING_PROVIDER=${PROVISIONING_PROVIDER:-}
+        - PROVISIONING_LOCATION=${PROVISIONING_LOCATION:-}
         - HTTPS_INFER=on
       volumes:
         - landing-credentials-vol-1:/credentials:z
