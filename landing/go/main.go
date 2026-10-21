@@ -1119,6 +1119,13 @@ func ownedDomain(domain string, owned []map[string]any) bool {
 // read or write another tenant's gateway settings.
 func gwSessionDomain(w http.ResponseWriter, r *http.Request) (string, *session, bool) {
 	domain := strings.ToLower(strings.TrimSpace(r.PathValue("domain")))
+	return gwSessionDomainCheck(w, r, domain)
+}
+
+// gwSessionDomainCheck runs the same fail-closed chain for a domain that may
+// come from the path (routes with {domain}) or the query string (flat routes
+// like GET api/gateway/mailboxes?domain=...): validation, session, ownership.
+func gwSessionDomainCheck(w http.ResponseWriter, r *http.Request, domain string) (string, *session, bool) {
 	if !gwDomainRE.MatchString(domain) {
 		jsonErr(w, "Invalid domain name", http.StatusBadRequest)
 		return "", nil, false
@@ -1180,7 +1187,7 @@ func handleGatewayDomainGet(w http.ResponseWriter, r *http.Request) {
 // mailbox rows for a domain on the mail platform. 404 when the domain is not
 // provisioned — the UI surfaces that honestly, never fake rows.
 func handleGatewayMailboxes(w http.ResponseWriter, r *http.Request) {
-	domain, _, ok := gwSessionDomain(w, r)
+	domain, _, ok := gwSessionDomainCheck(w, r, strings.ToLower(strings.TrimSpace(r.URL.Query().Get("domain"))))
 	if !ok {
 		return
 	}
