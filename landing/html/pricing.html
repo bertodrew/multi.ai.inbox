@@ -112,6 +112,11 @@
             <li>Extra mailbox &euro;2.50/mo</li>
           </ul>
           <div class="form-actions">
+            <button class="btn primary" type="button" data-checkout="solo">Subscribe &mdash; checkout Mollie</button>
+            <button class="btn primary" type="button" data-checkout="studio">Subscribe &mdash; checkout Mollie</button>
+            <button class="btn primary" type="button" data-checkout="scale">Subscribe &mdash; checkout Mollie</button>
+            <button class="btn primary" type="button" data-checkout="dedicated">Subscribe &mdash; checkout Mollie</button>
+            <button class="btn primary" type="button" data-checkout="dedicated-xl">Subscribe &mdash; checkout Mollie</button>
             <a class="btn primary" href="onboarding.html">Start onboarding</a>
           </div>
         </article>
@@ -240,7 +245,8 @@
         </p>
       </article>
     </section>
-  </main>
+  <p id="checkout-msg" class="checkout-msg" role="status" aria-live="polite" hidden></p>
+      </main>
 
   <footer>
     <div class="wrap footer-inner">
@@ -248,5 +254,6 @@
       <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
     </div>
   </footer>
-</body>
+<script src="assets/checkout.js" defer></script>
+  </body>
 </html>

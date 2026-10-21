@@ -1261,6 +1261,9 @@ func main() {
 	registerGatewayRoutes(mux, MailcowRegistrar{}) // gateway agenti con chiavi scoped (decisione founder 19/10)
 	mux.HandleFunc("GET /api/gateway/domains/{domain}", handleGatewayDomainGet)
 	mux.HandleFunc("PATCH /api/gateway/domains/{domain}", handleGatewayDomainPatch)
+	mux.HandleFunc("POST /api/checkout", handleCheckout) // self-serve subscriptions (Mollie, 21/10)
+	mux.HandleFunc("POST /api/checkout/webhook", handleCheckoutWebhook)
+	mux.HandleFunc("GET /api/checkout/state", handleCheckoutState)
 
 	srv := &http.Server{
 		Addr:              internalAddr,

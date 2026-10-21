@@ -29,6 +29,12 @@ const ncOKXML = `<?xml version="1.0" encoding="utf-8"?>
 func testEnv(t *testing.T, xml string) {
 	t.Helper()
 	t.Setenv("LANDING_CRED_DIR", filepath.Join(t.TempDir(), "creds"))
+	// Reset the process-global IP limiter: tests share one egress IP and
+	// accumulate each other's failed-connect attempts (429 flakiness in the
+	// full suite once several tests connect).
+	ipHits.mu.Lock()
+	ipHits.m = map[string][]time.Time{}
+	ipHits.mu.Unlock()
 	nc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml")
 		_, _ = w.Write([]byte(xml))
