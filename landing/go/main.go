@@ -1282,6 +1282,7 @@ func main() {
 	mux.HandleFunc("POST /api/checkout", handleCheckout) // self-serve subscriptions (Mollie, 21/10)
 	mux.HandleFunc("POST /api/checkout/webhook", handleCheckoutWebhook)
 	mux.HandleFunc("GET /api/checkout/state", handleCheckoutState)
+	mux.HandleFunc("GET /api/provisioning/state", handleProvisioningState) // FASE 1 (iaas-design.md §4)
 
 	srv := &http.Server{
 		Addr:              internalAddr,

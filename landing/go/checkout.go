@@ -389,7 +389,30 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "Could not persist billing state", http.StatusInternalServerError)
 		return
 	}
-	jsonOut(w, map[string]any{"ok": true, "status": "paid", "subscription_id": subID})
+	// FASE 1 provisioning trigger (iaas-design.md §4): a paid dedicated
+	// plan queues an instance job in the background — the real terraform
+	// apply runs in the external worker, never in the web process.
+	// Fail-closed: without PROVISIONING_ENABLED=1 nothing is queued and
+	// the response reports provisioning="not_enabled"; shared plans are
+	// not_applicable (they live in the shared pool, no instance to build).
+	provisioning := "not_applicable"
+	if planKey == "dedicated" || planKey == "dedicated-xl" {
+		provisioning = "not_enabled"
+		if provisioningEnabled() {
+			// Account spend guard (21/10, founder): no instance may be
+			// provisioned outside the monthly budget — CCX types are
+			// deliberately outside the whitelist, so Dedicated stays
+			// blocked until the budget is raised for the first customer.
+			if err := spendGuard(provServerTypes[planKey]); err != nil {
+				provisioning = "budget_blocked"
+				auditLog("provisioning_budget_blocked", map[string]any{"username": username, "plan": planKey, "error": err.Error()})
+			} else {
+				provisioning = "queued"
+				triggerProvisioning(username, planKey, paymentID)
+			}
+		}
+	}
+	jsonOut(w, map[string]any{"ok": true, "status": "paid", "subscription_id": subID, "provisioning": provisioning})
 }
 
 // handleCheckoutState serves GET api/checkout/state: the billing state for

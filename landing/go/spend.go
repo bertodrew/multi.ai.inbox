@@ -18,27 +18,29 @@ import (
 // September console lists CX23 at 5.99 "not available" and CPX12 as the
 // cheapest orderable type at 11.99). Override at runtime with
 // SPEND_INSTANCE_COSTS (JSON map) — prices move, the gate must not.
-var instanceCostEUR = map[string]float64{
-	"cx23": 5.49, "cx33": 8.49, "cx43": 15.99, "cx53": 29.49,
-	"cax11": 5.99, "cax21": 6.49, "cax31": 12.49, "cax41": 24.49,
-	"cpx12": 11.99, "cpx22": 19.49, "cpx32": 10.99, "cpx42": 19.99,
-	// CCX (dedicated vCPU, 42.99+) deliberately ABSENT: under the account
-	// budget no dedicated-tier instance may be provisioned — raise
-	// MAX_MONTHLY_SPEND_EUR and add the type when the first Dedicated
-	// customer pays.
-}
-
-func loadInstanceCosts() {
-	raw := os.Getenv("SPEND_INSTANCE_COSTS")
-	if raw == "" {
-		return
+// instanceCosts builds a FRESH price map on every call — never a mutable
+// global: the e2e ops override (SPEND_INSTANCE_COSTS) must not leak across
+// requests, and tests must not contaminate each other (same lesson as the
+// process-global ipHits limiter).
+func instanceCosts() map[string]float64 {
+	costs := map[string]float64{
+		"cx23": 5.49, "cx33": 8.49, "cx43": 15.99, "cx53": 29.49,
+		"cax11": 5.99, "cax21": 6.49, "cax31": 12.49, "cax41": 24.49,
+		"cpx12": 11.99, "cpx22": 19.49, "cpx32": 10.99, "cpx42": 19.99,
+		// CCX (dedicated vCPU, 42.99+) deliberately ABSENT: under the
+		// account budget no dedicated-tier instance may be provisioned —
+		// raise MAX_MONTHLY_SPEND_EUR and add the type via
+		// SPEND_INSTANCE_COSTS when the first Dedicated customer pays.
 	}
-	var override map[string]float64
-	if err := json.Unmarshal([]byte(raw), &override); err == nil {
-		for k, v := range override {
-			instanceCostEUR[k] = v
+	if raw := os.Getenv("SPEND_INSTANCE_COSTS"); raw != "" {
+		var override map[string]float64
+		if err := json.Unmarshal([]byte(raw), &override); err == nil {
+			for k, v := range override {
+				costs[k] = v
+			}
 		}
 	}
+	return costs
 }
 
 // maxMonthlySpendEUR: the account budget. The founder set it at 20
@@ -54,29 +56,18 @@ func maxMonthlySpendEUR() float64 {
 	return 20
 }
 
-// provJob is the tolerant shape of a provisioning job file
-// (prov_*.json in the credentials dir, written by the webhook trigger).
-type provJob struct {
-	Status       string `json:"status"`
-	ServerType   string `json:"server_type"`
-	InstanceType string `json:"instance_type"`
-	Type         string `json:"type"`
-}
-
-func (j provJob) instanceType() string {
-	if j.ServerType != "" {
-		return j.ServerType
-	}
-	if j.InstanceType != "" {
-		return j.InstanceType
-	}
-	return j.Type
+// provScanJob is the tolerant shape of a provisioning job file
+// (prov_*.json in the credentials dir, written by the webhook trigger —
+// provisioning.go names the state field "state" and the type "server_type").
+type provScanJob struct {
+	State      string `json:"state"`
+	ServerType string `json:"server_type"`
 }
 
 // monthlyCommittedEUR sums the estimated monthly cost of provisioning jobs
 // in queued or running state — the committed spend the next request adds to.
 func monthlyCommittedEUR() float64 {
-	loadInstanceCosts()
+	costs := instanceCosts()
 	dir := env("LANDING_CRED_DIR", ".")
 	files, err := filepath.Glob(filepath.Join(dir, "prov_*.json"))
 	if err != nil {
@@ -88,14 +79,14 @@ func monthlyCommittedEUR() float64 {
 		if err != nil {
 			continue
 		}
-		var job provJob
+		var job provScanJob
 		if err := json.Unmarshal(data, &job); err != nil {
 			continue
 		}
-		if job.Status != "queued" && job.Status != "running" {
+		if job.State != "queued" && job.State != "running" {
 			continue
 		}
-		committed += instanceCostEUR[job.instanceType()]
+		committed += costs[job.ServerType]
 	}
 	return committed
 }
@@ -105,8 +96,8 @@ func monthlyCommittedEUR() float64 {
 // dedicated-tier type), and the committed spend plus the new instance must
 // stay under the monthly budget.
 func spendGuard(instanceType string) error {
-	loadInstanceCosts()
-	cost, ok := instanceCostEUR[instanceType]
+	costs := instanceCosts()
+	cost, ok := costs[instanceType]
 	if !ok {
 		return fmt.Errorf("instance type %q is not in the account budget whitelist", instanceType)
 	}

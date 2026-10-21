@@ -41,7 +41,7 @@ func TestSpendGuardRejectsOverBudget(t *testing.T) {
 	// two committed running jobs on cx33 (8.49 each) = 16.98 committed
 	for _, id := range []string{"one", "two"} {
 		_ = osWriteFile(filepath.Join(dir, "prov_"+id+".json"),
-			[]byte(`{"status":"running","server_type":"cx33"}`))
+			[]byte(`{"state":"running","server_type":"cx33"}`))
 	}
 	err := spendGuard("cx33")
 	if err == nil {
@@ -71,14 +71,13 @@ func TestSpendGuardBudgetFromEnv(t *testing.T) {
 func TestMonthlyCommittedFieldTolerance(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LANDING_CRED_DIR", dir)
-	// the webhook trigger may name the field server_type, instance_type or type
-	_ = osWriteFile(filepath.Join(dir, "prov_a.json"), []byte(`{"status":"queued","server_type":"cx33"}`))
-	_ = osWriteFile(filepath.Join(dir, "prov_b.json"), []byte(`{"status":"running","instance_type":"cpx12"}`))
-	_ = osWriteFile(filepath.Join(dir, "prov_c.json"), []byte(`{"status":"running","type":"cx23"}`))
-	_ = osWriteFile(filepath.Join(dir, "prov_d.json"), []byte(`{"status":"failed","server_type":"ccx41"}`))
+	// the webhook trigger names the fields state/server_type
+	_ = osWriteFile(filepath.Join(dir, "prov_a.json"), []byte(`{"state":"queued","server_type":"cx33"}`))
+	_ = osWriteFile(filepath.Join(dir, "prov_b.json"), []byte(`{"state":"running","server_type":"cpx12"}`))
+	_ = osWriteFile(filepath.Join(dir, "prov_d.json"), []byte(`{"state":"failed","server_type":"ccx41"}`))
 	got := monthlyCommittedEUR()
-	// 8.49 + 11.99 + 5.49 = 25.97; failed jobs do not count
-	if got < 25.9 || got > 26.0 {
+	// 8.49 + 11.99 = 20.48; failed jobs do not count
+	if got < 20.4 || got > 20.6 {
 		t.Fatalf("committed sum must count queued+running only, got %.2f", got)
 	}
 }
