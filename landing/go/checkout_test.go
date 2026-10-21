@@ -56,6 +56,14 @@ func testMollie(t *testing.T, payment map[string]any, recorded *map[string]any) 
 	return m
 }
 
+func jsonMarshal(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+func osWriteFile(path string, b []byte) error {
+	return os.WriteFile(path, b, 0600)
+}
+
 func decodeJSON(s string) map[string]any {
 	var out map[string]any
 	_ = json.Unmarshal([]byte(s), &out)
@@ -261,4 +269,115 @@ func TestCheckoutPersistsCustomerForReuse(t *testing.T) {
 		}
 	}
 	_ = payments
+}
+
+// Tests for the plan-cap enforcement (20/10): the shared tiers limit the
+// number of domains server-side (revenue risk otherwise), and the node
+// capacity cap refuses new purchases when the shared pool is full.
+
+// planCapSession connects a session and registers two owned domains so a
+// second gateway PATCH can be attempted against the cap.
+func planCapSession(t *testing.T) (string, string) {
+	t.Helper()
+	sid, csrf := connectedSession(t)
+	restore := ncOwnedDomains
+	ncOwnedDomains = func(c creds) ([]map[string]any, *ncResult) {
+		return []map[string]any{{"name": "example.org"}, {"name": "example.net"}}, nil
+	}
+	t.Cleanup(func() { ncOwnedDomains = restore })
+	return sid, csrf
+}
+
+// planCapPatch routes a PATCH through the real mux pattern.
+func planCapPatch(t *testing.T, sid, csrf, domain string) *httptest.ResponseRecorder {
+	t.Helper()
+	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Setenv("MAILCOW_API_URL", panel.URL)
+	t.Setenv("MAILCOW_API_KEY", "test-key-0123456789")
+	t.Cleanup(panel.Close)
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /api/gateway/domains/{domain}", handleGatewayDomainPatch)
+	req, err := http.NewRequest(http.MethodPatch, "http://gw.test/api/gateway/domains/"+domain, strings.NewReader(`{"branding":"Demo"}`))
+	if err != nil {
+		t.Fatalf("request build failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Landing-CSRF", csrf)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	out := httptest.NewRecorder()
+	mux.ServeHTTP(out, req)
+	return out
+}
+
+func TestTrialCapOneDomain(t *testing.T) {
+	sid, csrf := planCapSession(t)
+	if code := planCapPatch(t, sid, csrf, "example.org").Code; code != http.StatusOK {
+		t.Fatalf("first domain blocked on trial: %d", code)
+	}
+	rec := planCapPatch(t, sid, csrf, "example.net")
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("trial second domain must be 402, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Trial includes 1 domains") {
+		t.Fatalf("limit message must name the plan: %s", rec.Body.String())
+	}
+}
+
+func TestPaidPlanCapEnforced(t *testing.T) {
+	sid, csrf := planCapSession(t)
+	// simulate a paid Solo subscription (1 domain max)
+	b, _ := jsonMarshal(map[string]any{"plan": "solo", "status": "paid"})
+	if err := osWriteFile(checkoutPath("demo"), b); err != nil {
+		t.Fatalf("state write failed: %v", err)
+	}
+	if code := planCapPatch(t, sid, csrf, "example.org").Code; code != http.StatusOK {
+		t.Fatalf("paid first domain blocked: %d", code)
+	}
+	if code := planCapPatch(t, sid, csrf, "example.net").Code; code != http.StatusPaymentRequired {
+		t.Fatalf("Solo second domain must be 402, got %d", code)
+	}
+}
+
+func TestDedicatedUnlimitedDomains(t *testing.T) {
+	sid, csrf := planCapSession(t)
+	b, _ := jsonMarshal(map[string]any{"plan": "dedicated", "status": "paid"})
+	_ = osWriteFile(checkoutPath("demo"), b)
+	if code := planCapPatch(t, sid, csrf, "example.org").Code; code != http.StatusOK {
+		t.Fatalf("dedicated first domain blocked: %d", code)
+	}
+	if code := planCapPatch(t, sid, csrf, "example.net").Code; code != http.StatusOK {
+		t.Fatalf("dedicated unlimited domains violated: %d", code)
+	}
+}
+
+func TestNodeCapacityRefusesPurchase(t *testing.T) {
+	sid, csrf := connectedSession(t)
+	testMollie(t, nil, nil)
+	t.Setenv("MAX_TENANTS_PER_NODE", "1")
+	// one tenant already onboarded (the connect created an env file? no —
+	// write one to simulate an onboarded tenant).
+	_ = osWriteFile(envPath("other"), []byte(`{"env":"shared"}`))
+	rec := httptest.NewRecorder()
+	handleCheckout(rec, checkoutReq(t, sid, csrf, "solo"))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("full node must refuse purchase with 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanForResolution(t *testing.T) {
+	if planFor("demo").Label != "Trial" {
+		t.Fatalf("no state must resolve to Trial, got %q", planFor("demo").Label)
+	}
+	_ = osWriteFile(checkoutPath("demo"), []byte(`{"plan":"studio","status":"paid"}`))
+	p := planFor("demo")
+	if p.Label != "Studio" || p.MaxDomains != 3 {
+		t.Fatalf("paid state must resolve to Studio/3, got %q/%d", p.Label, p.MaxDomains)
+	}
+	_ = osWriteFile(checkoutPath("demo"), []byte(`{"plan":"studio","status":"open"}`))
+	if planFor("demo").Label != "Trial" {
+		t.Fatalf("unpaid state must stay Trial")
+	}
 }

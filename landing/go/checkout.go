@@ -22,22 +22,35 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // checkoutPlan is one self-serve tier, priced in EUR/month (pricing page).
+// The caps are the limits the pricing page promises (20/10): Solo 1 domain /
+// 3 mailboxes, Studio 3/10, Scale 10/25, Dedicated unlimited domains / 50
+// mailboxes, Dedicated XL unlimited / 150.
 type checkoutPlan struct {
-	Price string // Mollie value format: "9.00"
-	Label string
+	Price        string // Mollie value format: "9.00"
+	Label        string
+	MaxDomains   int // 0 = unlimited (dedicated tiers)
+	MaxMailboxes int // 0 = unlimited
 }
 
 var checkoutPlans = map[string]checkoutPlan{
-	"solo":         {Price: "9.00", Label: "Solo"},
-	"studio":       {Price: "25.00", Label: "Studio"},
-	"scale":        {Price: "55.00", Label: "Scale"},
-	"dedicated":    {Price: "149.00", Label: "Dedicated"},
-	"dedicated-xl": {Price: "249.00", Label: "Dedicated XL"},
+	"solo":         {Price: "9.00", Label: "Solo", MaxDomains: 1, MaxMailboxes: 3},
+	"studio":       {Price: "25.00", Label: "Studio", MaxDomains: 3, MaxMailboxes: 10},
+	"scale":        {Price: "55.00", Label: "Scale", MaxDomains: 10, MaxMailboxes: 25},
+	"dedicated":    {Price: "149.00", Label: "Dedicated", MaxDomains: 0, MaxMailboxes: 50},
+	"dedicated-xl": {Price: "249.00", Label: "Dedicated XL", MaxDomains: 0, MaxMailboxes: 150},
+}
+
+// trialCaps: an account connected without an active subscription — 1 domain,
+// 1 mailbox. Enough to evaluate, too small to live on.
+func trialCaps() checkoutPlan {
+	return checkoutPlan{Label: "Trial", MaxDomains: 1, MaxMailboxes: 1}
 }
 
 // checkoutPath keys the billing state file to the account (plain JSON — the
@@ -45,6 +58,78 @@ var checkoutPlans = map[string]checkoutPlan{
 func checkoutPath(username string) string {
 	h := sha256.Sum256([]byte(username))
 	return fmt.Sprintf("%s/bill_%s.json", env("LANDING_CRED_DIR", "."), hex.EncodeToString(h[:16]))
+}
+
+// planFor resolves the active plan for an account: paid state (bill file) →
+// its tier; anything else → trial caps. The shared tiers' caps are enforced
+// server-side (revenue risk otherwise: a Solo tenant without limits).
+func planFor(username string) checkoutPlan {
+	data, err := os.ReadFile(checkoutPath(username))
+	if err == nil {
+		var saved map[string]any
+		_ = json.Unmarshal(data, &saved)
+		if status, _ := saved["status"].(string); status == "paid" {
+			if p, ok := checkoutPlans[fmt.Sprint(saved["plan"])]; ok {
+				return p
+			}
+		}
+	}
+	return trialCaps()
+}
+
+// provisionedPath keys the per-account list of gateway domains the tenant
+// manages (same dir + hashing pattern as the other per-account files).
+func provisionedPath(username string) string {
+	h := sha256.Sum256([]byte(username))
+	return fmt.Sprintf("%s/dom_%s.json", env("LANDING_CRED_DIR", "."), hex.EncodeToString(h[:16]))
+}
+
+// provisionedDomains returns the distinct gateway domains the account touches.
+func provisionedDomains(username string) []string {
+	data, err := os.ReadFile(provisionedPath(username))
+	if err != nil {
+		return nil
+	}
+	var saved struct {
+		Domains []string `json:"domains"`
+	}
+	_ = json.Unmarshal(data, &saved)
+	return saved.Domains
+}
+
+// addProvisionedDomain records a gateway domain in the account's list
+// (0600, same isolation as credentials).
+func addProvisionedDomain(username, domain string) {
+	list := provisionedDomains(username)
+	for _, d := range list {
+		if strings.EqualFold(d, domain) {
+			return
+		}
+	}
+	list = append(list, domain)
+	b, _ := json.Marshal(map[string]any{"domains": list, "ts": time.Now().UTC().Format(time.RFC3339)})
+	_ = os.WriteFile(provisionedPath(username), b, 0600)
+}
+
+// maxTenantsPerNode: scale-up is the NEXT shared node (provisioned, not
+// autoscaled — mail is stateful); this cap protects the shared pool.
+func maxTenantsPerNode() int {
+	if v := os.Getenv("MAX_TENANTS_PER_NODE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 80
+}
+
+// nodeTenantCount counts onboarded tenants on this node: one env-choice file
+// per account (the shared/dedicated decision = one tenant onboarded).
+func nodeTenantCount() int {
+	entries, err := filepath.Glob(filepath.Join(env("LANDING_CRED_DIR", "."), "env_*.json"))
+	if err != nil {
+		return 0
+	}
+	return len(entries)
 }
 
 // mollieCall is the Mollie REST client: Bearer key, JSON in/out, raw status.
@@ -156,6 +241,13 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	if os.Getenv("MOLLIE_API_KEY") == "" {
 		jsonErr(w, "Payments are not configured yet on this server", http.StatusServiceUnavailable)
+		return
+	}
+	// Shared-pool capacity: scale up is the next node, provisioned on
+	// purpose — not autoscaling (mail is stateful). Refuse new purchases
+	// when this node is full; contact sales handles the overflow.
+	if nodeTenantCount() >= maxTenantsPerNode() {
+		jsonErr(w, "This node is at capacity — contact sales for dedicated capacity", http.StatusServiceUnavailable)
 		return
 	}
 	var payload struct {
@@ -319,5 +411,7 @@ func handleCheckoutState(w http.ResponseWriter, r *http.Request) {
 	}
 	var saved map[string]any
 	_ = json.Unmarshal(data, &saved)
-	jsonOut(w, map[string]any{"ok": true, "billing": saved})
+	plan := planFor(sess.username)
+	jsonOut(w, map[string]any{"ok": true, "billing": saved, "plan": plan.Label,
+		"max_domains": plan.MaxDomains, "max_mailboxes": plan.MaxMailboxes})
 }

@@ -1184,6 +1184,21 @@ func handleGatewayDomainPatch(w http.ResponseWriter, r *http.Request) {
 	if !requireCSRF(w, r, sess) {
 		return
 	}
+	// Plan caps (20/10): the shared tiers limit the number of domains the
+	// tenant manages — enforced here, the write path, not just priced.
+	plan := planFor(sess.username)
+	known := provisionedDomains(sess.username)
+	isNewDomain := true
+	for _, d := range known {
+		if strings.EqualFold(d, domain) {
+			isNewDomain = false
+			break
+		}
+	}
+	if isNewDomain && plan.MaxDomains > 0 && len(known) >= plan.MaxDomains {
+		jsonErr(w, fmt.Sprintf("Plan limit reached — %s includes %d domains. Upgrade to manage more.", plan.Label, plan.MaxDomains), http.StatusPaymentRequired)
+		return
+	}
 	var payload struct {
 		Branding  string   `json:"branding"`
 		PTRTarget string   `json:"ptr_target"`
@@ -1235,6 +1250,9 @@ func handleGatewayDomainPatch(w http.ResponseWriter, r *http.Request) {
 	if err := mcSuccess(body); err != nil {
 		jsonErr(w, fmt.Sprintf("mail platform refused: %v", err), http.StatusBadGateway)
 		return
+	}
+	if isNewDomain {
+		addProvisionedDomain(sess.username, domain)
 	}
 	auditLog("domain_settings_patch", map[string]any{"ok": true, "domain": domain, "fields": attr})
 	jsonOut(w, map[string]any{"ok": true, "domain": record, "warnings": warnings})
