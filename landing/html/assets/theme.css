@@ -620,6 +620,8 @@ tbody tr[role="button"]:focus-visible {
   background: var(--panel);
 }
 
+.sogo-frame[hidden] { display: none; }
+
 .sogo-gate {
   display: flex;
   flex-direction: column;
