@@ -354,7 +354,7 @@ func TestDedicatedUnlimitedDomains(t *testing.T) {
 }
 
 func TestNodeCapacityRefusesPurchase(t *testing.T) {
-	t.Setenv("LANDING_CRED_DIR", filepath.Join(t.TempDir(), "creds"))
+	t.Setenv("LANDING_CRED_DIR", t.TempDir())
 	sid, csrf := connectedSession(t)
 	testMollie(t, nil, nil)
 	t.Setenv("MAX_TENANTS_PER_NODE", "1")
@@ -369,7 +369,7 @@ func TestNodeCapacityRefusesPurchase(t *testing.T) {
 }
 
 func TestPlanForResolution(t *testing.T) {
-	t.Setenv("LANDING_CRED_DIR", filepath.Join(t.TempDir(), "creds"))
+	t.Setenv("LANDING_CRED_DIR", t.TempDir())
 	if planFor("demo").Label != "Trial" {
 		t.Fatalf("no state must resolve to Trial, got %q", planFor("demo").Label)
 	}
