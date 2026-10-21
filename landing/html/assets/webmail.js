@@ -26,7 +26,17 @@
   const origin = status.httpOk && status.data && status.data.mailcow_origin
     ? status.data.mailcow_origin.replace(/\/$/, '') : '';
   const open = $('#sogo-open');
+  const gate = $('#sogo-gate');
   if (open && origin) open.href = origin + '/SOGo/';
+  else if (open && gate) {
+    // Origin unknown: disable the CTA (no empty tab) and tell the user honestly.
+    open.removeAttribute('href');
+    open.setAttribute('aria-disabled', 'true');
+    const note = document.createElement('p');
+    note.className = 'msg error';
+    note.textContent = 'The webmail client is temporarily unreachable — please try again later.';
+    gate.appendChild(note);
+  }
   const adminLink = $('#admin-link');
   if (adminLink && origin) adminLink.href = origin + '/home';
 

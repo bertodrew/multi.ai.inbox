@@ -6,8 +6,8 @@
    authenticate with the Bearer API key, which never reaches the browser — so
    the listing is fetched from the gateway proxy being built in parallel:
      GATEWAY_MAILBOXES = 'api/gateway/mailboxes?domain=<domain>'
-   On 404/501/503 or any failure the page shows the honest notice (what ships
-   when, what works today) — never fake rows. Basic actions work today:
+   On 404/501/503 or any failure the page shows an honest error notice with a
+   Retry action — never fake rows. Basic actions work today:
    prepare + copy the address, open the mail UI. */
 (async () => {
   'use strict';
@@ -156,7 +156,7 @@
     }
   }
 
-  /* ---------------- mailbox list (gateway, in costruzione) ---------------- */
+  /* ---------------- mailbox list (live via the API gateway) ---------------- */
 
   async function loadMailboxes(domain) {
     $('#list-meta').textContent = domain;
@@ -186,8 +186,14 @@
       ));
       return;
     }
-    // gateway not live (404/501/503) or any failure: honest notice, no fake rows
-    showMsg(note, 'The mailbox listing is not available yet \u2014 it ships with the API gateway. Today mailbox operations run agent-side via MCP (see the Connectors page for the setup).');
+    // gateway error (404/501/503) or any failure: honest notice + retry, no fake rows
+    note.replaceChildren();
+    note.appendChild(document.createTextNode('Could not load the mailbox listing right now. Today mailbox operations also run agent-side via MCP \u2014 see the Connectors page for the setup. '));
+    const retry = el('button', 'btn small-btn', 'Retry');
+    retry.type = 'button';
+    retry.addEventListener('click', () => loadMailboxes(domain));
+    note.appendChild(retry);
+    note.hidden = false;
   }
 
   /* ---------------- basic actions (work today) ---------------- */

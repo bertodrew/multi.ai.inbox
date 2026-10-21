@@ -25,7 +25,8 @@
   } else {
     const submit = mailcowForm.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
-    mailcowHint.textContent = 'Mail origin unknown: set MAILCOW_UI_ORIGIN in the platform config and restart the landing services.';
+    mailcowHint.textContent = 'The mail UI is temporarily unreachable. Please try again later — if it persists, contact support.';
+    console.warn('Landing: mail origin unknown — set MAILCOW_UI_ORIGIN in the platform config and restart the landing services.');
   }
 
   // S4: the server no longer discloses its egress IP to the browser — leave the
@@ -34,15 +35,28 @@
   $('#nc-ip-hint').textContent =
     'Optional: leave empty to use this server\u2019s egress IP, or type the IP whitelisted in Namecheap (Profile > Tools > API Access).';
 
-  document.querySelectorAll('.tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach((t) => {
-        t.classList.toggle('active', t === tab);
-        t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-      });
-      document.querySelectorAll('.panel').forEach((p) => {
-        p.classList.toggle('active', p.id === 'panel-' + tab.dataset.tab);
-      });
+  // ARIA tablist: click activates, arrow keys move focus + activate,
+  // roving tabindex (active tab 0, the others -1).
+  const tabs = Array.from(document.querySelectorAll('.tab'));
+  const activateTab = (active) => {
+    tabs.forEach((t) => {
+      t.classList.toggle('active', t === active);
+      t.setAttribute('aria-selected', t === active ? 'true' : 'false');
+      t.tabIndex = t === active ? 0 : -1;
+    });
+    document.querySelectorAll('.panel').forEach((p) => {
+      p.classList.toggle('active', p.id === 'panel-' + active.dataset.tab);
+    });
+  };
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => activateTab(tab));
+    tab.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const idx = tabs.indexOf(tab);
+      const next = tabs[(idx + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      next.focus();
+      activateTab(next);
     });
   });
 
@@ -117,7 +131,10 @@
     if (closer) closer.addEventListener('click', () => dlg.close());
   });
 
-  // Scroll reveal: elements marked data-reveal fade/slide in on first view.
+  // Scroll reveal: progressive enhancement — mark the document only when JS
+  // runs (landing.css hides [data-reveal] under .js-reveal), elements marked
+  // data-reveal fade/slide in on first view. Without JS, content stays visible.
+  document.documentElement.classList.add('js-reveal');
   if ('IntersectionObserver' in window) {
     const io = new IntersectionObserver((entries) => {
       entries.forEach((en) => {

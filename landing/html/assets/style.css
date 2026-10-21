@@ -146,6 +146,7 @@ pre {
 
 .btn:hover { filter: brightness(1.12); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; filter: none; }
+.btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; filter: none; }
 
 .btn.primary { background: var(--accent); color: #0d1310; }
 .btn.accent { background: var(--blue); color: #0b1220; }
@@ -235,6 +236,21 @@ pre {
 }
 
 .msg.error { background: rgba(229, 83, 75, 0.12); border: 1px solid var(--danger); color: #ffb3ae; }
+
+/* environment pick (radio cards) — shared by onboarding + settings */
+
+.env-pick { border: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
+.env-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.env-opt:has(input:checked) { border-color: var(--accent); }
+.env-opt input { margin-top: 3px; accent-color: var(--accent); }
 
 /* features */
 
@@ -379,4 +395,7 @@ footer { border-top: 1px solid var(--border); margin-top: auto; }
   .bar-nav { justify-content: flex-start; }
   .connected-as { display: none; }
   .login-card { padding: 16px; }
+  /* touch targets ≥ 44px on mobile */
+  .btn { min-height: 44px; }
+  .btn.small-btn { min-height: 44px; padding: 10px 14px; }
 }

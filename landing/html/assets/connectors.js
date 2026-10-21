@@ -23,7 +23,7 @@
   if (connectedAs) connectedAs.setAttribute('aria-live', 'polite');
 
   $('#connected-as').textContent = 'Connected as ' + status.username + (status.sandbox ? ' (sandbox)' : '');
-  $('#admin-link').href = status.mailcow_origin ? status.mailcow_origin + '/home' : '#';
+  $('#admin-link').href = status.mailcow_origin ? status.mailcow_origin + '/home' : '/home';
   $('#mcp-endpoint').textContent = endpoint;
 
   const config = JSON.stringify({

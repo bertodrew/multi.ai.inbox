@@ -32,7 +32,7 @@
         <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="pricing.html">Pricing</a>
         <a class="btn ghost" href="docs.html">Docs</a>
-        <a class="btn ghost" id="admin-link" href="#" rel="noopener">Mail UI</a>
+        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
         <button class="btn primary" type="button" data-open-login>Sign in</button>
       </nav>
     </div>
@@ -179,12 +179,12 @@
         </svg>
       </button>
       <h2 id="login-modal-title" class="login-title">Sign in</h2>
-      <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="mailcow" role="tab" aria-selected="true">Mailbox login</button>
-        <button class="tab" data-tab="namecheap" role="tab" aria-selected="false">Login with Namecheap</button>
+      <div class="tabs" role="tablist" aria-label="Sign-in method">
+        <button class="tab active" id="tab-mailcow" data-tab="mailcow" role="tab" aria-selected="true" aria-controls="panel-mailcow">Mailbox login</button>
+        <button class="tab" id="tab-namecheap" data-tab="namecheap" role="tab" aria-selected="false" aria-controls="panel-namecheap" tabindex="-1">Login with Namecheap</button>
       </div>
 
-      <div class="panel active" id="panel-mailcow" role="tabpanel">
+      <div class="panel active" id="panel-mailcow" role="tabpanel" aria-labelledby="tab-mailcow" tabindex="0">
         <form id="mailcow-form" method="post" action="">
           <label for="login_user">Email</label>
           <input id="login_user" name="login_user" type="text" autocorrect="off" autocapitalize="none"
@@ -199,7 +199,7 @@
         </p>
       </div>
 
-      <div class="panel" id="panel-namecheap" role="tabpanel">
+      <div class="panel" id="panel-namecheap" role="tabpanel" aria-labelledby="tab-namecheap" tabindex="0">
         <form id="nc-form">
           <label for="nc-username">Namecheap username</label>
           <input id="nc-username" name="username" type="text" autocorrect="off" autocapitalize="none"
