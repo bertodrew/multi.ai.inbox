@@ -617,6 +617,15 @@ type mcDomain struct {
 	DefQuota    any    `json:"defquota"`
 }
 
+type mcMailbox struct {
+	Username  string `json:"username"`
+	Name      string `json:"name"`
+	Active    any    `json:"active"`
+	QuotaUsed any    `json:"quota_used"`
+	Messages  any    `json:"messages"`
+	LastLogin any    `json:"last_imap_login"`
+}
+
 func gwActive(v any) bool {
 	switch x := v.(type) {
 	case bool:

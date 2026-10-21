@@ -201,7 +201,7 @@ func TestGatewayDomainWriteFlow(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/v1/get/domain/"):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"domain_name":"example.org","description":"Brand one","maxquota":"1024","defquota":"512"}`))
+			_, _ = w.Write([]byte(`[{"domain_name":"example.org","description":"Brand one","maxquota":"1024","defquota":"512"}]`))
 		case r.URL.Path == "/api/v1/edit/domain":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[{"type":"success","msg":["domain edited"]}]`))

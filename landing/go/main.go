@@ -1158,11 +1158,15 @@ func handleGatewayDomainGet(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, fmt.Sprintf("mail platform did not answer: %v", err), http.StatusBadGateway)
 		return
 	}
-	var d mcDomain
-	if err := json.Unmarshal(body, &d); err != nil || d.DomainName == "" {
+	// The mail API answers with an ARRAY of domain rows ([] when the domain
+	// does not exist yet) — decode accordingly, a struct decode of an array
+	// fails and surfaced as a fake 502.
+	var list []mcDomain
+	if err := json.Unmarshal(body, &list); err != nil || len(list) == 0 {
 		jsonErr(w, "Domain is not provisioned on the mail platform yet", http.StatusNotFound)
 		return
 	}
+	d := list[0]
 	jsonOut(w, map[string]any{"ok": true, "domain": map[string]any{
 		"fqdn":       d.DomainName,
 		"branding":   d.Description,
@@ -1170,6 +1174,47 @@ func handleGatewayDomainGet(w http.ResponseWriter, r *http.Request) {
 		"maxquota":   d.MaxQuota,
 		"ptr_target": "",
 	}})
+}
+
+// handleGatewayMailboxes serves GET api/gateway/mailboxes?domain=<domain>:
+// mailbox rows for a domain on the mail platform. 404 when the domain is not
+// provisioned — the UI surfaces that honestly, never fake rows.
+func handleGatewayMailboxes(w http.ResponseWriter, r *http.Request) {
+	domain, _, ok := gwSessionDomain(w, r)
+	if !ok {
+		return
+	}
+	_, body, err := gwMailcowCall(http.MethodGet, "/api/v1/get/mailbox/all?domain="+domain, nil)
+	if err != nil {
+		jsonErr(w, fmt.Sprintf("mail platform did not answer: %v", err), http.StatusBadGateway)
+		return
+	}
+	// The mail API answers with an ARRAY of mailbox rows ([] when empty).
+	var list []mcMailbox
+	if err := json.Unmarshal(body, &list); err != nil {
+		jsonErr(w, "mail platform sent an unreadable mailbox listing", http.StatusBadGateway)
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, m := range list {
+		quota := m.QuotaUsed
+		if q, isNum := quota.(float64); isNum && q > 0 {
+			quota = int64(q / (1024 * 1024)) // bytes → MiB, the UI's quota unit
+		}
+		login := "never"
+		if ts, isNum := m.LastLogin.(float64); isNum && ts > 0 {
+			login = time.Unix(int64(ts), 0).UTC().Format("2006-01-02")
+		}
+		out = append(out, map[string]any{
+			"address":    m.Username,
+			"name":       m.Name,
+			"quota_used": quota,
+			"messages":   m.Messages,
+			"active":     gwActive(m.Active),
+			"last_login": login,
+		})
+	}
+	jsonOut(w, map[string]any{"ok": true, "domain": domain, "mailboxes": out})
 }
 
 // handleGatewayDomainPatch serves PATCH api/gateway/domains/<domain> (session
@@ -1273,6 +1318,7 @@ func main() {
 	mux.HandleFunc("/api/connect", handleConnect)
 	mux.HandleFunc("/api/disconnect", handleDisconnect)
 	mux.HandleFunc("/api/domains", handleDomains)
+	mux.HandleFunc("GET /api/gateway/mailboxes", handleGatewayMailboxes)
 	mux.HandleFunc("/api/env", handleEnv)
 	mux.HandleFunc("/api/dns", handleDNS)
 	mux.HandleFunc("/api/mcp", handleMCP)
