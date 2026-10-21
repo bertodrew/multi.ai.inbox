@@ -382,6 +382,12 @@ footer { border-top: 1px solid var(--border); margin-top: auto; }
   font-size: 0.84rem;
 }
 
+.foot-brand { display: inline-flex; align-items: center; gap: 8px; }
+.foot-brand .brand-name { font-size: 0.95rem; color: var(--text); }
+.foot-brand .logo { display: block; }
+.foot-nav a { color: var(--muted); }
+.foot-nav a:hover { color: var(--text); }
+
 /* responsive */
 
 @media (max-width: 860px) {

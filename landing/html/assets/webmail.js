@@ -38,7 +38,9 @@
     gate.appendChild(note);
   }
   const adminLink = $('#admin-link');
-  if (adminLink && origin) adminLink.href = origin + '/home';
+  // The Mail UI entry points at the webmail that actually answers (/SOGo/):
+  // /home was the wrong URL — it lands in the platform's raw admin UI.
+  if (adminLink && origin) adminLink.href = origin + '/SOGo/';
 
   // Session identity in the topbar (same convention as the other app pages).
   if (status.httpOk && status.data && status.data.connected && status.data.username) {

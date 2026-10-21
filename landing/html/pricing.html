@@ -28,7 +28,7 @@
     .env-hint { color: var(--muted-foreground); font-size: 0.85rem; }
   </style>
 </head>
-<body>
+<body data-page="pricing">
   <a class="skip-link" href="#main">Skip to content</a>
 
   <header class="topbar">
@@ -44,14 +44,10 @@
       </a>
       <nav class="bar-nav" aria-label="Main">
         <a class="btn ghost" href="use-cases.html">Use cases</a>
-        <a class="btn ghost" href="inbox.html">Mailboxes</a>
         <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="pricing.html" aria-current="page">Pricing</a>
         <a class="btn ghost" href="docs.html">Docs</a>
-        <a class="btn ghost" href="settings.html">Settings</a>
-        <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
-        <a class="btn ghost" href="/home">Sign in</a>
+        <button class="btn primary" type="button" data-open-login>Sign in</button>
       </nav>
     </div>
   </header>
@@ -251,10 +247,76 @@
 
   <footer>
     <div class="wrap footer-inner">
-      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
       <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
     </div>
   </footer>
 <script src="assets/checkout.js" defer></script>
-  </body>
+  
+  <dialog id="login-modal" class="login-modal" aria-labelledby="login-modal-title">
+    <div class="login-card">
+      <button class="modal-close" type="button" id="login-close" aria-label="Close sign-in">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="login-modal-title" class="login-title">Sign in</h2>
+      <div class="tabs" role="tablist" aria-label="Sign-in method">
+        <button class="tab active" id="tab-mailcow" data-tab="mailcow" role="tab" aria-selected="true" aria-controls="panel-mailcow">Mailbox login</button>
+        <button class="tab" id="tab-namecheap" data-tab="namecheap" role="tab" aria-selected="false" aria-controls="panel-namecheap" tabindex="-1">Login with Namecheap</button>
+      </div>
+
+      <div class="panel active" id="panel-mailcow" role="tabpanel" aria-labelledby="tab-mailcow" tabindex="0">
+        <form id="mailcow-form" method="post" action="">
+          <label for="login_user">Email</label>
+          <input id="login_user" name="login_user" type="text" autocorrect="off" autocapitalize="none"
+                 placeholder="you@example.com" autocomplete="username" required>
+          <label for="pass_user">Password</label>
+          <input id="pass_user" name="pass_user" type="password"
+                 placeholder="Password" autocomplete="current-password" required>
+          <button class="btn primary w100" type="submit">Sign in to the Mail UI</button>
+        </form>
+        <p class="hint" id="mailcow-hint">
+          Same authentication as the UI on <code>/home</code> &mdash; you land straight in the Mail UI.
+        </p>
+      </div>
+
+      <div class="panel" id="panel-namecheap" role="tabpanel" aria-labelledby="tab-namecheap" tabindex="0">
+        <form id="nc-form">
+          <label for="nc-username">Namecheap username</label>
+          <input id="nc-username" name="username" type="text" autocorrect="off" autocapitalize="none"
+                 placeholder="yourname" autocomplete="off" required>
+          <label for="nc-api-key">Namecheap API key</label>
+          <input id="nc-api-key" name="api_key" type="password"
+                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" required>
+          <label for="nc-client-ip">Whitelisted client IP</label>
+          <input id="nc-client-ip" name="client_ip" type="text" placeholder="auto-detected" autocomplete="off">
+          <label class="check">
+            <input type="checkbox" id="nc-sandbox" name="use_sandbox">
+            Use Namecheap sandbox for testing
+          </label>
+          <button class="btn accent w100" type="submit" id="nc-submit">Connect Namecheap</button>
+        </form>
+        <p class="msg error" id="nc-error" hidden></p>
+        <p class="hint">
+          Your API key is validated, then stored server-side only &mdash; never in the repository, never in logs.
+          Namecheap has no third-party OAuth login, so an API-key connection is the honest way.
+        </p>
+        <p class="hint" id="nc-ip-hint">Detecting server IP&hellip;</p>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="assets/app.js" defer></script>
+</body>
 </html>

@@ -8,7 +8,9 @@
     status = null;
   }
 
-  if (status && status.ok && status.connected) {
+  // Connected-first redirect: only on the sign-in landing itself — the other
+  // marketing pages (use cases, pricing, docs) stay browsable while connected.
+  if ((document.body.dataset.page || 'index') === 'index' && status && status.ok && status.connected) {
     location.replace('connectors.html');
     return;
   }
@@ -17,23 +19,30 @@
   const origin = status && status.ok ? status.mailcow_origin : '';
   const mailcowForm = $('#mailcow-form');
   const mailcowHint = $('#mailcow-hint');
-  mailcowHint.setAttribute('aria-live', 'polite'); // M4 fix: origin status announced
+  if (mailcowHint) mailcowHint.setAttribute('aria-live', 'polite'); // M4 fix: origin status announced
 
   if (origin) {
-    mailcowForm.action = origin + '/home';
-    $('#admin-link').href = origin + '/home';
+    if (mailcowForm) mailcowForm.action = origin + '/home';
+    // The Mail UI entry points at the webmail that actually answers (/SOGo/):
+    // /home was the wrong URL — it lands in the platform's raw admin UI with
+    // the wrong layout and branding.
+    const adminLink = $('#admin-link');
+    if (adminLink) adminLink.href = origin + '/SOGo/';
   } else {
-    const submit = mailcowForm.querySelector('button[type="submit"]');
+    const submit = mailcowForm && mailcowForm.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
-    mailcowHint.textContent = 'The mail UI is temporarily unreachable. Please try again later — if it persists, contact support.';
+    if (mailcowHint) mailcowHint.textContent = 'The mail UI is temporarily unreachable. Please try again later — if it persists, contact support.';
     console.warn('Landing: mail origin unknown — set MAILCOW_UI_ORIGIN in the platform config and restart the landing services.');
   }
 
   // S4: the server no longer discloses its egress IP to the browser — leave the
   // field empty and the API uses the server's own egress IP (auto-detected).
-  $('#nc-ip-hint').setAttribute('aria-live', 'polite'); // M4 fix: status update announced
-  $('#nc-ip-hint').textContent =
-    'Optional: leave empty to use this server\u2019s egress IP, or type the IP whitelisted in Namecheap (Profile > Tools > API Access).';
+  const ncIpHint = $('#nc-ip-hint');
+  if (ncIpHint) {
+    ncIpHint.setAttribute('aria-live', 'polite'); // M4 fix: status update announced
+    ncIpHint.textContent =
+      'Optional: leave empty to use this server\u2019s egress IP, or type the IP whitelisted in Namecheap (Profile > Tools > API Access).';
+  }
 
   // ARIA tablist: click activates, arrow keys move focus + activate,
   // roving tabindex (active tab 0, the others -1).
@@ -61,10 +70,11 @@
   });
 
   const ncError = $('#nc-error');
-  ncError.setAttribute('role', 'alert'); // M4 fix: submit errors announced to screen readers
   const ncSubmit = $('#nc-submit');
-
-  $('#nc-form').addEventListener('submit', async (e) => {
+  const ncForm = $('#nc-form');
+  if (ncError) ncError.setAttribute('role', 'alert'); // M4 fix: submit errors announced to screen readers
+  if (ncForm && ncSubmit && ncError) {
+    ncForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     ncError.hidden = true;
 
@@ -96,7 +106,8 @@
     }
     ncError.textContent = res.error || 'Connection failed';
     ncError.hidden = false;
-  });
+    });
+  }
 
   // Sign-in modal: every [data-open-login] opens the <dialog>; backdrop and
   // close button dismiss it (Esc is native to <dialog>).
