@@ -23,6 +23,9 @@ func testMollie(t *testing.T, payment map[string]any, recorded *map[string]any) 
 	m := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/customers":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"cst_new","resource":"customer","name":"AImulti tenant demo","metadata":{"username":"demo"}}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/payments":
 			b := make([]byte, r.ContentLength)
 			_, _ = r.Body.Read(b)
@@ -144,10 +147,13 @@ func TestCheckoutCreatesFirstPayment(t *testing.T) {
 	if body["checkout_url"] != "https://checkout.mollie.test/pay/tr_first" {
 		t.Fatalf("checkout_url missing: %v", body)
 	}
-	// THE GUARD: the first payment must carry sequenceType=first and the
-	// account metadata the webhook needs to map the payment back.
+	// THE GUARD: the first payment must carry sequenceType=first, the Mollie
+	// customer (422 otherwise — found live 21/10) and the account metadata.
 	if recorded["sequenceType"] != "first" {
 		t.Fatalf("payment must be sequenceType=first, got %v", recorded["sequenceType"])
+	}
+	if recorded["customerId"] != "cst_new" {
+		t.Fatalf("payment must carry the Mollie customerId, got %v", recorded["customerId"])
 	}
 	meta, _ := recorded["metadata"].(map[string]any)
 	if meta == nil || meta["plan"] != "solo" || meta["username"] == "" {
@@ -232,4 +238,27 @@ func TestCheckoutPathIsPerAccount(t *testing.T) {
 	if a == b || a == "" || !strings.Contains(filepath.Base(a), "bill_") {
 		t.Fatalf("checkoutPath must be per-account: %q vs %q", a, b)
 	}
+}
+
+func TestCheckoutPersistsCustomerForReuse(t *testing.T) {
+	sid, csrf := connectedSession(t)
+	var payments []map[string]any
+	testMollie(t, nil, nil)
+	// two checkouts: the second must REUSE the persisted customer, not
+	// create a second one (one Mollie customer per tenant).
+	for i := 0; i < 2; i++ {
+		rec := httptest.NewRecorder()
+		handleCheckout(rec, checkoutReq(t, sid, csrf, "solo"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("checkout %d returned %d: %s", i, rec.Code, rec.Body.String())
+		}
+		data, err := os.ReadFile(checkoutPath("demo"))
+		if err != nil {
+			t.Fatalf("customer id not persisted: %v", err)
+		}
+		if decodeJSON(string(data))["customer_id"] != "cst_new" {
+			t.Fatalf("customer_id missing from billing state")
+		}
+	}
+	_ = payments
 }

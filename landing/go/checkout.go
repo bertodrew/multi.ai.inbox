@@ -98,6 +98,45 @@ func checkoutBaseURL() string {
 	return strings.TrimRight(env("LANDING_BASE_URL", "https://2.28.99.252"), "/")
 }
 
+
+// customerIDFor resolves (and lazily creates) the Mollie customer for the
+// account: sequenceType=first requires one (422 otherwise, found live 21/10).
+// The customer id is persisted in the billing state so the next checkout
+// reuses it (one customer per tenant, mandates and subscriptions hang off it).
+func customerIDFor(username string) (string, error) {
+	if data, err := os.ReadFile(checkoutPath(username)); err == nil {
+		var saved map[string]any
+		_ = json.Unmarshal(data, &saved)
+		if cid, _ := saved["customer_id"].(string); cid != "" {
+			return cid, nil
+		}
+	}
+	code, out, err := mollieCall(http.MethodPost, "/customers", map[string]any{
+		"name":     "AImulti tenant " + username,
+		"metadata": map[string]any{"username": username},
+	})
+	if err != nil {
+		return "", err
+	}
+	if code != http.StatusCreated {
+		return "", fmt.Errorf("customer creation rejected (%d)", code)
+	}
+	cid, _ := out["id"].(string)
+	if cid == "" {
+		return "", fmt.Errorf("payment provider returned no customer id")
+	}
+	saved := map[string]any{}
+	if data, err := os.ReadFile(checkoutPath(username)); err == nil {
+		_ = json.Unmarshal(data, &saved)
+	}
+	saved["customer_id"] = cid
+	b, _ := json.Marshal(saved)
+	if err := os.WriteFile(checkoutPath(username), b, 0600); err != nil {
+		return "", err
+	}
+	return cid, nil
+}
+
 // handleCheckout serves POST api/checkout {plan}: requires a connected
 // session (you buy for the connected account) + CSRF. Creates the first
 // Mollie payment (sequenceType=first) and returns the hosted checkout URL.
@@ -131,6 +170,15 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "Unknown plan", http.StatusNotFound)
 		return
 	}
+	cid, err := customerIDFor(sess.username)
+	if err != nil {
+		if err == errPaymentsNotConfigured {
+			jsonErr(w, "Payments are not configured yet on this server", http.StatusServiceUnavailable)
+		} else {
+			jsonErr(w, fmt.Sprintf("could not resolve the payment customer: %v", err), http.StatusBadGateway)
+		}
+		return
+	}
 	base := checkoutBaseURL()
 	body := map[string]any{
 		"amount":       map[string]any{"currency": "EUR", "value": plan.Price},
@@ -138,6 +186,7 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 		"redirectUrl":  base + "/landingpage/settings.html?payment=return",
 		"webhookUrl":   base + "/landingpage/api/checkout/webhook",
 		"sequenceType": "first",
+		"customerId":   cid,
 		"metadata":     map[string]any{"username": sess.username, "plan": strings.ToLower(strings.TrimSpace(payload.Plan))},
 	}
 	code, out, err := mollieCall(http.MethodPost, "/payments", body)
@@ -228,9 +277,23 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 			subID, _ = sub["id"].(string)
 		}
 	}
-	billBody := fmt.Sprintf(`{"plan":%q,"label":%q,"status":"paid","customer_id":%q,"subscription_id":%q,"first_payment_id":%q,"ts":%q}`,
-		planKey, plan.Label, customerID, subID, paymentID, time.Now().UTC().Format(time.RFC3339))
-	if err := os.WriteFile(checkoutPath(username), []byte(billBody), 0600); err != nil {
+	saved := map[string]any{}
+	if data, err := os.ReadFile(checkoutPath(username)); err == nil {
+		_ = json.Unmarshal(data, &saved)
+	}
+	saved["plan"] = planKey
+	saved["label"] = plan.Label
+	saved["status"] = "paid"
+	if customerID != "" {
+		saved["customer_id"] = customerID
+	}
+	if subID != "" {
+		saved["subscription_id"] = subID
+	}
+	saved["first_payment_id"] = paymentID
+	saved["ts"] = time.Now().UTC().Format(time.RFC3339)
+	b, _ := json.Marshal(saved)
+	if err := os.WriteFile(checkoutPath(username), b, 0600); err != nil {
 		jsonErr(w, "Could not persist billing state", http.StatusInternalServerError)
 		return
 	}
