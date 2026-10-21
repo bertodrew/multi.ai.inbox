@@ -61,8 +61,13 @@
         If the frame stays empty after sign-in, use &ldquo;Open in new tab&rdquo;.
       </p>
 
-      <iframe id="sogo-frame" class="sogo-frame" src="/SOGo/so" title="Groupware webmail client"
-              referrerpolicy="no-referrer"></iframe>
+      <div id="sogo-gate" class="sogo-gate" role="status" aria-live="polite">
+        <p class="msg notice">Sign in to open the webmail client &mdash; the full client runs inside this page once you are connected.</p>
+        <a class="btn primary" id="sogo-signin" href="onboarding.html">Sign in</a>
+      </div>
+
+      <iframe id="sogo-frame" class="sogo-frame" title="Groupware webmail client"
+              referrerpolicy="no-referrer" hidden></iframe>
     </section>
   </main>
 

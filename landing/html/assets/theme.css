@@ -620,6 +620,19 @@ tbody tr[role="button"]:focus-visible {
   background: var(--panel);
 }
 
+.sogo-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: min(76vh, 860px);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 32px;
+}
+
 footer a {
   color: var(--muted);
   text-decoration: underline;
