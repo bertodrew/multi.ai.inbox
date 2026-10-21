@@ -74,3 +74,19 @@ Mollie webhook (paid)
 ---
 
 *Implementato in `landing/go/checkout.go` + `landing/go/main.go` (commit cap enforcement 21/10) · test: TestTrialCapOneDomain, TestPaidPlanCapEnforced, TestDedicatedUnlimitedDomains, TestNodeCapacityRefusesPurchase, TestPlanForResolution — 5/5 PASS + suite verde.*
+
+## 7. Spend guard dell'account Hetzner (21/10, founder: "limiti di spesa a $20/mese")
+
+**Hetzner NON ha un hard spending cap nativo** (verificato ott. 2026: "no built-in hard spending cap, set your own alerting") — l'esposizione si lega su tre livelli:
+
+| Livello | Meccanismo | Chi |
+|---|---|---|
+| **1 — Console** | Tab **Limits** del progetto: tenere il limite "Servers" BASSO (default 5). Ogni istanza ha un price cap mensile (`"your server's bill will never exceed its monthly price cap"`); 5×CX23 €5.49 ≈ €27.45 = esposizione massima del progetto | founder (2 min) |
+| **2 — Codice (fail-closed)** | `spendGuard()` in `landing/go/spend.go`: budget mensile `MAX_MONTHLY_SPEND_EUR` (**default 20**), whitelist tipi istanza con prezzi (CPX12 €11.99 il più economico ordinabile, **CCX deliberatamente assenti** → il provisioning Dedicated è bloccato finché il budget non viene alzato); spesa committed = job prov_*.json queued+running; rifiuto onesto con numeri | implementato 21/10 |
+| **3 — Alerting** | monitoring :8791: spesa committed EUR/mese + notifica a 70% del budget | fase 0 IaaS |
+
+Console (fondatore): Hetzner Console → progetto → **Limits** → verifica "Servers" (abbassare a 2-3 pre-lancio); Billing → notification settings → alert email.
+
+Il tier Dedicated (€149/mo su CCX €59+) **non entra** nel budget di 20 EUR: quando arriva il primo cliente Dedicated si alza `MAX_MONTHLY_SPEND_EUR` (o si aggiunge il CCX alla whitelist) — decisione di revenue, non di sicurezza.
+
+*Test: TestSpendGuardAllowsEntryLevel, TestSpendGuardRejectsUnknownType, TestSpendGuardRejectsOverBudget, TestSpendGuardBudgetFromEnv, TestMonthlyCommittedFieldTolerance — 5/5 PASS.*
