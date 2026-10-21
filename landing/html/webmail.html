@@ -46,28 +46,11 @@
         </div>
       </div>
 
-      <div class="toolbar">
-        <span class="module-label" id="module-label">Module</span>
-        <button class="btn ghost module-btn" type="button" data-view="Mail" aria-pressed="true">Mail</button>
-        <button class="btn ghost module-btn" type="button" data-view="Calendar" aria-pressed="false">Calendar</button>
-        <button class="btn ghost module-btn" type="button" data-view="Contacts" aria-pressed="false">Contacts</button>
-        <button class="btn ghost module-btn" type="button" data-view="Tasks" aria-pressed="false">Tasks</button>
-        <span class="toolbar-spacer"></span>
-        <a class="btn ghost" id="sogo-open" href="/SOGo/" target="_blank" rel="noopener">Open in new tab</a>
-      </div>
-
-      <p class="msg notice" id="sogo-note" role="status" aria-live="polite">
-        Sign-in is your mailbox address + password &mdash; the same authentication as the Mail UI.
-        If the frame stays empty after sign-in, use &ldquo;Open in new tab&rdquo;.
-      </p>
-
       <div id="sogo-gate" class="sogo-gate" role="status" aria-live="polite">
-        <p class="msg notice">Sign in to open the webmail client &mdash; the full client runs inside this page once you are connected.</p>
-        <a class="btn primary" id="sogo-signin" href="onboarding.html">Sign in</a>
+        <p class="msg notice">Sign-in is your mailbox address + password &mdash; separate from this app&rsquo;s session.
+        The client opens in a new tab: SOGo&rsquo;s own login cannot run inside a page frame (SAMEORIGIN).</p>
+        <a class="btn primary" id="sogo-open" href="#" target="_blank" rel="noopener">Open the webmail client</a>
       </div>
-
-      <iframe id="sogo-frame" class="sogo-frame" title="Groupware webmail client"
-              referrerpolicy="no-referrer" hidden></iframe>
     </section>
   </main>
 

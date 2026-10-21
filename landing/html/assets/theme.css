@@ -621,6 +621,7 @@ tbody tr[role="button"]:focus-visible {
 }
 
 .sogo-frame[hidden] { display: none; }
+.sogo-gate[hidden] { display: none; }
 
 .sogo-gate {
   display: flex;

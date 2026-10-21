@@ -14,7 +14,7 @@
   }
 
   const csrf = status.csrf;
-  const endpoint = location.origin + '/landingpage/api/mcp.php';
+  const endpoint = location.origin + '/landingpage/api/mcp';
 
   // M4 fix: error box and session status announced to screen readers
   const domainsError = $('#domains-error');
