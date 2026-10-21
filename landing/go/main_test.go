@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const ncOKXML = `<?xml version="1.0" encoding="utf-8"?>
@@ -338,6 +339,12 @@ func TestGatewayDomainTenantScoping(t *testing.T) {
 		return []map[string]any{{"name": "example.org"}}, nil
 	}
 	t.Cleanup(func() { ncOwnedDomains = restore })
+
+	// Isolate from other tests' failed-connect attempts accumulated on the
+	// shared egress IP (the IP limiter is process-global).
+	ipHits.mu.Lock()
+	ipHits.m = map[string][]time.Time{}
+	ipHits.mu.Unlock()
 
 	rec := httptest.NewRecorder()
 	handleConnect(rec, newVisitor(t, ncOKXML))
