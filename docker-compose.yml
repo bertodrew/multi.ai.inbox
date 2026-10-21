@@ -661,43 +661,6 @@ services:
           aliases:
             - ofelia
 
-    # multi.ai.inbox landing: Go API container (distroless, stdlib-only rewrite of the PHP version)
-    # Static page served by the mailcow nginx at /landingpage/, API proxied to this container.
-    landing-go:
-      build: ./landing/go
-      image: multiai/landing-go:latest
-      restart: always
-      read_only: true
-      tmpfs:
-        - /tmp:size=16m
-      cap_drop:
-        - ALL
-      security_opt:
-        - no-new-privileges:true
-      environment:
-        - TZ=${TZ}
-        - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
-        - MAILCOW_UI_ORIGIN=${MAILCOW_UI_ORIGIN:-}
-        - MAILCOW_API_URL=${MAILCOW_API_URL:-http://nginx}
-        - MAILCOW_API_KEY=${API_KEY:-}
-        - NAMECHEAP_API_URL=${NAMECHEAP_API_URL:-https://api.namecheap.com/xml.response}
-        - NAMECHEAP_SANDBOX_API_URL=${NAMECHEAP_SANDBOX_API_URL:-https://api.sandbox.namecheap.com/xml.response}
-        - MOLLIE_API_KEY=${MOLLIE_API_KEY:-}
-        - LANDING_E2E_MODE=${LANDING_E2E_MODE:-}
-        - MAX_MONTHLY_SPEND_EUR=${MAX_MONTHLY_SPEND_EUR:-}
-        - MAX_TENANTS_PER_NODE=${MAX_TENANTS_PER_NODE:-}
-        - PROVISIONING_ENABLED=${PROVISIONING_ENABLED:-}
-        - PROVISIONING_BASE_DOMAIN=${PROVISIONING_BASE_DOMAIN:-}
-        - PROVISIONING_PROVIDER=${PROVISIONING_PROVIDER:-}
-        - PROVISIONING_LOCATION=${PROVISIONING_LOCATION:-}
-        - HTTPS_INFER=on
-      volumes:
-        - landing-credentials-vol-1:/credentials:z
-      networks:
-        mailcow-network:
-          aliases:
-            - landing-go
-
 networks:
   mailcow-network:
     driver: bridge
@@ -723,4 +686,3 @@ volumes:
   sogo-web-vol-1:
   sogo-userdata-backup-vol-1:
   clamd-db-vol-1:
-  landing-credentials-vol-1:
