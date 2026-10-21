@@ -142,6 +142,42 @@
     if (closer) closer.addEventListener('click', () => dlg.close());
   });
 
+  // Copy buttons ([data-copy] → CSS selector of the value to copy): same
+  // pattern as connectors.js, wired here too because docs.html loads only
+  // app.js — no-op on pages without [data-copy] buttons.
+  document.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = $(btn.dataset.copy);
+      if (!target) return;
+      const text = target.textContent;
+      const done = () => {
+        const prev = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = prev; }, 1200);
+      };
+      const fallback = () => {
+        // Non-secure contexts and denied permissions (file:// previews):
+        // clipboard API unavailable — transient textarea + execCommand copy.
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          if (document.execCommand('copy')) done();
+        } catch (e) { /* clipboard unavailable — leave the button as-is */ }
+        ta.remove();
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(fallback);
+        return;
+      }
+      fallback();
+    });
+  });
+
   // Scroll reveal: progressive enhancement — mark the document only when JS
   // runs (landing.css hides [data-reveal] under .js-reveal), elements marked
   // data-reveal fade/slide in on first view. Without JS, content stays visible.

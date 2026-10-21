@@ -103,10 +103,10 @@
             </thead>
             <tbody>
               <tr><td>Mail host</td><td>A</td><td><code>mail</code></td><td>the IPv4 of your host</td></tr>
-              <tr><td>Delivery</td><td>MX</td><td><code>@</code></td><td><code>mail.yourdomain.com</code> &middot; priority 10</td></tr>
-              <tr><td>Sender policy</td><td>TXT (SPF)</td><td><code>@</code></td><td><code>v=spf1 mx ~all</code></td></tr>
+              <tr><td>Delivery</td><td>MX</td><td><code>@</code></td><td><code id="dns-mx">mail.yourdomain.com</code> &middot; priority 10 <button class="btn ghost small-btn" data-copy="#dns-mx" type="button">Copy</button></td></tr>
+              <tr><td>Sender policy</td><td>TXT (SPF)</td><td><code>@</code></td><td><code id="dns-spf">v=spf1 mx ~all</code> <button class="btn ghost small-btn" data-copy="#dns-spf" type="button">Copy</button></td></tr>
               <tr><td>Signing</td><td>TXT (DKIM)</td><td><code>&lt;selector&gt;._domainkey</code></td><td>key from the mail UI</td></tr>
-              <tr><td>Inbound policy</td><td>TXT (DMARC)</td><td><code>_dmarc</code></td><td><code>v=DMARC1; p=none; rua=mailto:&hellip;</code></td></tr>
+              <tr><td>Inbound policy</td><td>TXT (DMARC)</td><td><code>_dmarc</code></td><td><code id="dns-dmarc">v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code> <button class="btn ghost small-btn" data-copy="#dns-dmarc" type="button">Copy</button></td></tr>
             </tbody>
           </table>
         </div>

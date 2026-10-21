@@ -40,7 +40,16 @@ code {
   padding: 0.1em 0.4em;
   font-size: 0.86em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  word-break: break-all;
+  /* P0 visual audit 2026-10-22: record chips (DNS, hosts, endpoints) must never
+     split mid-token — one line, capped to the container, scrolling horizontally
+     inside the chip instead of breaking the page. */
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 pre {
@@ -332,7 +341,7 @@ pre {
 
 .tools-list li:last-child { border-bottom: none; }
 .tools-list code { color: var(--accent); }
-.tools-list span { flex: 1 1 100%; }
+.tools-list span { flex: 1 1 100%; min-width: 0; }
 
 details { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
 summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; color: var(--text); }
