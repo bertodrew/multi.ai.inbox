@@ -28,7 +28,8 @@
         <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="pricing.html">Pricing</a>
         <a class="btn ghost" href="docs.html" aria-current="page">Docs</a>
-        <button class="btn primary" type="button" data-open-login>Sign in</button>
+        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
+        <button class="btn ghost" type="button" data-open-login>Sign in</button>
       </nav>
     </div>
   </header>
@@ -163,8 +164,8 @@
           <summary>Connect a client</summary>
           <p class="hint">
             Point the MCP client at the endpoint above with the header
-            <code>Authorization: Bearer &lt;platform API key&gt;</code> &mdash; the read-write key from
-            <code>the platform config</code>. Then prompts like &ldquo;list domains and show the settings
+            <code>Authorization: Bearer &lt;API&nbsp;key&gt;</code> &mdash; the read-write key from
+            the platform config. Then prompts like &ldquo;list domains and show the settings
             of <code>example.com</code>&rdquo; call <code>list_domains</code> and
             <code>get_domain_settings</code>; changes go through <code>set_domain_settings</code>.
           </p>
@@ -173,7 +174,7 @@
         <p class="hint">
           The mail API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
           docker subnet allowed in <code>API_ALLOW_FROM</code>. The key is read from
-          <code>the platform config</code> at runtime &mdash; it is never written to this page or the
+          the platform config at runtime &mdash; it is never written to this page or the
           repository. The full connector surface lives on <a href="connectors.html">Connectors</a>.
         </p>
       </section>

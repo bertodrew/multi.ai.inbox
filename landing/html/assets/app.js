@@ -23,11 +23,11 @@
 
   if (origin) {
     if (mailcowForm) mailcowForm.action = origin + '/home';
-    // The Mail UI entry points at the webmail that actually answers (/SOGo/):
-    // /home was the wrong URL — it lands in the platform's raw admin UI with
-    // the wrong layout and branding.
+    // Mail UI → /home hardcoded on every page — one canonical fallback across
+    // all pages (the hardcoded hrefs were incoherent: /SOGo/ qui, /home altrove),
+    // upgraded with the runtime origin when the status answers.
     const adminLink = $('#admin-link');
-    if (adminLink) adminLink.href = origin + '/SOGo/';
+    if (adminLink) adminLink.href = origin + '/home';
   } else {
     const submit = mailcowForm && mailcowForm.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;

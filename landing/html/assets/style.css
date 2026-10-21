@@ -404,4 +404,6 @@ footer { border-top: 1px solid var(--border); margin-top: auto; }
   /* touch targets ≥ 44px on mobile */
   .btn { min-height: 44px; }
   .btn.small-btn { min-height: 44px; padding: 10px 14px; }
+  .tab { min-height: 44px; }
+  .modal-close { width: 44px; height: 44px; }
 }
