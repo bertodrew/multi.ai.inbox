@@ -29,6 +29,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -565,7 +566,13 @@ func gwMailcowCall(verb, path string, body any) (int, []byte, error) {
 	}
 	req.Header.Set("X-API-Key", key)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: mcTotalTO}
+	client := &http.Client{
+		Timeout: mcTotalTO,
+		// The mail platform answers over https with its self-signed cert
+		// (compose-internal hop, key stays server-side): http:// gets a 301
+		// to https://, so the transport skips verification for this hop.
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, fmt.Errorf("API mailcow non raggiungibile: %v", err)

@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -646,7 +647,12 @@ func mailcowCall(verb, path string, body any) (map[string]any, error) {
 	}
 	req.Header.Set("X-API-Key", key)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: mcTotalTO}
+	// Same internal-hop TLS skip as gwMailcowCall: http://nginx 301s to
+	// https:// with the mailcow self-signed cert (compose-internal hop).
+	client := &http.Client{
+		Timeout:   mcTotalTO,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("mailcow API unreachable at %s", base)
