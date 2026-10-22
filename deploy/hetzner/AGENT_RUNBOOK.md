@@ -46,10 +46,14 @@ Check: all three are true. If not, stop and report which one failed.
 
 1. Snapshot for rollback: `hcloud server create-image --type snapshot --description "pre-k3s mailcow staging" $SERVER`.
    Check: `hcloud image list --type snapshot` shows it as `available`.
-2. **STOP**: ask the founder "Rebuild $SERVER (2.28.99.252) with Ubuntu 24.04? This wipes mailcow staging. Snapshot <id> exists." Continue only on yes.
-3. Rebuild, keeping the IP: `hcloud server rebuild $SERVER --image ubuntu-24.04`.
-   If the command prints a root password, use it once to install the SSH key; otherwise the project SSH keys are injected.
-4. Wait for SSH: `until ssh -o StrictHostKeyChecking=accept-new root@2.28.99.252 true; do sleep 5; done`.
+2. Verify SSH access survives the rebuild: `hcloud ssh-key list -o columns=name` shows `$SSH_KEY_NAME`,
+   and it is attached to the server: `hcloud server describe $SERVER -o json | jq -r '.ssh_keys[].name'`
+   lists `$SSH_KEY_NAME`. If it is not attached, the rebuild has no key to inject and its response
+   carries a root password: keep it and use it once to install the SSH key.
+3. **STOP**: ask the founder "Rebuild $SERVER (2.28.99.252) with Ubuntu 24.04? This wipes mailcow staging. Snapshot <id> exists. SSH key $SSH_KEY_NAME attached: <yes/no>." Continue only on yes.
+4. Rebuild, keeping the IP: `hcloud server rebuild $SERVER --image ubuntu-24.04`.
+   If the command prints a root password, use it once to install the SSH key; otherwise the attached SSH keys are re-injected.
+5. Wait for SSH: `until ssh -o StrictHostKeyChecking=accept-new root@2.28.99.252 true; do sleep 5; done`.
    The host key changed with the rebuild: remove the old one first with `ssh-keygen -R 2.28.99.252`.
 
 Check: `ssh root@2.28.99.252 'lsb_release -rs'` prints `24.04`.
