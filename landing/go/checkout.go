@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -187,7 +188,6 @@ func checkoutBaseURL() string {
 	return strings.TrimRight(env("LANDING_BASE_URL", "https://2.28.99.252"), "/")
 }
 
-
 // customerIDFor resolves (and lazily creates) the Mollie customer for the
 // account: sequenceType=first requires one (422 otherwise, found live 21/10).
 // The customer id is persisted in the billing state so the next checkout
@@ -311,6 +311,14 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "checkout_url": href, "plan": payload.Plan})
 }
 
+// checkoutMu serializes the checkout webhook's billing critical section:
+// every HTTP request runs in its own goroutine and Mollie retries webhooks
+// until they answer 200, so two concurrent deliveries of the same webhook
+// must never both read an empty subscription_id and POST /subscriptions
+// twice (a double creation is a double-billing class of bug). Mirrors the
+// provScanMu pattern in provisioning.go.
+var checkoutMu sync.Mutex
+
 // handleCheckoutWebhook serves POST api/checkout/webhook: Mollie posts
 // form-encoded id only — never trust the body; fetch the payment server-side.
 // On paid: create the recurring subscription (the first payment is the
@@ -360,6 +368,16 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	customerID, _ := pay["customerId"].(string)
+
+	// checkoutMu serializes the critical section below (state read →
+	// POST /subscriptions → file rewrite): without the lock two concurrent
+	// deliveries of the same webhook both read subscription_id empty and
+	// create DUPLICATE subscriptions (double billing) — the exact bug this
+	// code claims to prevent. Released on return, once the state is
+	// persisted; the payment GET above stays outside the lock so unrelated
+	// accounts' webhooks are never serialized behind a Mollie round-trip.
+	checkoutMu.Lock()
+	defer checkoutMu.Unlock()
 
 	// Existing billing state, read BEFORE the subscription step: the step is
 	// IDEMPOTENT — Mollie retries the webhook on transport failures and every

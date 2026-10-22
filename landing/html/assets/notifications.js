@@ -2,6 +2,8 @@
    Adapted from a shadcn React notifications block to this static site's
    vanilla JS/CSS. Self-mounts: injects its stylesheet, builds the bell in the
    topbar corner (always visible, next to the menu toggle) and the dropmenu.
+   Polls the API every 30s, paused while the tab is hidden (visibilitychange,
+   same pattern as dashboard.js — no background polling off-screen).
    Honest states: the panel is empty until the platform records events — no
    demo data. Read state is client-side (localStorage); production can move it
    server-side without changing the fetch contract. */
@@ -241,10 +243,33 @@
   });
   window.addEventListener('resize', () => { if (isOpen()) position(); });
 
+  /* auto-refresh: 30s, paused while the tab is hidden (visibilitychange),
+     same pattern as dashboard.js — honest pause, no polling off-screen. */
+  let pollTimer = null;
+
+  function stopPolling() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(() => {
+      if (!document.hidden) load();
+    }, POLL_MS);
+  }
+
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && isOpen()) load();
+    if (document.hidden) {
+      stopPolling(); // honest pause: no polling while the tab is hidden
+    } else {
+      load();
+      startPolling();
+    }
   });
 
   await load();
-  setInterval(load, POLL_MS);
+  startPolling();
 })();

@@ -5,16 +5,19 @@ package main
 // honest checkout creation with a key, server-side verification in the
 // webhook, subscription activation on paid, idempotent behaviour for
 // unknown ids AND for webhook retries (never a duplicate subscription),
-// and the full chain: paid → subscription attiva → provJob queued.
+// concurrent overlapping retries (exactly ONE subscription under N
+// webhooks), and the full chain: paid → subscription attiva → provJob queued.
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -26,6 +29,7 @@ import (
 // COUNT the POSTs, not just the persisted state.
 func testMollie(t *testing.T, payment map[string]any, recorded *map[string]any, subRecorded ...*[]map[string]any) *httptest.Server {
 	t.Helper()
+	var subMu sync.Mutex // the subscription recorder is shared across goroutines (concurrency test)
 	m := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -33,8 +37,10 @@ func testMollie(t *testing.T, payment map[string]any, recorded *map[string]any, 
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":"cst_new","resource":"customer","name":"AImulti tenant demo","metadata":{"username":"demo"}}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/payments":
-			b := make([]byte, r.ContentLength)
-			_, _ = r.Body.Read(b)
+			// io.ReadAll, not a single Read on a r.ContentLength-sized
+			// buffer: with ContentLength -1 (chunked) or a multi-chunk
+			// body the capture comes back empty or partial.
+			b, _ := io.ReadAll(r.Body)
 			var rec map[string]any
 			_ = json.Unmarshal(b, &rec)
 			if recorded != nil {
@@ -49,13 +55,19 @@ func testMollie(t *testing.T, payment map[string]any, recorded *map[string]any, 
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"status":404,"title":"Not Found"}`))
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/subscriptions"):
+			// io.ReadAll, not a single Read on a r.ContentLength-sized
+			// buffer: with ContentLength -1 (chunked) or a multi-chunk
+			// body the capture comes back empty or partial. The append is
+			// under the mutex: the concurrency test drives this handler
+			// from N goroutines at once.
+			b2, _ := io.ReadAll(r.Body)
+			var rec2 map[string]any
+			_ = json.Unmarshal(b2, &rec2)
+			subMu.Lock()
 			if len(subRecorded) > 0 && subRecorded[0] != nil {
-				b2 := make([]byte, r.ContentLength)
-				_, _ = r.Body.Read(b2)
-				var rec2 map[string]any
-				_ = json.Unmarshal(b2, &rec2)
 				*subRecorded[0] = append(*subRecorded[0], rec2)
 			}
+			subMu.Unlock()
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":"sub_test","status":"active","nextPaymentDate":"2026-11-21"}`))
 		default:
@@ -523,6 +535,68 @@ func TestCheckoutWebhookDoesNotDuplicateSubscription(t *testing.T) {
 	}
 	if saved["last_payment_id"] != "tr_first" {
 		t.Fatalf("last payment id must track the newest paid, got %v", saved["last_payment_id"])
+	}
+}
+
+// Concurrency (21/10): Mollie retries can OVERLAP — a transport timeout
+// followed by an immediate redelivery hits the webhook while the first
+// attempt is still in flight. N concurrent webhooks for the SAME payment
+// must produce exactly ONE POST /subscriptions (double billing otherwise):
+// the winner answers created, the losers paid/already_active. The guard is
+// on the RECORDED POSTs, not on the persisted state alone — the state can
+// look right while N subscription POSTs fired on the wire.
+func TestCheckoutWebhookConcurrentRetriesSingleSubscription(t *testing.T) {
+	t.Setenv("LANDING_CRED_DIR", t.TempDir())
+	const n = 8
+	var subs []map[string]any
+	testMollie(t, paidPayment("solo"), nil, &subs)
+	// One FRESH request per goroutine: r.Body is one-shot — sharing a
+	// single *http.Request would hand every goroutine but the first an
+	// already-consumed body.
+	reqs := make([]*http.Request, n)
+	for i := range reqs {
+		reqs[i] = webhookReq(t, "tr_first")
+	}
+	recs := make([]*httptest.ResponseRecorder, n)
+	for i := range recs {
+		recs[i] = httptest.NewRecorder()
+	}
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			handleCheckoutWebhook(recs[i], reqs[i])
+		}(i)
+	}
+	wg.Wait()
+	created, already := 0, 0
+	for i := 0; i < n; i++ {
+		if recs[i].Code != http.StatusOK {
+			t.Fatalf("webhook %d returned %d: %s", i, recs[i].Code, recs[i].Body.String())
+		}
+		body := decodeJSON(recs[i].Body.String())
+		if body["status"] != "paid" {
+			t.Fatalf("webhook %d must answer paid, got %v", i, body)
+		}
+		switch body["subscription"] {
+		case "created":
+			created++
+		case "already_active":
+			already++
+		default:
+			t.Fatalf("webhook %d must answer created or already_active, got %v", i, body)
+		}
+	}
+	if created != 1 {
+		t.Fatalf("exactly ONE subscription may be created under concurrent retries, got %d", created)
+	}
+	if created+already != n {
+		t.Fatalf("all %d webhooks must answer created/already_active, got created=%d already_active=%d", n, created, already)
+	}
+	// THE GUARD on the wire: exactly one POST /subscriptions recorded.
+	if len(subs) != 1 {
+		t.Fatalf("exactly one POST /subscriptions may be recorded, got %d", len(subs))
 	}
 }
 

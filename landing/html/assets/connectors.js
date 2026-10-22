@@ -68,11 +68,32 @@
     btn.addEventListener('click', () => {
       const target = $(btn.dataset.copy);
       if (!target) return;
-      navigator.clipboard.writeText(target.textContent).then(() => {
+      const text = target.textContent;
+      const done = () => {
         const prev = btn.textContent;
         btn.textContent = 'Copied';
         setTimeout(() => { btn.textContent = prev; }, 1200);
-      });
+      };
+      const fallback = () => {
+        // Non-secure contexts and denied permissions (file:// previews):
+        // clipboard API unavailable — transient textarea + execCommand copy.
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          if (document.execCommand('copy')) done();
+        } catch (e) { /* clipboard unavailable — leave the button as-is */ }
+        ta.remove();
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(fallback);
+        return;
+      }
+      fallback();
     });
   });
 
