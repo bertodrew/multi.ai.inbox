@@ -91,6 +91,7 @@ gantt
 | D5 | Docs | Fumadocs in Next app, Mintlify free | Fumadocs |
 | D6 | Licence of new code | AGPL 3.0 open core, proprietary | AGPL for the self host core, proprietary for Gatekeeper model and billing |
 | D7 | New libraries outside the current stack | oapi-codegen, NATS, ort (ONNX), openapi-zod-client | approve as a batch in `.clauderules/stack-rules.md` before Phase 1 |
+| D8 to D10 | Native platform (no PHP): Go mail libraries, Postgres location, founder's human mailboxes | see [10 · ADR](10-native-platform.md#6-decisions) | approve with the ADR; phases map to migration steps M0 to M8 |
 
 ## 6. Risks
 

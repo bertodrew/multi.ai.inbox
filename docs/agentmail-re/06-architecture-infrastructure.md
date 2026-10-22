@@ -2,6 +2,8 @@
 
 AgentMail does not publish its backend, but its custom domain DNS records show that mail runs on Amazon SES (inbound MX `inbound-smtp.<region>.amazonaws.com`, SPF `include:amazonses.com`) and webhooks are signed by Svix [observed]. Other public facts that constrain the design [observed]: peak 100K API requests per minute, 1B+ emails processed, 10M+ inboxes, webhooks plus WebSockets plus polling, IMAP and SMTP access, EU region and BYO cloud for Enterprise, optimized shared IPs and dedicated IPs, Svix style polling webhooks. Everything below is our [decision] for multi.ai.inbox, built on the mailcow stack already running in this repo.
 
+> Update: mailcow is the **transition** runtime. The target removes all PHP and replaces Postfix and Dovecot with Go services step by step; see [10 · ADR native platform](10-native-platform.md). The data model, event flow and scaling rules below stay valid.
+
 ## 1. Key design insight: an inbox is a row, not a mailbox
 
 10M inboxes cannot be 10M Dovecot mailboxes with quotas and maildirs. The reference's economics ($2 per extra inbox, 3 free inboxes per signup) only work if an inbox is a **database row** and mail routing is **catch all**.
