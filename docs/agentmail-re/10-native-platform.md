@@ -1,6 +1,12 @@
 # 10 · ADR: remove mailcow PHP, build an agent native mail platform in Go and Rust
 
-Status: proposed · Date: 2026-10-22 · Deciders: founder (CPO + CTO)
+Status: accepted, with a change (see below) · Date: 2026-10-22 · Deciders: founder (CPO + CTO)
+
+> **Decision update (2026-10-22).** The founder chose to remove mailcow completely instead of the strangler path in section 4. The repository now holds the native MVP (`cmd/`, `internal/`, `gatekeeper/`, `deploy/`). What changed from the plan:
+> * Postfix and Dovecot are not kept even during transition: the Go `mx` takes port 25 from day one (M6 moved forward), the Go `sender` delivers through an EU relay until Hetzner opens port 25, then directly (M7).
+> * Events use a Postgres outbox polled by the workers; NATS is deferred until one Postgres is not enough (D3).
+> * TLS for the API is terminated by Caddy in the compose file instead of ACME inside Go (one less thing to build).
+> * The production server still runs mailcow from an old checkout. Cutover needs: export of the founder's existing mailboxes (D10), DNS MX switch per domain, PTR set to the new HELO name. Do not run the old `update.sh` after this branch is merged.
 Context: production runs on Hetzner (CX33, EU) with the mailcow stack from this repo. The goal is to remove every PHP component and own a native platform in Go (connectivity) and Rust (AI and parsing), designed for agents first and humans second.
 
 ## 1. What PHP does today in this repo (inventory)
