@@ -7,6 +7,7 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * mailcow removed; native Go + Rust platform: inboxes, threads, messages, send, reply, labels, attachments, custom domains with DNS verification, plan and rate limits, signed webhooks, scoped API keys, audit log, API and MCP gateways, gatekeeper, SMTP STARTTLS, DKIM, agent to agent mail, RLS, e2e tests.
 * k3s + Flux GitOps manifests, Hetzner bootstrap and operations agent runbook, public website in web/, landing kept at /legacy/.
 * PR 1 merged on 2026-10-22.
+* Outbound retry window 5 days per RFC 5321 (DR8), `MAI_SEND_MAX_AGE` (default `120h`).
 
 ## Next (in order)
 1. Release workflow green on master (fix: Docker build context was missing openapi/).

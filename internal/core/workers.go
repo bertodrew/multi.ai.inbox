@@ -20,8 +20,12 @@ type OutboundJob struct {
 	DKIMDomain string
 	DKIMSel    string
 	DKIMKeyPEM string
+	CreatedAt  time.Time
 }
 
+// sendLease covers one delivery attempt, not the retry window: FinishOutbound
+// replaces next_attempt_at with the real retry time, so the lease only matters
+// when a worker crashes mid attempt.
 const sendLease = 10 * time.Minute
 
 // ClaimOutbound leases up to n due messages. A lease that expires (crashed
@@ -36,7 +40,7 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 				order by next_attempt_at limit $1 for update skip locked)
 			and i.id = m.inbox_id and d.id = i.domain_id
 			returning m.id, m.org_id, i.address, m.to_addrs || m.cc_addrs || m.bcc_addrs, m.raw_key, m.attempts,
-				d.name, d.dkim_selector, coalesce(d.dkim_private_key, '')`, n, sendLease.String())
+				d.name, d.dkim_selector, coalesce(d.dkim_private_key, ''), m.created_at`, n, sendLease.String())
 		if err != nil {
 			return err
 		}
@@ -44,7 +48,7 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 		for rows.Next() {
 			var j OutboundJob
 			if err := rows.Scan(&j.ID, &j.OrgID, &j.Address, &j.Recipients, &j.RawKey, &j.Attempts,
-				&j.DKIMDomain, &j.DKIMSel, &j.DKIMKeyPEM); err != nil {
+				&j.DKIMDomain, &j.DKIMSel, &j.DKIMKeyPEM, &j.CreatedAt); err != nil {
 				return err
 			}
 			jobs = append(jobs, j)
@@ -54,14 +58,58 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 	return jobs, err
 }
 
-// SendRetries is the backoff schedule; after the last step the message fails.
-// It spans about 4.5 days, in line with RFC 5321 section 4.5.4.1, so a relay
-// outage of a few hours or days does not lose mail.
-var SendRetries = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour,
-	12 * time.Hour, 24 * time.Hour, 24 * time.Hour, 24 * time.Hour}
+// DefaultSendMaxAge is how long a message keeps being retried after a
+// temporary failure: 5 days, in line with RFC 5321 section 4.5.4.1 and the
+// Postfix default maximal_queue_lifetime, so a relay or remote MX outage of a
+// few days does not lose mail.
+const DefaultSendMaxAge = 120 * time.Hour
+
+// sendSteps are the first retry delays; after them the sender retries every
+// sendInterval (RFC 5321 asks for at least 30 minutes) until the max age.
+var sendSteps = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour}
+
+const sendInterval = 3 * time.Hour
+
+// SendRetryDelay returns the wait after the given failed attempt (1 based).
+func SendRetryDelay(attempt int) time.Duration {
+	if attempt >= 1 && attempt <= len(sendSteps) {
+		return sendSteps[attempt-1]
+	}
+	if attempt < 1 {
+		return sendSteps[0]
+	}
+	return sendInterval
+}
+
+func (s *Service) sendMaxAge() time.Duration {
+	if s.SendMaxAge > 0 {
+		return s.SendMaxAge
+	}
+	return DefaultSendMaxAge
+}
+
+// outboundRetry decides what happens after a failed attempt: give up, or retry
+// after the returned delay. The last retry is pulled in so it lands at the end
+// of the window instead of past it.
+func outboundRetry(j OutboundJob, sendErr error, now time.Time, maxAge time.Duration) (retry bool, delay time.Duration) {
+	if errors.Is(sendErr, ErrPermanent) {
+		return false, 0
+	}
+	left := j.CreatedAt.Add(maxAge).Sub(now)
+	if left <= 0 {
+		return false, 0
+	}
+	return true, min(SendRetryDelay(j.Attempts), left)
+}
 
 // FinishOutbound records the outcome of a delivery attempt and emits an event.
+// Permanent (5xx) errors fail at once; temporary ones are retried until the
+// message is older than the max age (MAI_SEND_MAX_AGE, default 5 days).
 func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr error) error {
+	retry, delay := false, time.Duration(0)
+	if sendErr != nil {
+		retry, delay = outboundRetry(j, sendErr, s.now(), s.sendMaxAge())
+	}
 	return s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
 		switch {
 		case sendErr == nil:
@@ -69,14 +117,13 @@ func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr err
 				return err
 			}
 			return s.emitMessageEvent(ctx, tx, "message.sent", j.Address, j.ID)
-		case j.Attempts > len(SendRetries) || errors.Is(sendErr, ErrPermanent):
+		case !retry:
 			if _, err := tx.Exec(ctx, `update messages set status = 'failed', last_error = $2, next_attempt_at = null,
 				labels = array(select distinct l from unnest(labels || '{failed}'::text[]) l) where id = $1`, j.ID, sendErr.Error()); err != nil {
 				return err
 			}
 			return s.emitMessageEvent(ctx, tx, "message.failed", j.Address, j.ID)
 		default:
-			delay := SendRetries[j.Attempts-1]
 			_, err := tx.Exec(ctx, "update messages set status = 'queued', last_error = $2, next_attempt_at = now() + $3::interval where id = $1",
 				j.ID, sendErr.Error(), delay.String())
 			return err

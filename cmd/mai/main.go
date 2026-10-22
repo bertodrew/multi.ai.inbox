@@ -60,6 +60,7 @@ type config struct {
 	Gateway       api.Gateway
 	TLSCert       string
 	TLSKey        string
+	SendMaxAge    time.Duration
 }
 
 func env(key, def string) string {
@@ -76,6 +77,12 @@ func loadConfig() config {
 	proxies, err := api.ParseCIDRs(env("MAI_TRUSTED_PROXIES", "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "invalid MAI_TRUSTED_PROXIES:", err)
+		os.Exit(2)
+	}
+	// How long temporary send failures are retried before message.failed (RFC 5321: 4 to 5 days).
+	sendMaxAge, err := time.ParseDuration(env("MAI_SEND_MAX_AGE", "120h"))
+	if err != nil || sendMaxAge <= 0 {
+		fmt.Fprintln(os.Stderr, "invalid MAI_SEND_MAX_AGE: want a positive duration such as 120h")
 		os.Exit(2)
 	}
 	return config{
@@ -95,6 +102,7 @@ func loadConfig() config {
 		Gateway:       api.Gateway{CORSOrigins: splitList(os.Getenv("MAI_CORS_ORIGINS")), TrustedProxies: proxies},
 		TLSCert:       os.Getenv("MAI_SMTP_TLS_CERT"),
 		TLSKey:        os.Getenv("MAI_SMTP_TLS_KEY"),
+		SendMaxAge:    sendMaxAge,
 	}
 }
 
@@ -146,7 +154,8 @@ func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 
 func service(d *db.DB, cfg config) *core.Service {
 	return &core.Service{DB: d, Blob: blob.FS{Root: cfg.BlobDir}, SharedDomain: cfg.SharedDomain,
-		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude}
+		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
+		SendMaxAge: cfg.SendMaxAge}
 }
 
 func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) error {

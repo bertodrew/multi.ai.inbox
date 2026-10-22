@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -570,6 +571,65 @@ func TestPlatformEndToEnd(t *testing.T) {
 	}
 	if code, _ := reader.do("GET", "/v0/audit-logs", nil, nil); code != 403 {
 		t.Fatalf("reader must not read the audit log: %d", code)
+	}
+
+	// Outbound retry window: temporary failures keep the message queued for
+	// the whole max age (5 days), then it fails with message.failed.
+	code, down := a.do("POST", "/v0/inboxes/sales@"+shared+"/messages/send", map[string]any{
+		"to": []string{"down@ext.test"}, "subject": "Retry", "text": "Remote MX is down."}, nil)
+	if code != 200 {
+		t.Fatalf("send to down: %d %v", code, down)
+	}
+	jobs, err := svc.ClaimOutbound(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var job core.OutboundJob
+	for _, j := range jobs {
+		if len(j.Recipients) == 1 && j.Recipients[0] == "down@ext.test" {
+			job = j
+		}
+	}
+	if job.ID == "" || job.CreatedAt.IsZero() {
+		t.Fatalf("down message not claimed among %d jobs", len(jobs))
+	}
+	status := func() string {
+		var st string
+		if err := d.WithSystem(ctx, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, "select status from messages where id = $1", job.ID).Scan(&st)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	tempErr := errors.New("421 4.4.2 connection timed out")
+	for i, age := range []time.Duration{time.Minute, 9 * time.Hour, 48 * time.Hour, 119 * time.Hour} {
+		clock := *svc
+		clock.Now = func() time.Time { return job.CreatedAt.Add(age) }
+		job.Attempts = i + 1
+		if err := clock.FinishOutbound(ctx, job, tempErr); err != nil {
+			t.Fatal(err)
+		}
+		if st := status(); st != "queued" {
+			t.Fatalf("after %v: status %s, want queued", age, st)
+		}
+	}
+	clock := *svc
+	clock.Now = func() time.Time { return job.CreatedAt.Add(121 * time.Hour) }
+	if err := clock.FinishOutbound(ctx, job, tempErr); err != nil {
+		t.Fatal(err)
+	}
+	if st := status(); st != "failed" {
+		t.Fatalf("after 121h: status %s, want failed", st)
+	}
+	var failedEvents int
+	if err := d.WithSystem(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select count(*) from events where type = 'message.failed' and payload::text like '%' || $1 || '%'", job.ID).Scan(&failedEvents)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if failedEvents != 1 {
+		t.Fatalf("message.failed events: %d, want 1", failedEvents)
 	}
 
 	// Gateway: request id, security headers, published contract.
