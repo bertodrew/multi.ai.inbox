@@ -7,6 +7,14 @@ info:
     fields follow the shape of the market leader so agents can switch by
     changing base URL and key. The same operations are available as MCP tools
     at POST /mcp (header X-Api-Key or Authorization: Bearer).
+
+    Screen before notify (organization setting `screen_before_notify`, on by
+    default): inbound mail is held until the gatekeeper verdict exists.
+    `message.received` fires only for a clean verdict, or when a key with
+    `message_release` releases a message held for review. Held messages are
+    left out of every list and get; `include_review=true` (needs
+    `message_review`) adds those held for review. Messages still pending
+    screening are never returned.
 servers:
   - url: https://api.example.eu
 security:
@@ -57,26 +65,27 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }]
     get:
       summary: List threads of an inbox
-      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }, { $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ThreadList" } } } }
   /v0/threads:
     get:
       summary: List threads across the organization
-      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }, { $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ThreadList" } } } }
   /v0/threads/{thread}:
     parameters: [{ name: thread, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
-      summary: Get a thread with its messages, oldest first
+      summary: Get a thread with the messages the caller may see, oldest first
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Thread" } } } }
   /v0/inboxes/{inbox}/messages:
     parameters: [{ $ref: "#/components/parameters/inbox" }]
     get:
       summary: List message metadata (no bodies)
-      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }, { $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessageList" } } } }
   /v0/inboxes/{inbox}/messages/send:
@@ -95,8 +104,11 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     get:
       summary: Get a message with bodies, extracted_text, authentication results and gatekeeper verdict
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
     patch:
       summary: Add or remove custom labels
       requestBody:
@@ -114,6 +126,7 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     get:
       summary: Raw RFC 822 message
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses: { "200": { description: OK, content: { message/rfc822: {} } } }
   /v0/inboxes/{inbox}/messages/{message}/reply:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }, { $ref: "#/components/parameters/idempotency_key" }]
@@ -125,6 +138,19 @@ paths:
             schema: { $ref: "#/components/schemas/Reply" }
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+  /v0/inboxes/{inbox}/messages/{message}/release:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
+    post:
+      summary: Release a message held for review (needs message_release, audited)
+      description: |
+        Marks the message `released`, makes it visible and fires
+        `message.received`. Only messages with `screening: review` can be
+        released; anything else returns `409 not_held`.
+      responses:
+        "200": { description: Released, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}:
     parameters:
       - { $ref: "#/components/parameters/inbox" }
@@ -132,6 +158,7 @@ paths:
       - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       summary: Download an attachment
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses: { "200": { description: Attachment bytes with its content type } }
   /v0/domains:
     post:
@@ -223,6 +250,7 @@ components:
     page_token: { name: page_token, in: query, schema: { type: string } }
     label: { name: label, in: query, schema: { type: string } }
     idempotency_key: { name: Idempotency-Key, in: header, schema: { type: string, maxLength: 256 } }
+    include_review: { name: include_review, in: query, description: "Also return messages held for security review; needs message_review", schema: { type: boolean, default: false } }
   responses:
     Error:
       description: Error envelope
@@ -237,13 +265,17 @@ components:
                 type: string
                 enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
-                       missing_permission, permission_escalation, api_key_expired,
+                       missing_permission, permission_escalation, api_key_expired, not_held,
                        payload_too_large, internal_error]
               message: { type: string }
   schemas:
     Org:
       type: object
-      properties: { organization_id: { type: string, format: uuid }, name: { type: string }, plan: { type: string } }
+      properties:
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        plan: { type: string }
+        screen_before_notify: { type: boolean, description: "Hold inbound mail until screened (operator setting: mai admin org-screening)" }
     CreateInbox:
       type: object
       additionalProperties: false
@@ -303,11 +335,15 @@ components:
         gatekeeper:
           type: object
           properties:
-            status: { type: string, enum: [pending, complete, unavailable] }
+            status: { type: string, enum: [pending, complete, unavailable, timeout] }
             verdict: { type: string, enum: [clear, review] }
             score: { type: number }
             reasons: { type: array, items: { type: string } }
             model: { type: string }
+        screening:
+          type: string
+          enum: [review, allowed, released]
+          description: "Hold state under screen before notify; absent when the message was not held. Pending messages are never returned."
         attachments: { type: array, items: { type: object, properties: { attachment_id: { type: string }, filename: { type: string }, content_type: { type: string }, size: { type: integer } } } }
         created_at: { type: string, format: date-time }
     MessageList:
@@ -375,4 +411,4 @@ components:
     Permission:
       type: string
       enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
-             webhook_read, webhook_write, api_key_read, api_key_write, audit_read]
+             webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release]

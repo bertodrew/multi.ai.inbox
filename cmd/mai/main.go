@@ -5,6 +5,7 @@
 //	mai admin seed                              staging org, user and admin testers
 //	mai admin org-create -name "Acme"
 //	mai admin org-plan -org <uuid> -plan team
+//	mai admin org-screening -org <uuid> [-on|-off]  screen before notify (no flag prints it)
 //	mai admin key-create -org <uuid> [-name agent]
 //	mai admin domain-add -name agents.example.eu [-org <uuid>]
 //	mai admin check-port25                      can this host deliver directly?
@@ -27,6 +28,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/api"
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
@@ -270,7 +273,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		}
 		if enabled["enrich"] {
 			if cfg.GatekeeperBin == "" {
-				log.Warn("enrich role disabled: MAI_GATEKEEPER_BIN is not set")
+				log.Warn("enrich role disabled: MAI_GATEKEEPER_BIN is not set; organizations with screen_before_notify hold inbound mail until the scheduler times screening out to review")
 			} else {
 				e := &enrich.Enricher{Svc: svc, Bin: cfg.GatekeeperBin, Log: log}
 				wg.Add(1)
@@ -294,7 +297,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 
 func admin(ctx context.Context, cfg config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mai admin seed|org-create|org-plan|key-create|domain-add|check-port25")
+		return errors.New("usage: mai admin seed|org-create|org-plan|org-screening|key-create|domain-add|check-port25")
 	}
 	if args[0] == "check-port25" {
 		return checkPort25(ctx)
@@ -303,6 +306,8 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	name := fs.String("name", "", "name")
 	org := fs.String("org", "", "organization id")
 	plan := fs.String("plan", "", "plan: free, builder, team")
+	on := fs.Bool("on", false, "org-screening: hold inbound mail until the gatekeeper verdict exists")
+	off := fs.Bool("off", false, "org-screening: notify message.received at ingest (not recommended)")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
 		svc := service(d, cfg)
@@ -316,6 +321,8 @@ func admin(ctx context.Context, cfg config, args []string) error {
 		case "org-plan":
 			err = svc.SetPlan(ctx, *org, *plan)
 			out = map[string]string{"organization_id": *org, "plan": *plan}
+		case "org-screening":
+			out, err = orgScreening(ctx, svc, *org, *on, *off)
 		case "key-create":
 			if *org == "" {
 				return errors.New("-org is required")
@@ -333,6 +340,32 @@ func admin(ctx context.Context, cfg config, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	})
+}
+
+// orgScreening prints or changes an organization's screen_before_notify
+// setting; a change is written to the organization's audit log.
+func orgScreening(ctx context.Context, svc *core.Service, org string, on, off bool) (*core.Org, error) {
+	switch {
+	case org == "":
+		return nil, errors.New("-org is required")
+	case on && off:
+		return nil, errors.New("pass -on or -off, not both")
+	case !on && !off:
+		o, err := svc.GetOrg(ctx, org)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, core.NotFound("organization")
+		}
+		return o, err
+	}
+	o, err := svc.SetScreening(ctx, org, on)
+	if err != nil {
+		return nil, err
+	}
+	meta, _ := json.Marshal(map[string]any{"screen_before_notify": on})
+	if err := svc.Audit(ctx, o.ID, core.AuditEntry{Actor: "operator", Action: "org.screening", Target: o.ID, Metadata: meta}); err != nil {
+		return nil, fmt.Errorf("setting changed but the audit entry failed: %w", err)
+	}
+	return o, nil
 }
 
 type seedResult struct {

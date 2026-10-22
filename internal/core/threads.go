@@ -30,15 +30,18 @@ func scanThread(row pgx.Row) (*Thread, error) {
 	return t, err
 }
 
-// ListThreads lists threads of one inbox, or of the whole organization when address is empty.
-func (s *Service) ListThreads(ctx context.Context, orgID, address string, p Page, label string) ([]*Thread, string, error) {
+// ListThreads lists threads of one inbox, or of the whole organization when
+// address is empty. A thread shows up only when it has a message the caller
+// may see, so a thread started by a held message stays hidden.
+func (s *Service) ListThreads(ctx context.Context, orgID, address string, p Page, label string, includeReview bool) ([]*Thread, string, error) {
 	cur, err := p.cursor()
 	if err != nil {
 		return nil, "", err
 	}
 	var list []*Thread
 	err = s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
-		q := "select " + threadCols + threadFrom + " where true"
+		q := "select " + threadCols + threadFrom + " where exists (select 1 from messages m where m.thread_id = t.id and " +
+			viewFor(includeReview).visible() + ")"
 		args := []any{p.limit() + 1}
 		if address != "" {
 			inbox, err := s.inboxTx(ctx, tx, address)
@@ -82,8 +85,9 @@ func (s *Service) ListThreads(ctx context.Context, orgID, address string, p Page
 	return list, next, nil
 }
 
-// GetThread returns the thread with all its messages, oldest first.
-func (s *Service) GetThread(ctx context.Context, orgID, threadID string) (*Thread, error) {
+// GetThread returns the thread with the messages the caller may see, oldest
+// first; a thread without any is not found.
+func (s *Service) GetThread(ctx context.Context, orgID, threadID string, includeReview bool) (*Thread, error) {
 	var out *Thread
 	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		t, err := scanThread(tx.QueryRow(ctx, "select "+threadCols+threadFrom+" where t.id::text = $1", threadID))
@@ -93,7 +97,8 @@ func (s *Service) GetThread(ctx context.Context, orgID, threadID string) (*Threa
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, "select "+messageCols+messageFrom+" where m.thread_id = $1 order by m.created_at, m.id", t.ThreadID)
+		rows, err := tx.Query(ctx, "select "+messageCols+messageFrom+" where m.thread_id = $1 and "+viewFor(includeReview).visible()+
+			" order by m.created_at, m.id", t.ThreadID)
 		if err != nil {
 			return err
 		}
@@ -108,6 +113,9 @@ func (s *Service) GetThread(ctx context.Context, orgID, threadID string) (*Threa
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			return err
+		}
+		if len(t.Messages) == 0 {
+			return NotFound("thread")
 		}
 		for _, m := range t.Messages {
 			if err := loadAttachments(ctx, tx, m); err != nil {

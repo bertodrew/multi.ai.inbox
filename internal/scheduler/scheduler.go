@@ -1,5 +1,5 @@
-// Package scheduler runs periodic platform jobs (domain verification today;
-// retention and warm up later).
+// Package scheduler runs periodic platform jobs (domain verification and the
+// screening timeout today; retention and warm up later).
 package scheduler
 
 import (
@@ -28,6 +28,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.Log.Error("domain verification failed", "err", err)
 		} else if n > 0 {
 			s.Log.Info("domains checked", "count", n)
+		}
+		// Fail closed: mail still unscreened after the timeout is held for review.
+		if n, err := s.Svc.ExpireScreening(ctx, core.DefaultScreeningTimeout); err != nil {
+			s.Log.Error("screening timeout sweep failed", "err", err)
+		} else if n > 0 {
+			s.Log.Warn("screening timed out, messages held for review", "count", n)
 		}
 		select {
 		case <-ctx.Done():
