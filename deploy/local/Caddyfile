@@ -1,0 +1,5 @@
+# TLS via Let's Encrypt; API, MCP and health on one host.
+{$MAI_API_HOST} {
+	encode zstd gzip
+	reverse_proxy mai:8080
+}

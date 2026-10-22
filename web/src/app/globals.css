@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/* Brand tokens from docs/agentmail-re/04-branding.md, Part B. */
+:root {
+  --bg: #f7f6f2;
+  --fg: #14161a;
+  --muted: #5f636a;
+  --card: #ffffff;
+  --border: #dedbd2;
+  --primary: #1f5bff;
+  --primary-fg: #ffffff;
+  --accent: #f2b705;
+  --accent-fg: #14161a;
+  --success: #1a7f50;
+  --danger: #c4302f;
+  --code-bg: #14161a;
+  --code-fg: #e8e6e1;
+  --ring: #1f5bff;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e8e6e1;
+    --muted: #8b9099;
+    --card: #151a22;
+    --border: #262d38;
+    --primary: #4c7dff;
+    --primary-fg: #0d1117;
+    --accent: #f2c230;
+    --accent-fg: #0d1117;
+    --success: #35c281;
+    --danger: #ff5c5c;
+    --code-bg: #0a0d12;
+    --code-fg: #e8e6e1;
+    --ring: #f2c230;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-DEFAULT: 8px;
+  --radius-card: 12px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+  .slot-glow {
+    animation: slot-glow 3.2s ease-in-out infinite;
+  }
+}
+
+@keyframes slot-glow {
+  0%,
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+  65%,
+  90% {
+    opacity: 1;
+  }
+}
+
+/* Prose for docs and legal pages, using tokens only. */
+.prose-doc {
+  line-height: 1.7;
+}
+.prose-doc h2 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+.prose-doc h3 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+.prose-doc p,
+.prose-doc ul,
+.prose-doc ol {
+  margin-bottom: 1rem;
+}
+.prose-doc ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.prose-doc ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.prose-doc li {
+  margin-bottom: 0.35rem;
+}
+.prose-doc a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.prose-doc :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  overflow-wrap: anywhere;
+}

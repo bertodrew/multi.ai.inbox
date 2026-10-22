@@ -1,0 +1,378 @@
+openapi: 3.1.0
+info:
+  title: multi.ai.inbox API
+  version: 0.1.0
+  description: |
+    Email inboxes for AI agents, hosted in the EU. Resource names, paths and
+    fields follow the shape of the market leader so agents can switch by
+    changing base URL and key. The same operations are available as MCP tools
+    at POST /mcp (header X-Api-Key or Authorization: Bearer).
+servers:
+  - url: https://api.example.eu
+security:
+  - bearer: []
+paths:
+  /v0/auth/me:
+    get:
+      summary: Organization of the API key
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Org" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+  /v0/inboxes:
+    post:
+      summary: Create an inbox (repeat client_id to get the same inbox)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInbox" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
+        "200": { description: Existing inbox for this client_id, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List inboxes, newest first
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/InboxList" } } } }
+  /v0/inboxes/{inbox}:
+    parameters: [{ $ref: "#/components/parameters/inbox" }]
+    get:
+      summary: Get an inbox
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Update display name
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { display_name: { type: string, maxLength: 200 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
+    delete:
+      summary: Delete an inbox and all its mail
+      responses: { "204": { description: Deleted } }
+  /v0/inboxes/{inbox}/threads:
+    parameters: [{ $ref: "#/components/parameters/inbox" }]
+    get:
+      summary: List threads of an inbox
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ThreadList" } } } }
+  /v0/threads:
+    get:
+      summary: List threads across the organization
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ThreadList" } } } }
+  /v0/threads/{thread}:
+    parameters: [{ name: thread, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: Get a thread with its messages, oldest first
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Thread" } } } }
+  /v0/inboxes/{inbox}/messages:
+    parameters: [{ $ref: "#/components/parameters/inbox" }]
+    get:
+      summary: List message metadata (no bodies)
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessageList" } } } }
+  /v0/inboxes/{inbox}/messages/send:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/idempotency_key" }]
+    post:
+      summary: Send a new message (new thread)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Send" }
+      responses:
+        "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v0/inboxes/{inbox}/messages/{message}:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
+    get:
+      summary: Get a message with bodies, extracted_text, authentication results and gatekeeper verdict
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+    patch:
+      summary: Add or remove custom labels
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                add_labels: { type: array, items: { type: string } }
+                remove_labels: { type: array, items: { type: string } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+  /v0/inboxes/{inbox}/messages/{message}/raw:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
+    get:
+      summary: Raw RFC 822 message
+      responses: { "200": { description: OK, content: { message/rfc822: {} } } }
+  /v0/inboxes/{inbox}/messages/{message}/reply:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }, { $ref: "#/components/parameters/idempotency_key" }]
+    post:
+      summary: Reply in the same thread
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Reply" }
+      responses:
+        "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+  /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}:
+    parameters:
+      - { $ref: "#/components/parameters/inbox" }
+      - { $ref: "#/components/parameters/message" }
+      - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Download an attachment
+      responses: { "200": { description: Attachment bytes with its content type } }
+  /v0/domains:
+    post:
+      summary: Add a custom domain; returns the DNS records to publish
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [domain], properties: { domain: { type: string } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List own and shared domains
+      responses: { "200": { description: OK } }
+  /v0/domains/{domain}:
+    parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Get a domain with record status
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } } }
+    delete:
+      summary: Delete a domain without inboxes
+      responses: { "204": { description: Deleted }, "409": { $ref: "#/components/responses/Error" } }
+  /v0/domains/{domain}/verify:
+    parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+    post:
+      summary: Check DNS now (the scheduler also checks every 5 minutes for 7 days)
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } } }
+  /v0/api-keys:
+    post:
+      summary: Create a key with at most the caller's permissions (key shown once)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 100 }
+                permissions: { type: array, items: { $ref: "#/components/schemas/Permission" }, description: "omit to copy the caller's permissions" }
+                expires_at: { type: string, format: date-time }
+      responses:
+        "201": { description: Created }
+        "403": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List active keys (requires api_key_read)
+      responses: { "200": { description: OK } }
+  /v0/api-keys/{key}:
+    delete:
+      parameters: [{ name: key, in: path, required: true, schema: { type: string, format: uuid } }]
+      summary: Revoke a key immediately (requires api_key_write, no escalation)
+      responses: { "204": { description: Revoked } }
+  /v0/audit-logs:
+    get:
+      summary: Security relevant actions of the organization (requires audit_read)
+      parameters: [{ name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }]
+      responses: { "200": { description: OK } }
+  /v0/webhooks:
+    post:
+      summary: Create a webhook (secret is returned once)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url, event_types]
+              properties:
+                url: { type: string, format: uri }
+                event_types: { type: array, minItems: 1, items: { $ref: "#/components/schemas/EventType" } }
+                inbox_ids: { type: array, maxItems: 10, items: { type: string, format: email } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Webhook" } } } }
+    get:
+      summary: List webhooks
+      responses: { "200": { description: OK } }
+  /v0/webhooks/{webhook}:
+    delete:
+      parameters: [{ name: webhook, in: path, required: true, schema: { type: string, format: uuid } }]
+      summary: Delete a webhook
+      responses: { "204": { description: Deleted } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, description: "API key, prefix mai_live_" }
+  parameters:
+    inbox: { name: inbox, in: path, required: true, schema: { type: string, format: email } }
+    message: { name: message, in: path, required: true, description: "Message UUID or RFC Message-ID (URL encoded)", schema: { type: string } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    page_token: { name: page_token, in: query, schema: { type: string } }
+    label: { name: label, in: query, schema: { type: string } }
+    idempotency_key: { name: Idempotency-Key, in: header, schema: { type: string, maxLength: 256 } }
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name, code, message]
+            properties:
+              name: { type: string }
+              code:
+                type: string
+                enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
+                       domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
+                       missing_permission, permission_escalation, api_key_expired,
+                       payload_too_large, internal_error]
+              message: { type: string }
+  schemas:
+    Org:
+      type: object
+      properties: { organization_id: { type: string, format: uuid }, name: { type: string }, plan: { type: string } }
+    CreateInbox:
+      type: object
+      additionalProperties: false
+      properties:
+        username: { type: string, pattern: "^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$" }
+        domain: { type: string }
+        display_name: { type: string, maxLength: 200 }
+        client_id: { type: string, pattern: "^[A-Za-z0-9._~-]{1,256}$" }
+    Inbox:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        inbox_id: { type: string, format: email }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        client_id: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    InboxList:
+      type: object
+      properties: { count: { type: integer }, next_page_token: { type: string }, inboxes: { type: array, items: { $ref: "#/components/schemas/Inbox" } } }
+    Thread:
+      type: object
+      properties:
+        thread_id: { type: string, format: uuid }
+        inbox_id: { type: string }
+        subject: { type: string }
+        preview: { type: string }
+        labels: { type: array, items: { type: string } }
+        message_count: { type: integer }
+        timestamp: { type: string, format: date-time }
+        messages: { type: array, items: { $ref: "#/components/schemas/Message" } }
+    ThreadList:
+      type: object
+      properties: { count: { type: integer }, next_page_token: { type: string }, threads: { type: array, items: { $ref: "#/components/schemas/Thread" } } }
+    Message:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        message_id: { type: string, description: RFC 5322 Message-ID with angle brackets }
+        thread_id: { type: string, format: uuid }
+        inbox_id: { type: string }
+        direction: { type: string, enum: [in, out] }
+        from: { type: string }
+        to: { type: array, items: { type: string } }
+        cc: { type: array, items: { type: string } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        extracted_text: { type: string, description: New text without quoted history (set by the gatekeeper) }
+        preview: { type: string }
+        labels: { type: array, items: { type: string } }
+        in_reply_to: { type: string }
+        references: { type: array, items: { type: string } }
+        status: { type: string, enum: [received, queued, sending, sent, failed] }
+        authentication_results: { type: object, description: "dkim, spam_score, spam_action" }
+        gatekeeper:
+          type: object
+          properties:
+            status: { type: string, enum: [pending, complete, unavailable] }
+            verdict: { type: string, enum: [clear, review] }
+            score: { type: number }
+            reasons: { type: array, items: { type: string } }
+            model: { type: string }
+        attachments: { type: array, items: { type: object, properties: { attachment_id: { type: string }, filename: { type: string }, content_type: { type: string }, size: { type: integer } } } }
+        created_at: { type: string, format: date-time }
+    MessageList:
+      type: object
+      properties: { count: { type: integer }, next_page_token: { type: string }, messages: { type: array, items: { $ref: "#/components/schemas/Message" } } }
+    Attachment:
+      type: object
+      required: [content]
+      properties: { filename: { type: string }, content_type: { type: string }, content: { type: string, contentEncoding: base64 } }
+    Send:
+      type: object
+      additionalProperties: false
+      required: [to]
+      properties:
+        to: { type: array, minItems: 1, items: { type: string, format: email } }
+        cc: { type: array, items: { type: string, format: email } }
+        bcc: { type: array, items: { type: string, format: email } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+    Reply:
+      type: object
+      additionalProperties: false
+      properties:
+        text: { type: string }
+        html: { type: string }
+        reply_all: { type: boolean }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+    SendResult:
+      type: object
+      properties: { message_id: { type: string }, thread_id: { type: string, format: uuid } }
+    EventType:
+      type: string
+      enum: [message.received, message.received.spam, message.sent, message.failed, message.security.completed, message.security.review, domain.verified]
+    Webhook:
+      type: object
+      properties:
+        webhook_id: { type: string, format: uuid }
+        url: { type: string }
+        event_types: { type: array, items: { $ref: "#/components/schemas/EventType" } }
+        inbox_ids: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        secret: { type: string, description: "whsec_..., returned only on create" }
+    Domain:
+      type: object
+      properties:
+        domain_id: { type: string, format: uuid }
+        domain: { type: string }
+        shared: { type: boolean }
+        status: { type: string, enum: [pending, verified] }
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [MX, TXT] }
+              name: { type: string }
+              value: { type: string }
+              status: { type: string, enum: [verified, missing] }
+        last_checked_at: { type: string, format: date-time }
+        verified_at: { type: string, format: date-time }
+    Permission:
+      type: string
+      enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
+             webhook_read, webhook_write, api_key_read, api_key_write, audit_read]

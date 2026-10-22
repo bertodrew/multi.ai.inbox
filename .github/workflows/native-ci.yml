@@ -1,0 +1,87 @@
+name: native-ci
+
+on:
+  push:
+    branches: [master, "claude/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gatekeeper:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gatekeeper
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add clippy
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gatekeeper
+          path: gatekeeper/target/release/gatekeeper
+
+  go:
+    runs-on: ubuntu-latest
+    needs: gatekeeper
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: gatekeeper
+          path: bin
+      - run: chmod +x bin/gatekeeper
+      - name: gofmt
+        run: test -z "$(gofmt -l cmd internal)"
+      - run: go vet ./...
+      - name: test (unit + end to end against Postgres)
+        env:
+          MAI_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+          MAI_TEST_GATEKEEPER_BIN: ${{ github.workspace }}/bin/gatekeeper
+        run: go test -race -count=1 ./...
+      - run: CGO_ENABLED=0 go build -o /tmp/mai ./cmd/mai
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install sigs.k8s.io/kustomize/kustomize/v5@v5.8.1 && go install github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0
+      - name: kustomize build + kubeconform
+        run: kustomize build deploy/k8s/staging | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+      - run: bash -n deploy/hetzner/bootstrap.sh && sh -n deploy/k8s/base/postgres-init.sh
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - name: build (static export, copy rule check)
+        run: npm run build

@@ -1,0 +1,114 @@
+# TLS termination with automatic Let's Encrypt certificates for the API host,
+# plus the static landing page (baked into the image, see deploy/landing).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy
+data:
+  Caddyfile: |
+    {
+      # Unprivileged ports: the Service maps 80 and 443 to these.
+      http_port 8080
+      https_port 8443
+    }
+    {$MAI_API_HOST} {
+      encode zstd gzip
+      reverse_proxy mai-http:8080
+    }
+    (static_site) {
+      encode zstd gzip
+      root * /srv
+      @markdown path *.md /llms.txt
+      header @markdown Content-Type "text/markdown; charset=utf-8"
+      try_files {path} {path}/index.html {path}.html
+      file_server
+      handle_errors {
+        rewrite * /404.html
+        file_server
+      }
+    }
+    {$MAI_SITE_HOST} {
+      import static_site
+    }
+    # Certificate for the MX host name only: the SMTP edge reads it for STARTTLS.
+    {$MAI_HOSTNAME} {
+      respond "multi.ai.inbox mail host" 200
+    }
+    # Plain HTTP on the raw IP shows the landing too.
+    :8080 {
+      import static_site
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: caddy-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: caddy }
+  template:
+    metadata:
+      labels: { app: caddy }
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull
+      # Same user as the platform, so the SMTP edge can read the certificates.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: caddy
+          image: landing
+          env:
+            - name: MAI_API_HOST
+              valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_API_HOST } }
+            - name: MAI_SITE_HOST
+              valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_SITE_HOST } }
+            - name: MAI_HOSTNAME
+              valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_HOSTNAME } }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: https, containerPort: 8443 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/caddy }
+            - { name: data, mountPath: /data }
+            - { name: runtime, mountPath: /config }
+      volumes:
+        - name: config
+          configMap: { name: caddy }
+        - name: runtime
+          emptyDir: {}
+        - name: data
+          persistentVolumeClaim: { claimName: caddy-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy
+spec:
+  type: LoadBalancer
+  selector: { app: caddy }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+    - { name: https, port: 443, targetPort: https }

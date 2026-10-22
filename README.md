@@ -1,151 +1,114 @@
-# mailcow: dockerized - 🐮 + 🐋 = 💕
+# multi.ai.inbox
 
-[![Translation status](https://translate.mailcow.email/widgets/mailcow-dockerized/-/translation/svg-badge.svg)](https://translate.mailcow.email/engage/mailcow-dockerized/)
-[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/mailcow_email.svg?style=social&label=Follow%20%40mailcow_email)](https://twitter.com/mailcow_email)
-![Mastodon Follow](https://img.shields.io/mastodon/follow/109388212176073348?domain=https%3A%2F%2Fmailcow.social&label=Follow%20%40doncow%40mailcow.social&link=https%3A%2F%2Fmailcow.social%2F%40doncow)
+Email inboxes for AI agents, hosted in the EU. Agent native, written in Go (connectivity) and Rust (AI screening), with no PHP and no mailcow.
 
+An inbox is a database row, mail is an event. Agents create inboxes with one API call, receive mail as parsed threads, get signed webhooks, reply with correct threading, and use the same capabilities as MCP tools from Claude Code, Cursor or Codex.
 
-## Want to support mailcow?
+Design and research: [`docs/agentmail-re/`](docs/agentmail-re/README.md) (PRD, API spec, architecture, [ADR 10](docs/agentmail-re/10-native-platform.md)).
 
-Please [consider a support contract with Servercow](https://www.servercow.de/mailcow?lang=en#support) to support further development. _We_ support _you_ while _you_ support _us_. :)
-
-You can also [get a SAL](https://www.servercow.de/mailcow?lang=en#sal) which is a one-time payment with no liabilities or returning fees.
-
-Or just spread the word: moo.
-
-## Many thanks to our GitHub Sponsors ❤️
-A big thank you to everyone supporting us on GitHub Sponsors—your contributions mean the world to us! Special thanks to the following amazing supporters:
-
-### 100$/Month Sponsors
-  <a href="https://www.colba.net/" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/204464723" height="58"
-  /></a>
-  <a href="https://www.maehdros.com/" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/173894712" height="58"
-  /></a>
-  <a href="https://garske-systems.de/" target=_blank><img
-    src="https://garske-systems.de/img/logo_min.png" height="58"
-  /></a>
-
-### 50$/Month Sponsors
-  <a href="https://github.com/vnukhr" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/7805987?s=52&v=4" height="58"
-  /></a><a href="https://github.com/humiico" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/110134705?s=52&v=4" height="58"
-  /></a>
-
-## Info, documentation and support
-
-Please see [the official documentation](https://docs.mailcow.email/) for installation and support instructions. 🐄
-
-🐛 **If you found a critical security issue, please mail us to [info at servercow.de](mailto:info@servercow.de).**
-
-## Cowmunity
-
-[mailcow community](https://community.mailcow.email)
-
-[Telegram mailcow channel](https://telegram.me/mailcow)
-
-[Telegram mailcow Off-Topic channel](https://t.me/mailcowOfftopic)
-
-[Official 𝕏 (Twitter) Account](https://twitter.com/mailcow_email)
-
----
-
-# multi.ai.inbox — how the service works
-
-This fork turns mailcow into **multi.ai.inbox**: an inbox-as-a-service layer for AI agents across multiple brands (5 domains, ~15 mailboxes), self-hosted on Hetzner (EU).
-
-**What this fork adds on top of upstream mailcow:**
-
-- **Landing page** (`landing/`) — public frontdoor with two login paths: mailcow credentials or **"Login with Namecheap"** (API-key connect; Namecheap has no OAuth for third-party apps)
-- **Post-login connector choice** — *Login with Namecheap* (list domains, manage DNS) or *Use dedicated MCP* (the fork's native MCP server)
-- **Per-domain Settings page** (`domain_settings` table) — mail FQDN, branding, PTR target, quotas + auto-generated DNS snippets per domain
-- **Native MCP server** — tools `list_domains`, `get_domain_settings`, `set_domain_settings` on top of `json_api.php`, authenticated with the same `api` key table
-- **Registrar connectors** — Namecheap (API key) and Infomaniak (OAuth v2, multiple organizations)
-
-## Architecture
-
-```mermaid
-flowchart TB
-    User["👤 Founder / Agent"]
-
-    subgraph LANDING["multi.ai.inbox landing page"]
-        L["login: mailcow · Namecheap API key<br/>post-login: registrar connector or dedicated MCP"]
-    end
-
-    subgraph HETZNER["Hetzner CX33 · 2.28.99.252 (EU)"]
-        subgraph STACK["Mailcow stack — 18 containers"]
-            NGINX["nginx"]
-            MCP["MCP server (fork)<br/>list_domains · get/set_domain_settings"]
-            API["json_api.php<br/>tables: api (key+IP whitelist) · domain_settings"]
-            MAIL["postfix · dovecot · SOGo"]
-            SEC["rspamd · clamd · netfilter"]
-            ACME["acme — Let's Encrypt"]
-        end
-        DB[("MySQL")]
-    end
-
-    NC["Namecheap API<br/>domains · DNS hosts"]
-    INF["Infomaniak API<br/>kSuite · domains · DNS (multi-org)"]
-    DNS["DNS zone<br/>A mail → 2.28.99.252 · MX · SPF · DKIM · DMARC"]
-
-    User --> L
-    L --> API
-    MCP --> API
-    API --> DB
-    L --> NC
-    L --> INF
-    NC --> DNS
-    INF --> DNS
-    DNS -- "A + MX" --> NGINX
-    ACME -- "TLS cert" --> NGINX
-    DNS -- "SPF/DKIM/DMARC" --> MAIL
-```
-
-## Domain provisioning flow
-
-```mermaid
-sequenceDiagram
-    actor U as Founder
-    participant L as Landing multi.ai.inbox
-    participant MC as Mailcow API
-    participant R as Registrar (Namecheap / Infomaniak)
-    participant AC as acme (Let's Encrypt)
-
-    U->>L: login (mailcow or registrar API key)
-    L->>R: list domains
-    R-->>L: domain list
-    U->>L: pick domain + settings (FQDN, branding, quotas)
-    L->>MC: add domain + domain_settings
-    MC-->>L: DKIM key generated
-    L->>R: set A (mail → 2.28.99.252), MX, SPF, DKIM, DMARC
-    R-->>L: zone updated
-    AC->>AC: issue TLS cert once A record propagates
-    U->>L: create mailbox hello@domain
-```
-
-## Mail flow
+## What runs
 
 ```mermaid
 flowchart LR
-    IN["Internet"] <-->|":25 ⚠️ Hetzner ticket required"| PW["postfix"]
-    PW --> RS["rspamd"] --> DV["dovecot"] --> SG["SOGo · /user"]
+    Internet((Internet SMTP)) -->|":25"| MX["mx (Go)<br/>RCPT check · DKIM verify · rspamd"]
+    MX --> CORE["core (Go)<br/>parse · thread · store"]
+    Agents["agents · SDK · MCP"] -->|"HTTPS /v0 · /mcp"| API["api + MCP (Go)"] --> CORE
+    CORE --> PG[("Postgres<br/>RLS on every table")]
+    CORE --> BLOB[("raw .eml + attachments")]
+    PG --> SND["sender (Go)<br/>DKIM sign · relay or direct MX · local agent to agent"]
+    PG --> DSP["dispatcher (Go)<br/>signed webhooks · retries"]
+    PG --> ENR["enrich → gatekeeper (Rust)<br/>prompt injection screening · reply extraction"]
+    SND --> Out((Internet))
+    DSP --> Hooks["customer webhooks"]
 ```
 
-**Security model:** the Namecheap/Infomaniak keys live server-side (never in the repo or logs); DNS writes use single-record updates only (`update_dns_record`) — full-zone replaces (`setHosts`) would wipe SPF/DKIM/DMARC.
+One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`, `enrich`, `scheduler`. Events use a Postgres outbox (no extra queue until it is needed).
 
----
+| Path | What |
+|------|------|
+| `cmd/mai` | binary: `serve`, `migrate`, `admin org-create / key-create / domain-add` |
+| `internal/core` | all business rules, shared by REST, MCP, SMTP and workers |
+| `internal/api`, `internal/mcpserver` | REST `/v0` and MCP at `/mcp`, same API key |
+| `internal/mx`, `internal/sender` | SMTP in, SMTP out |
+| `internal/dispatcher`, `internal/enrich` | webhooks (Standard Webhooks + Svix headers), gatekeeper pipe |
+| `internal/db/migrations` | schema with row level security |
+| `gatekeeper/` | Rust crate and JSON lines worker |
+| `openapi/openapi.yaml` | API contract |
+| `deploy/` | k3s manifests, Flux GitOps, Hetzner bootstrap, local Docker Compose |
+| `web/` | public site (Next.js static export): home, docs from the OpenAPI spec, pricing, security, FAQ, privacy, terms, careers, `llms.txt`, Markdown twins of docs |
+| `landing/` | previous landing imported from the old server, served under `/legacy/` |
 
-[mailcow community](https://community.mailcow.email)
+## Run locally
 
-## Misc
+```bash
+# Postgres 16 with a non superuser role (RLS does not apply to superusers)
+export DATABASE_URL=postgres://mai_app:mai_app@localhost:5432/mai
+export MAI_SHARED_DOMAIN=agents.localhost MAI_HOSTNAME=mx.localhost MAI_ALLOW_HTTP_WEBHOOKS=true
+(cd gatekeeper && cargo build --release) && export MAI_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper
 
-**Important**: mailcow makes use of various open-source software. Please assure you agree with their license before using mailcow.
-Any part of mailcow itself is released under **GNU General Public License, Version 3**.
+go run ./cmd/mai admin seed     # shared domain, "Staging" org, user.tester@ and admin.tester@, API keys (shown once)
+go run ./cmd/mai serve          # API :8080, SMTP :2525, all workers
 
-mailcow is a registered word mark of The Infrastructure Company GmbH, Parkstr. 42, 47877 Willich, Germany.
+curl -s -X POST localhost:8080/v0/inboxes -H "Authorization: Bearer $KEY" -d '{"username":"sales"}'
+```
 
-The project is managed and maintained by The Infrastructure Company GmbH.
+MCP for Claude Code:
 
-Originated from @andryyy (André)
+```bash
+claude mcp add --transport http multi-ai-inbox http://localhost:8080/mcp --header "X-Api-Key: $KEY"
+```
+
+## Test
+
+```bash
+(cd gatekeeper && cargo clippy --all-targets -- -D warnings && cargo test)
+MAI_TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres \
+MAI_TEST_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper \
+go test -race ./...
+```
+
+The end to end test creates a fresh database owned by a non superuser role and covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP.
+
+## API surface
+
+REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP tools at `/mcp`:
+
+| Area | Endpoints |
+|------|-----------|
+| Identity | `GET /v0/auth/me` |
+| Inboxes | `POST/GET /v0/inboxes`, `GET/PATCH/DELETE /v0/inboxes/{inbox}` |
+| Threads | `GET /v0/inboxes/{inbox}/threads`, `GET /v0/threads`, `GET /v0/threads/{id}` |
+| Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply`, `{message}/attachments/{id}` |
+| Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
+| Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
+| Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
+| Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml` |
+
+Security at the edge: request IDs, security headers, CORS allowlist, per organization rate limit, per IP limit on failed keys, X-Forwarded-For only from trusted proxies, SMTP STARTTLS (certificate from Caddy, self signed fallback). The MCP gateway applies the same permissions per tool and writes agent actions to the audit log. `mai mcp-config -url <api>` prints the setup for Claude Code, Cursor and Codex.
+
+Events: `message.received`, `message.received.spam`, `message.sent`, `message.failed`, `message.security.completed`, `message.security.review`, `domain.verified`.
+
+Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; builder 10 inboxes, 1,000/day, 10,000/month; team 150 inboxes, 15,000/day, 150,000/month.
+
+## Deploy (Hetzner, k3s, GitOps)
+
+Production runs on the Hetzner CX33 with k3s and Flux; this repository is the source of truth.
+
+1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root (an operations agent can do all of this: see `deploy/hetzner/AGENT_RUNBOOK.md`). It installs k3s and Flux, asks for the secrets (GitHub tokens, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging`, seeds the staging testers and checks outbound port 25.
+2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`.
+3. From then on, merging to `master` deploys: `release.yml` builds the image to GHCR and pins its tag in `deploy/k8s/staging`; Flux applies it.
+
+| Path | What |
+|------|------|
+| `deploy/k8s/base` | Postgres, mai, rspamd, Caddy, nightly backup to Object Storage, network policies |
+| `deploy/k8s/staging` | staging config (sslip.io hostnames, `agents.localhost`, Brevo SPF) and image tag |
+| `deploy/flux/clusters/staging` | Flux Kustomization |
+| `deploy/local` | Docker Compose for local development |
+
+When the brand domain is bought: `mai admin domain-add -name agents.<brand>`, set `MAI_SHARED_DOMAIN`, `MAI_HOSTNAME`, `MAI_API_HOST` in `deploy/k8s/staging/kustomization.yaml`, publish the DNS records it prints, update the PTR.
+
+## Status
+
+Production MVP: inboxes, threads, messages, send, reply, labels, attachments, custom domains with DNS verification, plan limits, rate limits, signed webhooks, MCP, gatekeeper, staging seed, GitOps deploy. Next: drafts, WebSocket, pods, scoped keys, S3 blob store, IMAP, web console, billing. See `.claude/context/TODO.md`.
+
+Proprietary software, all rights reserved (see `LICENSE`). Approved dependencies: `.clauderules/stack-rules.md`.

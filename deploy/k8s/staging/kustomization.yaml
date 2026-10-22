@@ -1,0 +1,27 @@
+# Staging on the Hetzner CX33. The image tag below is updated by CI on every
+# push to master; Flux applies this directory (GitOps).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mai
+resources:
+  - ../base
+configMapGenerator:
+  - name: mai-config
+    literals:
+      # sslip.io gives a real hostname (and a Let's Encrypt certificate) for
+      # the server IP until the brand domain is bought.
+      - MAI_API_HOST=api.2-28-99-252.sslip.io
+      - MAI_SITE_HOST=2-28-99-252.sslip.io
+      - MAI_HOSTNAME=mx.2-28-99-252.sslip.io
+      # Local only for now (founder decision): agent to agent mail works,
+      # mail from the internet needs the brand domain.
+      - MAI_SHARED_DOMAIN=agents.localhost
+      - MAI_SPF_INCLUDE=spf.brevo.com
+      - MAI_RATE_LIMIT_PER_SECOND=20
+      # Browser origins allowed to call the API (the future console).
+      - MAI_CORS_ORIGINS=https://2-28-99-252.sslip.io
+images:
+  - name: ghcr.io/bertodrew/multi-ai-inbox
+    newTag: latest
+  - name: ghcr.io/bertodrew/multi-ai-inbox-landing
+    newTag: latest

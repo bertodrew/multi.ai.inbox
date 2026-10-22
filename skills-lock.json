@@ -1,0 +1,14 @@
+{
+  "skills": [
+    {
+      "name": "caveman",
+      "source": "JuliusBrussee/caveman",
+      "sourceType": "github",
+      "sourceRef": "bad48a0e1df55e05e3f52249afa35ecc1909ee76",
+      "skillPath": "skills/caveman",
+      "license": "Apache-2.0",
+      "computedHash": "415d43518f2b1a9498c15a445d4657117b129ee5e81b19454ce348439cc6672b",
+      "notes": "Only the skill text is vendored. The plugin hooks (src/hooks), proxy, engine, MCP server and Caveman Cloud are NOT installed: they run code or route requests and need a separate explicit opt in."
+    }
+  ]
+}
