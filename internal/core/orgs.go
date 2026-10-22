@@ -3,12 +3,9 @@ package core
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/bertodrew/multi.ai.inbox/internal/keys"
 )
 
 type Org struct {
@@ -27,48 +24,6 @@ func (s *Service) CreateOrg(ctx context.Context, name string) (*Org, error) {
 		return tx.QueryRow(ctx, "insert into organizations (name) values ($1) returning id, plan", name).Scan(&o.ID, &o.Plan)
 	})
 	return o, err
-}
-
-type CreatedKey struct {
-	ID     string `json:"api_key_id"`
-	Key    string `json:"api_key"`
-	Prefix string `json:"prefix"`
-	Name   string `json:"name"`
-}
-
-func (s *Service) CreateKey(ctx context.Context, orgID, name string) (*CreatedKey, error) {
-	plain, prefix, hash, err := keys.New()
-	if err != nil {
-		return nil, err
-	}
-	k := &CreatedKey{Key: plain, Prefix: prefix, Name: name}
-	err = s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "insert into api_keys (org_id, name, prefix, hash) values ($1, $2, $3, $4) returning id",
-			orgID, name, prefix, hash).Scan(&k.ID)
-	})
-	return k, err
-}
-
-// Authenticate resolves an API key to its organization.
-func (s *Service) Authenticate(ctx context.Context, plain string) (*Org, error) {
-	if !keys.WellFormed(plain) {
-		return nil, errf(http.StatusUnauthorized, "unknown_api_key", "invalid API key")
-	}
-	o := &Org{}
-	err := s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `update api_keys k set last_used_at = now()
-			from organizations o
-			where k.hash = $1 and k.revoked_at is null and o.id = k.org_id
-			returning o.id, o.name, o.plan`, keys.Hash(plain)).Scan(&o.ID, &o.Name, &o.Plan)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errf(http.StatusUnauthorized, "unknown_api_key", "invalid API key")
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return o, nil
 }
 
 func (s *Service) GetOrg(ctx context.Context, orgID string) (*Org, error) {

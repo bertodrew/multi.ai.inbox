@@ -8,6 +8,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,6 +35,7 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/mcpserver"
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
+	"github.com/bertodrew/multi.ai.inbox/internal/tlsx"
 )
 
 const shared = "agents.test"
@@ -185,7 +187,9 @@ func TestPlatformEndToEnd(t *testing.T) {
 	}
 
 	srv := &api.Server{Svc: svc, Log: log}
-	srv.MCP = mcpserver.Handler(svc, api.OrgFrom, "test")
+	srv.MCP = mcpserver.Handler(svc, func(ctx context.Context) mcpserver.Caller {
+		return mcpserver.Caller{Principal: api.PrincipalFrom(ctx), IP: api.ClientIP(ctx), RequestID: api.RequestID(ctx)}
+	}, log, "test")
 	httpSrv := httptest.NewServer(srv.Handler())
 	defer httpSrv.Close()
 	a := client{t: t, base: httpSrv.URL, key: keyA.Key}
@@ -258,10 +262,11 @@ func TestPlatformEndToEnd(t *testing.T) {
 	dp := &dispatcher.Dispatcher{Svc: svc, Log: log, Client: http.DefaultClient}
 
 	// Inbound SMTP.
-	mxAddr := listen(t, mx.NewServer(&mx.Backend{Svc: svc, Log: log, MaxBytes: 10 << 20}, "", "mx."+shared))
-	c, err := smtp.Dial(mxAddr)
+	mxAddr := listen(t, mx.NewServer(&mx.Backend{Svc: svc, Log: log, MaxBytes: 10 << 20}, "", "mx."+shared, (&tlsx.Loader{Hostname: "mx." + shared}).Config()))
+	// STARTTLS must be offered (self signed fallback until a real certificate exists).
+	c, err := smtp.DialStartTLS(mxAddr, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // test against self signed fallback
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("STARTTLS: %v", err)
 	}
 	if err := c.Mail("vendor@ext.test", nil); err != nil {
 		t.Fatal(err)
@@ -496,6 +501,79 @@ func TestPlatformEndToEnd(t *testing.T) {
 	res := mcpCall(3, "tools/call", map[string]any{"name": "list_inboxes", "arguments": map[string]any{}})
 	if !strings.Contains(fmt.Sprint(res), "sales@"+shared) || strings.Contains(fmt.Sprint(res), "isError:true") {
 		t.Fatalf("tools/call list_inboxes: %v", res)
+	}
+
+	// Scoped keys: read only key can read, cannot send, cannot escalate.
+	code, ro := a.do("POST", "/v0/api-keys", map[string]any{"name": "reader", "permissions": []string{"inbox_read", "message_read"}}, nil)
+	if code != 201 {
+		t.Fatalf("create scoped key: %d %v", code, ro)
+	}
+	reader := client{t: t, base: httpSrv.URL, key: ro["api_key"].(string)}
+	if code, _ := reader.do("GET", "/v0/inboxes", nil, nil); code != 200 {
+		t.Fatalf("reader list inboxes: %d", code)
+	}
+	if code, body := reader.do("POST", "/v0/inboxes/sales@"+shared+"/messages/send", map[string]any{"to": []string{"x@ext.test"}, "text": "no"}, nil); code != 403 || body["code"] != "missing_permission" {
+		t.Fatalf("reader send: %d %v", code, body)
+	}
+	if code, body := reader.do("POST", "/v0/api-keys", map[string]any{"permissions": []string{"message_send"}}, nil); code != 403 {
+		t.Fatalf("reader creating keys: %d %v", code, body)
+	}
+	// The MCP gateway enforces the same permissions.
+	readerMCP := func() map[string]any {
+		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": map[string]any{
+			"name": "send_message", "arguments": map[string]any{"inbox": "sales@" + shared, "to": []string{"x@ext.test"}, "subject": "s", "text": "t"}}})
+		req, _ := http.NewRequest("POST", httpSrv.URL+"/mcp", bytes.NewReader(body))
+		req.Header.Set("X-Api-Key", ro["api_key"].(string))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		out := map[string]any{}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return out
+	}()
+	if !strings.Contains(fmt.Sprint(readerMCP), "missing_permission") {
+		t.Fatalf("MCP send with read only key: %v", readerMCP)
+	}
+	code, child := a.do("POST", "/v0/api-keys", map[string]any{"name": "sender", "permissions": []string{"message_send"}}, nil)
+	if code != 201 {
+		t.Fatalf("create sender key: %d %v", code, child)
+	}
+	if code, _ := a.do("DELETE", "/v0/api-keys/"+child["api_key_id"].(string), nil, nil); code != 204 {
+		t.Fatalf("revoke: %d", code)
+	}
+	if code, _ := (client{t: t, base: httpSrv.URL, key: child["api_key"].(string)}).do("GET", "/v0/auth/me", nil, nil); code != 401 {
+		t.Fatalf("revoked key still works: %d", code)
+	}
+	code, logBody := a.do("GET", "/v0/audit-logs", nil, nil)
+	if code != 200 {
+		t.Fatalf("audit logs: %d %v", code, logBody)
+	}
+	actions := fmt.Sprint(logBody["entries"])
+	for _, want := range []string{"api_key.create", "api_key.revoke", "inbox.create", "domain.create", "webhook.create"} {
+		if !strings.Contains(actions, want) {
+			t.Errorf("audit log missing %s: %s", want, actions)
+		}
+	}
+	if code, _ := reader.do("GET", "/v0/audit-logs", nil, nil); code != 403 {
+		t.Fatalf("reader must not read the audit log: %d", code)
+	}
+
+	// Gateway: request id, security headers, published contract.
+	resp, err := http.Get(httpSrv.URL + "/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(string(spec), "openapi: 3.1.0") {
+		t.Fatalf("openapi: %d", resp.StatusCode)
+	}
+	if resp.Header.Get("X-Request-Id") == "" || resp.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("gateway headers: %v", resp.Header)
 	}
 }
 

@@ -14,14 +14,23 @@ import (
 	"strings"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
+	"github.com/bertodrew/multi.ai.inbox/openapi"
 )
 
 type ctxKey struct{}
 
+// PrincipalFrom returns the authenticated caller of a request.
+func PrincipalFrom(ctx context.Context) *core.Principal {
+	p, _ := ctx.Value(ctxKey{}).(*core.Principal)
+	return p
+}
+
 // OrgFrom returns the authenticated organization of a request.
 func OrgFrom(ctx context.Context) *core.Org {
-	o, _ := ctx.Value(ctxKey{}).(*core.Org)
-	return o
+	if p := PrincipalFrom(ctx); p != nil {
+		return p.Org
+	}
+	return nil
 }
 
 type Server struct {
@@ -30,6 +39,10 @@ type Server struct {
 	MCP http.Handler // optional, mounted at /mcp behind the same auth
 	// Limiter caps requests per organization; nil disables it.
 	Limiter *Limiter
+	// AuthFailures caps failed authentications per client IP (brute force); nil disables it.
+	AuthFailures *Limiter
+	// Gateway holds the edge settings (CORS, trusted proxies).
+	Gateway Gateway
 }
 
 const maxBody = 8 << 20
@@ -46,37 +59,59 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	auth := http.NewServeMux()
-	auth.HandleFunc("GET /v0/auth/me", s.me)
-	auth.HandleFunc("POST /v0/inboxes", s.createInbox)
-	auth.HandleFunc("GET /v0/inboxes", s.listInboxes)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}", s.getInbox)
-	auth.HandleFunc("PATCH /v0/inboxes/{inbox}", s.updateInbox)
-	auth.HandleFunc("DELETE /v0/inboxes/{inbox}", s.deleteInbox)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}/threads", s.listThreads)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}/threads/{thread}", s.getThread)
-	auth.HandleFunc("GET /v0/threads", s.listThreads)
-	auth.HandleFunc("GET /v0/threads/{thread}", s.getThread)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}/messages", s.listMessages)
-	auth.HandleFunc("POST /v0/inboxes/{inbox}/messages/send", s.send)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}/messages/{message}", s.getMessage)
-	auth.HandleFunc("PATCH /v0/inboxes/{inbox}/messages/{message}", s.updateMessage)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}/messages/{message}/raw", s.rawMessage)
-	auth.HandleFunc("POST /v0/inboxes/{inbox}/messages/{message}/reply", s.reply)
-	auth.HandleFunc("GET /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}", s.attachment)
-	auth.HandleFunc("POST /v0/domains", s.createDomain)
-	auth.HandleFunc("GET /v0/domains", s.listDomains)
-	auth.HandleFunc("GET /v0/domains/{domain}", s.getDomain)
-	auth.HandleFunc("DELETE /v0/domains/{domain}", s.deleteDomain)
-	auth.HandleFunc("POST /v0/domains/{domain}/verify", s.verifyDomain)
-	auth.HandleFunc("POST /v0/webhooks", s.createWebhook)
-	auth.HandleFunc("GET /v0/webhooks", s.listWebhooks)
-	auth.HandleFunc("DELETE /v0/webhooks/{webhook}", s.deleteWebhook)
+	route := func(pattern, perm string, h http.HandlerFunc) { auth.Handle(pattern, s.require(perm, h)) }
+	route("POST /v0/api-keys", "", s.createKey)
+	route("GET /v0/api-keys", "", s.listKeys)
+	route("DELETE /v0/api-keys/{key}", "", s.revokeKey)
+	route("GET /v0/audit-logs", "", s.listAudit)
+	route("GET /v0/auth/me", "", s.me)
+	route("POST /v0/inboxes", core.PermInboxWrite, s.createInbox)
+	route("GET /v0/inboxes", core.PermInboxRead, s.listInboxes)
+	route("GET /v0/inboxes/{inbox}", core.PermInboxRead, s.getInbox)
+	route("PATCH /v0/inboxes/{inbox}", core.PermInboxWrite, s.updateInbox)
+	route("DELETE /v0/inboxes/{inbox}", core.PermInboxWrite, s.deleteInbox)
+	route("GET /v0/inboxes/{inbox}/threads", core.PermMessageRead, s.listThreads)
+	route("GET /v0/inboxes/{inbox}/threads/{thread}", core.PermMessageRead, s.getThread)
+	route("GET /v0/threads", core.PermMessageRead, s.listThreads)
+	route("GET /v0/threads/{thread}", core.PermMessageRead, s.getThread)
+	route("GET /v0/inboxes/{inbox}/messages", core.PermMessageRead, s.listMessages)
+	route("POST /v0/inboxes/{inbox}/messages/send", core.PermMessageSend, s.send)
+	route("GET /v0/inboxes/{inbox}/messages/{message}", core.PermMessageRead, s.getMessage)
+	route("PATCH /v0/inboxes/{inbox}/messages/{message}", core.PermMessageUpdate, s.updateMessage)
+	route("GET /v0/inboxes/{inbox}/messages/{message}/raw", core.PermMessageRead, s.rawMessage)
+	route("POST /v0/inboxes/{inbox}/messages/{message}/reply", core.PermMessageSend, s.reply)
+	route("GET /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}", core.PermMessageRead, s.attachment)
+	route("POST /v0/domains", core.PermDomainWrite, s.createDomain)
+	route("GET /v0/domains", core.PermDomainRead, s.listDomains)
+	route("GET /v0/domains/{domain}", core.PermDomainRead, s.getDomain)
+	route("DELETE /v0/domains/{domain}", core.PermDomainWrite, s.deleteDomain)
+	route("POST /v0/domains/{domain}/verify", core.PermDomainWrite, s.verifyDomain)
+	route("POST /v0/webhooks", core.PermWebhookWrite, s.createWebhook)
+	route("GET /v0/webhooks", core.PermWebhookRead, s.listWebhooks)
+	route("DELETE /v0/webhooks/{webhook}", core.PermWebhookWrite, s.deleteWebhook)
 	if s.MCP != nil {
 		auth.Handle("/mcp", s.MCP)
 	}
+	mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		_, _ = w.Write(openapi.Spec)
+	})
 	mux.Handle("/v0/", s.authenticate(auth))
 	mux.Handle("/mcp", s.authenticate(auth))
-	return mux
+	return s.gateway(mux)
+}
+
+// require checks a permission before the handler runs ("" means any key).
+func (s *Server) require(perm string, h http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if perm != "" {
+			if err := PrincipalFrom(r.Context()).Require(perm); err != nil {
+				s.fail(w, err)
+				return
+			}
+		}
+		h(w, r)
+	})
 }
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
@@ -92,17 +127,28 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				Message: "send Authorization: Bearer <api key>"})
 			return
 		}
-		org, err := s.Svc.Authenticate(r.Context(), key)
+		ip := clientIP(r.Context())
+		if s.AuthFailures != nil && !s.AuthFailures.Peek(ip) {
+			s.fail(w, &core.Error{Status: http.StatusTooManyRequests, Name: "Too Many Requests", Code: "rate_limit_exceeded",
+				Message: "too many failed authentications from this address, retry later"})
+			return
+		}
+		principal, err := s.Svc.Authenticate(r.Context(), key)
 		if err != nil {
+			if s.AuthFailures != nil && core.AsError(err).Status == http.StatusUnauthorized {
+				s.AuthFailures.Allow(ip) // consume a token per failure
+			}
 			s.fail(w, err)
 			return
 		}
+		org := principal.Org
 		if s.Limiter != nil && !s.Limiter.Allow(org.ID) {
 			s.fail(w, &core.Error{Status: http.StatusTooManyRequests, Name: "Too Many Requests", Code: "rate_limit_exceeded",
 				Message: "too many requests for this organization, retry shortly"})
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, org)))
+		setLogOrg(r.Context(), org.ID)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, principal)))
 	})
 }
 
@@ -160,7 +206,70 @@ func listBody[T any](name string, items []T, next string) map[string]any {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	s.ok(w, http.StatusOK, OrgFrom(r.Context()))
+	p := PrincipalFrom(r.Context())
+	perms := p.Permissions
+	if perms == nil {
+		perms = core.AllPermissions
+	}
+	s.ok(w, http.StatusOK, map[string]any{"organization_id": p.Org.ID, "name": p.Org.Name, "plan": p.Org.Plan,
+		"api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
+}
+
+// audit records a security relevant action; a failure is logged, never fatal.
+func (s *Server) audit(r *http.Request, action, target string, meta map[string]any) {
+	p := PrincipalFrom(r.Context())
+	raw, _ := json.Marshal(meta)
+	if meta == nil {
+		raw = nil
+	}
+	err := s.Svc.Audit(context.WithoutCancel(r.Context()), p.Org.ID, core.AuditEntry{Actor: p.Actor(), Action: action,
+		Target: target, IP: clientIP(r.Context()), RequestID: requestID(r.Context()), Metadata: raw})
+	if err != nil {
+		s.Log.Error("audit write failed", "action", action, "err", err)
+	}
+}
+
+func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
+	var req core.CreateKeyRequest
+	if err := decode(r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	k, err := s.Svc.CreateScopedKey(r.Context(), PrincipalFrom(r.Context()), req)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "api_key.create", k.ID, map[string]any{"name": k.Name, "permissions": k.Permissions})
+	s.ok(w, http.StatusCreated, k)
+}
+
+func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Svc.ListKeys(r.Context(), PrincipalFrom(r.Context()))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, listBody("api_keys", items, ""))
+}
+
+func (s *Server) revokeKey(w http.ResponseWriter, r *http.Request) {
+	if err := s.Svc.RevokeKey(r.Context(), PrincipalFrom(r.Context()), r.PathValue("key")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "api_key.revoke", r.PathValue("key"), nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	items, err := s.Svc.ListAudit(r.Context(), PrincipalFrom(r.Context()), limit)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, listBody("entries", items, ""))
 }
 
 func (s *Server) createInbox(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +288,7 @@ func (s *Server) createInbox(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated
+		s.audit(r, "inbox.create", inbox.InboxID, nil)
 	}
 	s.ok(w, status, inbox)
 }
@@ -222,6 +332,7 @@ func (s *Server) deleteInbox(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, "inbox.delete", r.PathValue("inbox"), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -331,6 +442,7 @@ func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, "webhook.create", hook.ID, map[string]any{"url": hook.URL, "event_types": hook.EventTypes})
 	s.ok(w, http.StatusCreated, hook)
 }
 
@@ -348,6 +460,7 @@ func (s *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, "webhook.delete", r.PathValue("webhook"), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -376,6 +489,7 @@ func (s *Server) createDomain(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, "domain.create", d.Name, nil)
 	s.ok(w, http.StatusCreated, d)
 }
 
@@ -402,6 +516,7 @@ func (s *Server) deleteDomain(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, "domain.delete", r.PathValue("domain"), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 

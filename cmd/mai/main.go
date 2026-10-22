@@ -8,6 +8,7 @@
 //	mai admin key-create -org <uuid> [-name agent]
 //	mai admin domain-add -name agents.example.eu [-org <uuid>]
 //	mai admin check-port25                      can this host deliver directly?
+//	mai mcp-config -url https://api.example.eu  MCP setup for Claude Code, Cursor, Codex
 package main
 
 import (
@@ -37,6 +38,7 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/scheduler"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
+	"github.com/bertodrew/multi.ai.inbox/internal/tlsx"
 )
 
 var version = "dev"
@@ -55,6 +57,9 @@ type config struct {
 	AllowHTTPHook bool
 	SPFInclude    string
 	RatePerSecond float64
+	Gateway       api.Gateway
+	TLSCert       string
+	TLSKey        string
 }
 
 func env(key, def string) string {
@@ -67,6 +72,12 @@ func env(key, def string) string {
 func loadConfig() config {
 	maxMsg, _ := strconv.ParseInt(env("MAI_MAX_MESSAGE_BYTES", "26214400"), 10, 64)
 	rate, _ := strconv.ParseFloat(env("MAI_RATE_LIMIT_PER_SECOND", "20"), 64)
+	// Default: trust X-Forwarded-For only from loopback and cluster networks (Caddy).
+	proxies, err := api.ParseCIDRs(env("MAI_TRUSTED_PROXIES", "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "invalid MAI_TRUSTED_PROXIES:", err)
+		os.Exit(2)
+	}
 	return config{
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		HTTPAddr:      env("MAI_HTTP_ADDR", ":8080"),
@@ -81,6 +92,9 @@ func loadConfig() config {
 		AllowHTTPHook: os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
 		SPFInclude:    os.Getenv("MAI_SPF_INCLUDE"),
 		RatePerSecond: rate,
+		Gateway:       api.Gateway{CORSOrigins: splitList(os.Getenv("MAI_CORS_ORIGINS")), TrustedProxies: proxies},
+		TLSCert:       os.Getenv("MAI_SMTP_TLS_CERT"),
+		TLSKey:        os.Getenv("MAI_SMTP_TLS_KEY"),
 	}
 }
 
@@ -102,6 +116,8 @@ func main() {
 		err = admin(ctx, cfg, os.Args[2:])
 	case "version":
 		fmt.Println(version)
+	case "mcp-config":
+		err = mcpConfig(os.Args[2:])
 	default:
 		usage()
 	}
@@ -112,7 +128,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: mai serve|migrate|admin|version")
+	fmt.Fprintln(os.Stderr, "usage: mai serve|migrate|admin|mcp-config|version")
 	os.Exit(2)
 }
 
@@ -154,7 +170,9 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			if cfg.RatePerSecond > 0 {
 				srv.Limiter = api.NewLimiter(cfg.RatePerSecond, cfg.RatePerSecond*2)
 			}
-			srv.MCP = mcpserver.Handler(svc, api.OrgFrom, version)
+			srv.MCP = mcpserver.Handler(svc, mcpCaller, log, version)
+			srv.AuthFailures = api.NewLimiter(10.0/60, 10) // 10 failed keys per IP, refilling 10 per minute
+			srv.Gateway = cfg.Gateway
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			wg.Add(1)
 			go func() {
@@ -172,7 +190,9 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			}()
 		}
 		if enabled["mx"] {
-			smtpSrv := mx.NewServer(&mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL}, cfg.SMTPAddr, cfg.Hostname)
+			certs := &tlsx.Loader{CertGlob: cfg.TLSCert, KeyGlob: cfg.TLSKey, Hostname: cfg.Hostname}
+			smtpSrv := mx.NewServer(&mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL},
+				cfg.SMTPAddr, cfg.Hostname, certs.Config())
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -333,5 +353,42 @@ func checkPort25(ctx context.Context) error {
 	banner := make([]byte, 128)
 	n, _ := conn.Read(banner)
 	fmt.Printf("port 25 outbound: OPEN (%s)\n", strings.TrimSpace(string(banner[:n])))
+	return nil
+}
+
+func mcpCaller(ctx context.Context) mcpserver.Caller {
+	return mcpserver.Caller{Principal: api.PrincipalFrom(ctx), IP: api.ClientIP(ctx), RequestID: api.RequestID(ctx)}
+}
+
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// mcpConfig prints ready to paste MCP registrations for common agent clients.
+// The key is read from MAI_API_KEY at use time, never written into files here.
+func mcpConfig(args []string) error {
+	fs := flag.NewFlagSet("mcp-config", flag.ExitOnError)
+	base := fs.String("url", "http://localhost:8080", "API base URL")
+	_ = fs.Parse(args)
+	endpoint := strings.TrimSuffix(*base, "/") + "/mcp"
+	fmt.Printf(`# Claude Code
+claude mcp add --transport http multi-ai-inbox %[1]s --header "X-Api-Key: $MAI_API_KEY"
+
+# Cursor (.cursor/mcp.json)
+{"mcpServers": {"multi-ai-inbox": {"url": "%[1]s", "headers": {"X-Api-Key": "${env:MAI_API_KEY}"}}}}
+
+# Codex (~/.codex/config.toml), sends the key as a bearer token
+[mcp_servers.multi-ai-inbox]
+url = "%[1]s"
+bearer_token_env_var = "MAI_API_KEY"
+
+# Tip: give agents a scoped key, e.g. POST /v0/api-keys {"permissions":["inbox_read","message_read","message_send"]}
+`, endpoint)
 	return nil
 }

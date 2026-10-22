@@ -5,6 +5,7 @@ package mx
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,8 +29,10 @@ type Backend struct {
 	HTTP      *http.Client
 }
 
-func NewServer(b *Backend, addr, domain string) *smtp.Server {
+// NewServer builds the SMTP edge. With tlsConfig set, STARTTLS is offered.
+func NewServer(b *Backend, addr, domain string, tlsConfig *tls.Config) *smtp.Server {
 	s := smtp.NewServer(b)
+	s.TLSConfig = tlsConfig
 	s.Addr = addr
 	s.Domain = domain
 	s.MaxMessageBytes = b.MaxBytes

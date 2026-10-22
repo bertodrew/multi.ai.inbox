@@ -44,3 +44,15 @@ func (l *Limiter) Allow(key string) bool {
 	b.tokens--
 	return true
 }
+
+// Peek reports whether key has a token left without consuming it.
+func (l *Limiter) Peek(key string) bool {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[key]
+	if !ok {
+		return true
+	}
+	return min(l.Burst, b.tokens+now.Sub(b.last).Seconds()*l.Rate) >= 1
+}
