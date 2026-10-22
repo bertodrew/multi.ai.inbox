@@ -160,7 +160,17 @@
   $('#origin-value').textContent = status.mailcow_origin || 'not configured';
   $('#api-state').textContent = 'reachable';
   $('#origin-state').textContent = status.mailcow_origin ? 'origin resolved' : 'origin missing';
-  if (status.mailcow_origin) $('#open-mailcow').href = status.mailcow_origin + '/home';
+  const openMailcow = $('#open-mailcow');
+  if (openMailcow) {
+    if (status.mailcow_origin) {
+      openMailcow.href = status.mailcow_origin + '/home';
+      openMailcow.removeAttribute('aria-disabled');
+    } else {
+      /* origin unknown: CTA disabled (no empty tab), the kv list above tells honestly. */
+      openMailcow.removeAttribute('href');
+      openMailcow.setAttribute('aria-disabled', 'true');
+    }
+  }
 
   $('#to-step-2').addEventListener('click', () => showStep(2));
 

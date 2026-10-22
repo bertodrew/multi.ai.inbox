@@ -92,6 +92,15 @@
   }
   status = status.data;
 
+  // Admin gating: the Admin and Dashboard nav links stay hidden by default and
+  // are shown only for admin sessions — every other nav entry stays public.
+  if (status.admin === true) {
+    const na = $('#nav-admin');
+    const nd = $('#nav-dashboard');
+    if (na) na.hidden = false;
+    if (nd) nd.hidden = false;
+  }
+
   if (!status.connected) {
     // No Namecheap session: settings need the domain list; route to login.
     location.replace('index.html');
@@ -100,7 +109,6 @@
 
   /* topbar */
   $('#connected-as').textContent = status.username || '';
-  if (status.mailcow_origin) $('#admin-link').href = status.mailcow_origin + '/home';
 
   /* ---------------- environment choice (persisted per account) ---------------- */
 

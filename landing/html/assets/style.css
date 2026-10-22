@@ -104,6 +104,140 @@ pre {
 
 .connected-as { color: var(--muted); font-size: 0.9rem; }
 
+/* mobile topbar toggle (hamburger) — hidden on desktop, drawer ≤ 560px */
+.bar-toggle {
+  display: none;
+  margin-left: auto;
+  padding: 8px;
+}
+.bar-toggle svg { display: block; }
+
+/* [hidden] must beat any author display rule (nav-admin/nav-dashboard gates
+   on .btn elements) */
+[hidden] { display: none !important; }
+
+/* login modal: orbit split — rings, icons, ripple + field glow (design pass) */
+.login-orbit { display: none; }
+.login-divider { border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 12px; text-align: center; }
+.login-divider span { color: var(--muted-foreground); font-size: 0.85rem; }
+
+.orbit-brand { margin: 0; font-size: 1.3rem; font-weight: 700; color: var(--text); }
+.orbit-brand b { color: var(--accent); }
+.orbit-display { position: relative; width: 240px; height: 240px; display: flex; align-items: center; justify-content: center; }
+.orbit-ring {
+  position: absolute; top: 50%; left: 50%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  animation: orbit-spin 18s linear infinite;
+}
+.orbit-1 { width: 90px; height: 90px; margin: -45px 0 0 -45px; }
+.orbit-2 { width: 150px; height: 150px; margin: -75px 0 0 -75px; animation-duration: 26s; }
+.orbit-3 { width: 210px; height: 210px; margin: -105px 0 0 -105px; animation-duration: 34s; }
+.orbit-ring.reverse { animation-direction: reverse; }
+.orbit-icon {
+  position: absolute; top: -15px; left: 50%; margin-left: -17px;
+  color: var(--accent);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px;
+  animation: orbit-counter 18s linear infinite; /* counter-spin: icons stay upright */
+}
+.orbit-2 .orbit-icon { animation-duration: 26s; }
+.orbit-3 .orbit-icon { animation-duration: 34s; }
+.orbit-ring.reverse .orbit-icon { animation-direction: reverse; }
+.ripple-dot {
+  position: absolute; top: 50%; left: 50%;
+  width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: ripple-pulse 2.4s ease-in-out infinite;
+}
+.ripple-2 { background: var(--blue); animation-delay: 0.4s; }
+.ripple-3 { animation-delay: 0.8s; }
+@keyframes orbit-spin { to { transform: rotate(360deg); } }
+@keyframes orbit-counter { to { transform: rotate(-360deg); } }
+@keyframes ripple-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.35; }
+  50% { transform: scale(1.7); opacity: 0.75; }
+}
+@media (min-width: 720px) {
+  .login-card { width: min(760px, 100%); display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: stretch; }
+  .login-orbit { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; border-right: 1px solid var(--border); padding: 8px 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-ring, .orbit-icon, .ripple-dot { animation: none; }
+}
+
+/* field glow: the radial highlight that follows the pointer (no animation
+   library — CSS custom properties + a smooth opacity transition) */
+.field-glow { position: relative; border-radius: 12px; }
+.field-glow::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 12px;
+  opacity: 0;
+  background: radial-gradient(100px circle at var(--mx, 50%) var(--my, 50%), rgba(79, 142, 247, 0.45), transparent 80%);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.field-glow.glow-on::before { opacity: 1; }
+.panel select {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.panel select:focus { border-color: var(--accent); }
+.field-glow:has(.pass-toggle) input { padding-right: 44px; }
+.pass-toggle {
+  position: absolute; top: 50%; right: 7px; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 0; background: transparent; border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pass-toggle:hover { color: var(--text); }
+.pass-toggle .eye-off { display: none; }
+.pass-toggle.showing .eye-on { display: none; }
+.pass-toggle.showing .eye-off { display: block; }
+
+/* register panel: oauth row + two-column field pairs */
+.oauth-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.oauth-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 8px; font-size: 0.9rem; }
+.reg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.reg-field { display: flex; flex-direction: column; }
+@media (max-width: 480px) { .reg-row { grid-template-columns: 1fr; } }
+
+/* primary button bottom gradient (hover reveal) */
+.btn.primary { position: relative; }
+.btn.primary::after {
+  content: '';
+  position: absolute; left: 4px; right: 4px; bottom: -1px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.btn.primary:hover::after { opacity: 1; }
+
+/* modal content reveal on open */
+@keyframes modal-reveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.login-card { animation: modal-reveal 0.4s ease 0.05s backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .login-card { animation: none; }
+}
+
+
 /* hero */
 
 .hero { padding: 72px 0 40px; text-align: center; }
@@ -406,9 +540,12 @@ footer { border-top: 1px solid var(--border); margin-top: auto; }
 }
 
 @media (max-width: 560px) {
-  .bar-inner { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .bar-nav { justify-content: flex-start; }
-  .connected-as { display: none; }
+  /* drawer: row 1 = brand + hamburger; nav opens full-width below (one tap,
+     no 5-row wrap — topbar stays ~74px tall with the drawer closed) */
+  .bar-inner { flex-wrap: wrap; }
+  .bar-toggle { display: inline-flex; }
+  .bar-nav { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 8px; padding: 2px 0 6px; }
+  .topbar.nav-open .bar-nav { display: flex; }
   .login-card { padding: 16px; }
   /* touch targets ≥ 44px on mobile */
   .btn { min-height: 44px; }

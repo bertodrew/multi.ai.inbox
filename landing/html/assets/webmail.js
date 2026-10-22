@@ -27,7 +27,10 @@
     ? status.data.mailcow_origin.replace(/\/$/, '') : '';
   const open = $('#sogo-open');
   const gate = $('#sogo-gate');
-  if (open && origin) open.href = origin + '/SOGo/';
+  if (open && origin) {
+    open.href = origin + '/SOGo/';
+    open.removeAttribute('aria-disabled');
+  }
   else if (open && gate) {
     // Origin unknown: disable the CTA (no empty tab) and tell the user honestly.
     open.removeAttribute('href');
@@ -37,13 +40,18 @@
     note.textContent = 'The webmail client is temporarily unreachable — please try again later.';
     gate.appendChild(note);
   }
-  const adminLink = $('#admin-link');
-  // Mail UI → /home on every page — one canonical target across all pages.
-  if (adminLink && origin) adminLink.href = origin + '/home';
-
   // Session identity in the topbar (same convention as the other app pages).
   if (status.httpOk && status.data && status.data.connected && status.data.username) {
     const ca = $('#connected-as');
     if (ca) ca.textContent = 'Connected as ' + status.data.username + (status.data.sandbox ? ' (sandbox)' : '');
+  }
+
+  // Admin gating: the Admin and Dashboard nav links stay hidden by default and
+  // are shown only for admin sessions — every other nav entry stays public.
+  if (status.httpOk && status.data && status.data.admin === true) {
+    const na = $('#nav-admin');
+    const nd = $('#nav-dashboard');
+    if (na) na.hidden = false;
+    if (nd) nd.hidden = false;
   }
 })();

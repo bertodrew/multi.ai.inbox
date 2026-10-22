@@ -114,11 +114,12 @@ func jsonErr(w http.ResponseWriter, message string, code int) {
 // ---------------------------------------------------------------------------
 
 type session struct {
-	connected bool
-	username  string
-	attempts  []time.Time
-	csrf      string
-	expires   time.Time // zero = anonymous session (no connection to expire)
+	connected  bool
+	username   string
+	attempts   []time.Time
+	csrf       string
+	oauthState string // in-flight OAuth state (CSRF for the provider round-trip)
+	expires    time.Time // zero = anonymous session (no connection to expire)
 }
 
 // sessionTTL: a connected session dies one working day after the connect —
@@ -680,6 +681,14 @@ func auditLog(event string, fields map[string]any) {
 	for k, v := range fields {
 		rec[k] = v
 	}
+	// Ring for GET /api/notifications: in-memory only, dies with the process
+	// (a restart clears it) — stdout stays the durable audit sink.
+	auditRing.Lock()
+	auditRing.evs = append(auditRing.evs, rec)
+	if n := len(auditRing.evs); n > auditRingCap {
+		auditRing.evs = auditRing.evs[n-auditRingCap:]
+	}
+	auditRing.Unlock()
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return
@@ -728,13 +737,23 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jsonOut(w, map[string]any{
-		"ok":            true,
-		"connected":     connected && c != nil,
-		"username":      mapNil(username),
-		"sandbox":       c != nil && c.Sandbox,
-		"csrf":          ensureCSRF(sess),
+		"ok":             true,
+		"connected":      connected && c != nil,
+		"username":       mapNil(username),
+		"sandbox":        c != nil && c.Sandbox,
+		"csrf":           ensureCSRF(sess),
 		"mailcow_origin": mailcowOrigin(r),
+		"admin":          isAdmin(connected && c != nil, username),
 	})
+}
+
+// isAdmin is env-gated and fail-closed: a session is an admin session only
+// when LANDING_ADMIN_USER is set and equals the connected username. Unset
+// (the default) means no admin sessions exist — the admin/dashboard pages
+// answer the honest not-authorized gate and fetch no scoped data.
+func isAdmin(connected bool, username string) bool {
+	want := strings.TrimSpace(os.Getenv("LANDING_ADMIN_USER"))
+	return connected && want != "" && username != "" && username == want
 }
 
 func mailcowOrigin(r *http.Request) string {
@@ -827,8 +846,11 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 	if !requireCSRF(w, r, sess) {
 		return
 	}
+	sessions.mu.Lock()
+	username := sess.username
+	sessions.mu.Unlock()
 	dropSession(w, r)
-	auditLog("namecheap_disconnect", map[string]any{"ok": true, "ip": clientIP(r)})
+	auditLog("namecheap_disconnect", map[string]any{"ok": true, "username": username, "ip": clientIP(r)})
 	jsonOut(w, map[string]any{"ok": true})
 }
 
@@ -950,8 +972,8 @@ func mcpTools() []map[string]any {
 			"description": "Get the full settings of a single mail domain: quota, max quota, aliases, mailboxes, DKIM, relay state, active state.",
 			"inputSchema": map[string]any{
 				"type": "object", "required": []string{"domain"},
-				"properties":             map[string]any{"domain": map[string]any{"type": "string", "description": "Domain name, e.g. example.com"}},
-				"additionalProperties":   false,
+				"properties":           map[string]any{"domain": map[string]any{"type": "string", "description": "Domain name, e.g. example.com"}},
+				"additionalProperties": false,
 			},
 		},
 		{
@@ -1318,8 +1340,122 @@ func handleGatewayDomainPatch(w http.ResponseWriter, r *http.Request) {
 	if isNewDomain {
 		addProvisionedDomain(sess.username, domain)
 	}
-	auditLog("domain_settings_patch", map[string]any{"ok": true, "domain": domain, "fields": attr})
+	auditLog("domain_settings_patch", map[string]any{"ok": true, "username": sess.username, "domain": domain, "fields": attr})
 	jsonOut(w, map[string]any{"ok": true, "domain": record, "warnings": warnings})
+}
+
+// ---------------------------------------------------------------------------
+// notifications (GET /api/notifications — session-based, in-memory audit ring)
+// ---------------------------------------------------------------------------
+
+// auditRingCap: the ring keeps only the most recent events.
+const auditRingCap = 200
+
+// maxNotifications: the bell answers at most this many items per session.
+const maxNotifications = 30
+
+// auditRing: recent audit events kept in memory for GET /api/notifications.
+// Honest limit: in-memory only — the ring dies with the process (a restart
+// clears it); stdout remains the durable audit sink.
+var auditRing = struct {
+	sync.Mutex
+	evs []map[string]any
+}{}
+
+// handleNotifications answers the notification bell: audit events filtered to
+// the session's username, newest first, max 30. Read-state is client-side —
+// the endpoint does not track unread.
+func handleNotifications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, "GET required", http.StatusMethodNotAllowed)
+		return
+	}
+	_, sess := ensureSession(w, r)
+	sessions.mu.Lock()
+	connected := sess.connected
+	username := sess.username
+	sessions.mu.Unlock()
+	if !connected || username == "" {
+		jsonErr(w, "Sign in to see your notifications", http.StatusUnauthorized)
+		return
+	}
+	auditRing.Lock()
+	evs := make([]map[string]any, len(auditRing.evs))
+	copy(evs, auditRing.evs)
+	auditRing.Unlock()
+
+	// The ring appends in ts order (auditLog stamps RFC3339 UTC), so walking
+	// it backwards yields ts desc.
+	items := make([]map[string]any, 0, len(evs))
+	for i := len(evs) - 1; i >= 0 && len(items) < maxNotifications; i-- {
+		ev := evs[i]
+		if u, _ := ev["username"].(string); u != username {
+			continue
+		}
+		items = append(items, notificationItem(ev))
+	}
+	jsonOut(w, map[string]any{"ok": true, "items": items})
+}
+
+// notificationItem maps one audit record to a bell item. mention stays false:
+// only product events are audited today, no @mentions exist yet.
+func notificationItem(ev map[string]any) map[string]any {
+	event, _ := ev["event"].(string)
+	ts, _ := ev["ts"].(string)
+	title, detail := notificationText(event, ev)
+	return map[string]any{
+		"id":      event + ":" + ts,
+		"kind":    notificationKind(event),
+		"title":   title,
+		"detail":  detail,
+		"ts":      ts,
+		"mention": false,
+	}
+}
+
+// notificationKind maps an audit event name to a bell kind: security first
+// (login failures), then account, provisioning, mail; unknown events fall
+// back to account with their audit name as the title.
+func notificationKind(event string) string {
+	switch {
+	case strings.Contains(event, "failed") || strings.Contains(event, "password"):
+		return "security"
+	case event == "namecheap_connect" || event == "namecheap_disconnect" || event == "account_register":
+		return "account"
+	case strings.HasPrefix(event, "checkout_") || strings.HasPrefix(event, "provisioning_"):
+		return "provisioning"
+	case strings.Contains(event, "mailbox") || strings.Contains(event, "domain") || strings.Contains(event, "zone"):
+		return "mail"
+	default:
+		return "account"
+	}
+}
+
+// notificationText keeps titles and details short and honest in English.
+func notificationText(event string, ev map[string]any) (string, string) {
+	switch event {
+	case "namecheap_connect":
+		return "Registrar connected", "API key stored for this session"
+	case "namecheap_disconnect":
+		return "Registrar disconnected", "Stored API key removed from this session"
+	case "namecheap_connect_failed":
+		return "Sign-in attempt failed", "Registrar connection attempt was rejected"
+	case "domain_settings_patch":
+		d, _ := ev["domain"].(string)
+		return "Domain settings updated", "Changed settings for " + d
+	case "provisioning_queued":
+		p, _ := ev["plan"].(string)
+		return "Provisioning queued", "Environment request for plan " + p
+	case "provisioning_budget_blocked":
+		return "Provisioning blocked", "Monthly budget would be exceeded"
+	case "provisioning_queue_failed":
+		return "Provisioning failed", "Environment request could not be queued"
+	case "checkout_state":
+		s, _ := ev["state"].(string)
+		return "Checkout state: " + s, "Subscription checkout updated"
+	default:
+		return event, ""
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1348,6 +1484,12 @@ func main() {
 	mux.HandleFunc("POST /api/checkout/webhook", handleCheckoutWebhook)
 	mux.HandleFunc("GET /api/checkout/state", handleCheckoutState)
 	mux.HandleFunc("GET /api/provisioning/state", handleProvisioningState) // FASE 1 (iaas-design.md §4)
+	mux.HandleFunc("GET /api/notifications", handleNotifications)          // notification bell (in-memory audit ring)
+	mux.HandleFunc("POST /api/auth/register", handleRegister)              // real sign-up (name, country, password + confirm)
+	mux.HandleFunc("GET /api/auth/oauth/{provider}", handleOAuth)          // OAuth entry: google | github | microsoft
+	mux.HandleFunc("GET /api/auth/oauth/{provider}/callback", handleOAuthCallback)
+	mux.HandleFunc("GET /api/admin/metrics", handleAdminMetrics) // founder console: mail stats (admin-gated)
+	mux.HandleFunc("GET /api/admin/infra", handleAdminInfra)     // founder console: infra stats (admin-gated)
 
 	srv := &http.Server{
 		Addr:              internalAddr,

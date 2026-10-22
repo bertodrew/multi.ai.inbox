@@ -23,25 +23,11 @@
 
   if (origin) {
     if (mailcowForm) mailcowForm.action = origin + '/home';
-    // Mail UI → /home hardcoded on every page — one canonical fallback across
-    // all pages (the hardcoded hrefs were incoherent: /SOGo/ qui, /home altrove),
-    // upgraded with the runtime origin when the status answers.
-    const adminLink = $('#admin-link');
-    if (adminLink) adminLink.href = origin + '/home';
   } else {
     const submit = mailcowForm && mailcowForm.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
     if (mailcowHint) mailcowHint.textContent = 'The mail UI is temporarily unreachable. Please try again later — if it persists, contact support.';
     console.warn('Landing: mail origin unknown — set MAILCOW_UI_ORIGIN in the platform config and restart the landing services.');
-  }
-
-  // S4: the server no longer discloses its egress IP to the browser — leave the
-  // field empty and the API uses the server's own egress IP (auto-detected).
-  const ncIpHint = $('#nc-ip-hint');
-  if (ncIpHint) {
-    ncIpHint.setAttribute('aria-live', 'polite'); // M4 fix: status update announced
-    ncIpHint.textContent =
-      'Optional: leave empty to use this server\u2019s egress IP, or type the IP whitelisted in Namecheap (Profile > Tools > API Access).';
   }
 
   // ARIA tablist: click activates, arrow keys move focus + activate,
@@ -69,45 +55,110 @@
     });
   });
 
-  const ncError = $('#nc-error');
-  const ncSubmit = $('#nc-submit');
-  const ncForm = $('#nc-form');
-  if (ncError) ncError.setAttribute('role', 'alert'); // M4 fix: submit errors announced to screen readers
-  if (ncForm && ncSubmit && ncError) {
-    ncForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    ncError.hidden = true;
-
-    const body = new URLSearchParams();
-    body.set('username', $('#nc-username').value.trim());
-    body.set('api_key', $('#nc-api-key').value.trim());
-    body.set('client_ip', $('#nc-client-ip').value.trim());
-    body.set('use_sandbox', $('#nc-sandbox').checked ? '1' : '0');
-    body.set('csrf', csrf);
-
-    ncSubmit.disabled = true;
-    ncSubmit.textContent = 'Connecting…';
-    let res;
-    try {
-      res = await fetch('/landingpage/api/connect', {
-        method: 'POST',
-        body,
-        headers: { 'X-Landing-CSRF': csrf },
-      }).then((r) => r.json());
-    } catch (err) {
-      res = { ok: false, error: 'Network error: ' + err.message };
-    }
-    ncSubmit.disabled = false;
-    ncSubmit.textContent = 'Connect Namecheap';
-
-    if (res.ok) {
-      location.href = 'connectors.html';
-      return;
-    }
-    ncError.textContent = res.error || 'Connection failed';
-    ncError.hidden = false;
+  // Register form: client-side password confirmation, then POST to the
+  // account endpoint — success rotates the session and lands on onboarding.
+  const regForm = $('#register-form');
+  const regError = $('#reg-error');
+  if (regError) regError.setAttribute('role', 'alert');
+  if (regForm && regError) {
+    regForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      regError.hidden = true;
+      const pass = $('#reg-pass').value;
+      if (pass !== $('#reg-pass2').value) {
+        regError.textContent = 'Passwords do not match';
+        regError.hidden = false;
+        return;
+      }
+      const body = new URLSearchParams();
+      body.set('first_name', $('#reg-first').value.trim());
+      body.set('last_name', $('#reg-last').value.trim());
+      body.set('email', $('#reg-email').value.trim());
+      body.set('country', $('#reg-country').value);
+      body.set('password', pass);
+      body.set('password_confirm', $('#reg-pass2').value);
+      body.set('csrf', csrf);
+      const submit = regForm.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      submit.textContent = 'Creating account…';
+      let res;
+      try {
+        res = await fetch('/landingpage/api/auth/register', {
+          method: 'POST',
+          body,
+          headers: { 'X-Landing-CSRF': csrf },
+        }).then((r) => r.json());
+      } catch (err) {
+        res = { ok: false, error: 'Network error: ' + err.message };
+      }
+      submit.disabled = false;
+      submit.textContent = 'Create account';
+      if (res.ok) {
+        location.href = 'onboarding.html';
+        return;
+      }
+      regError.textContent = res.error || 'Registration failed';
+      regError.hidden = false;
     });
   }
+
+  // Password visibility toggles: eye/eye-off inside the field wrapper.
+  document.querySelectorAll('[data-toggle-pass]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const wrap = btn.closest('.field-glow');
+      const input = wrap && wrap.querySelector('input');
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      btn.classList.toggle('showing', show);
+    });
+  });
+
+  // Field glow: the radial highlight that follows the pointer across the
+  // input wrapper (CSS custom properties, no animation library).
+  document.querySelectorAll('.field-glow').forEach((wrap) => {
+    wrap.addEventListener('pointermove', (e) => {
+      const r = wrap.getBoundingClientRect();
+      wrap.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      wrap.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+    wrap.addEventListener('pointerenter', () => wrap.classList.add('glow-on'));
+    wrap.addEventListener('pointerleave', () => wrap.classList.remove('glow-on'));
+  });
+
+  // OAuth entry points: the server answers with a redirect when the provider
+  // is configured, or the honest 501 when it is not — surface the error in
+  // the register panel, never a fake navigation.
+  document.querySelectorAll('[data-oauth]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const provider = btn.dataset.oauth;
+      let res = null;
+      try {
+        res = await fetch('/landingpage/api/auth/oauth/' + provider, { redirect: 'manual' });
+      } catch (err) {
+        res = null;
+      }
+      if (res && res.type === 'opaqueredirect') {
+        location.href = '/landingpage/api/auth/oauth/' + provider;
+        return;
+      }
+      let data = null;
+      if (res) {
+        try {
+          data = await res.json();
+        } catch (err) {
+          data = null;
+        }
+      }
+      if (regError) {
+        regError.textContent =
+          (data && data.error) || 'Sign-in with ' + provider + ' is unavailable right now.';
+        regError.hidden = false;
+      }
+    });
+  });
 
   // Sign-in modal: every [data-open-login] opens the <dialog>; backdrop and
   // close button dismiss it (Esc is native to <dialog>).

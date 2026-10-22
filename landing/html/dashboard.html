@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Founder control dashboard: mail domains and mailboxes, active sessions, provisioning, infrastructure health and the recent audit trail of the AImulti.inbox platform.">
+  <meta property="og:title" content="Dashboard — AImulti.inbox">
+  <meta property="og:description" content="Control dashboard: mail metrics, infrastructure health and the recent audit trail.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/dashboard.html">
+  <meta property="og:url" content="https://multi.ai/dashboard.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Dashboard — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+  <link rel="stylesheet" href="assets/dashboard.css">
+</head>
+<body data-page="dashboard">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" href="dashboard.html" aria-current="page">Dashboard</a>
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="pricing.html">Pricing</a>
+        <a class="btn ghost" href="docs.html">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap" id="dash-root">
+      <!-- (a) hero minimale -->
+      <div class="dash-hero">
+        <h1>Control dashboard</h1>
+        <p class="lede small">Live view of the mail platform: domains and mailboxes, active
+        sessions, the provisioning queue, host health and the most recent audit
+        events. Data refreshes every 15 seconds while the page is open.</p>
+      </div>
+
+      <!-- (b) stat strip -->
+      <div class="dash-stats" aria-label="Platform summary">
+        <div class="stat-card">
+          <span class="stat-label">Domains</span>
+          <span class="stat-value num" id="stat-domains"><span class="skeleton-line" aria-hidden="true"></span><span class="sr-only">Loading&hellip;</span></span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Mailboxes</span>
+          <span class="stat-value num" id="stat-mailboxes"><span class="skeleton-line" aria-hidden="true"></span><span class="sr-only">Loading&hellip;</span></span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Active sessions</span>
+          <span class="stat-value num" id="stat-sessions"><span class="skeleton-line" aria-hidden="true"></span><span class="sr-only">Loading&hellip;</span></span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Provisioning pending</span>
+          <span class="stat-value num" id="stat-pending"><span class="skeleton-line" aria-hidden="true"></span><span class="sr-only">Loading&hellip;</span></span>
+        </div>
+      </div>
+
+      <!-- (c) Mail -->
+      <section class="card" aria-labelledby="mail-title">
+        <div class="card-head">
+          <h2 id="mail-title">Mail</h2>
+          <span class="card-meta" id="mail-meta"></span>
+        </div>
+        <p>Mailboxes per provisioned domain, across every brand on the platform.</p>
+        <p class="msg error" id="mail-error" role="alert" hidden></p>
+        <div id="mail-output">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+
+      <!-- (d) Infrastructure -->
+      <section class="card" aria-labelledby="infra-title">
+        <div class="card-head">
+          <h2 id="infra-title">Infrastructure</h2>
+          <span class="card-meta" id="infra-meta"></span>
+        </div>
+        <p>Disk, memory, uptime and service health of the host running the mail platform.</p>
+        <p class="msg error" id="infra-error" role="alert" hidden></p>
+        <div id="infra-output">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+        </div>
+      </section>
+
+      <!-- (e) Audit log -->
+      <section class="card" aria-labelledby="audit-title">
+        <div class="card-head">
+          <h2 id="audit-title">Audit log</h2>
+          <span class="card-meta" id="audit-meta"></span>
+        </div>
+        <p>Most recent platform events: connections, provisioning, mutations.
+        The 20 latest entries are shown.</p>
+        <p class="msg error" id="audit-error" role="alert" hidden></p>
+        <div id="audit-output">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- full-page honest gates (hidden until the session guard answers) -->
+    <section class="wrap gate" id="not-authorized" hidden>
+      <div class="gate-card" role="alert">
+        <h1>Not authorized</h1>
+        <p>This dashboard requires an admin session. Sign in with an admin
+        account on the platform, then reload this page.</p>
+        <div class="form-actions"><button class="btn primary" id="gate-reload" type="button">Reload</button></div>
+      </div>
+    </section>
+
+    <section class="wrap gate" id="down-gate" hidden>
+      <div class="gate-card" role="alert">
+        <h1>Control dashboard unavailable</h1>
+        <p>The landing API is not responding. Wait a few minutes and retry.</p>
+        <div class="form-actions"><button class="btn primary" id="down-retry" type="button">Retry</button></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/dashboard.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
+</body>
+</html>

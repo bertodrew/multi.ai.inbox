@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Mailboxes per domain: list, state and basic actions.">
+  <meta property="og:title" content="Mailboxes — AImulti.inbox">
+  <meta property="og:description" content="Mailboxes per domain: list, state and basic actions.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/inbox.html">
+  <meta property="og:url" content="https://multi.ai/inbox.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
   <title>Mailboxes — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
@@ -23,7 +29,12 @@
         </svg>
         <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
-      <nav class="bar-nav" aria-label="Main">
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="inbox.html" aria-current="page">Mailboxes</a>
@@ -31,8 +42,8 @@
         <a class="btn ghost" href="pricing.html">Pricing</a>
         <a class="btn ghost" href="docs.html">Docs</a>
         <a class="btn ghost" href="settings.html">Settings</a>
-        <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
+        <a class="btn ghost" id="nav-dashboard" href="dashboard.html" hidden>Dashboard</a>
+        <a class="btn ghost" id="nav-admin" href="admin.html" hidden>Admin</a>
       </nav>
     </div>
   </header>
@@ -90,7 +101,7 @@
         </div>
         <p>
           Prepare the next mailbox address and copy it &mdash; creation itself is applied
-          in the <a id="mailcow-link" href="#" target="_blank" rel="noopener">Mail UI</a>
+          in the <a id="mailcow-link" target="_blank" rel="noopener" aria-disabled="true">Mail UI</a>
           (Mailboxes &rarr; Add mailbox) until the gateway takes writes.
         </p>
         <form id="new-mailbox-form" novalidate>
@@ -108,7 +119,7 @@
           </div>
           <div class="form-actions">
             <button class="btn ghost" type="button" id="btn-copy-address">Copy address</button>
-            <a class="btn primary" id="open-mailcow" href="#" target="_blank" rel="noopener">Open Mail UI</a>
+            <a class="btn primary" id="open-mailcow" target="_blank" rel="noopener" aria-disabled="true">Open Mail UI</a>
             <a class="btn ghost" href="webmail.html">Open Webmail</a>
           </div>
         </form>
@@ -135,5 +146,7 @@
   </footer>
 
   <script src="assets/inbox.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
 </body>
 </html>

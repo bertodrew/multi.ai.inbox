@@ -95,6 +95,15 @@
   }
   status = status.data;
 
+  // Admin gating: the Admin and Dashboard nav links stay hidden by default and
+  // are shown only for admin sessions — every other nav entry stays public.
+  if (status.admin === true) {
+    const na = $('#nav-admin');
+    const nd = $('#nav-dashboard');
+    if (na) na.hidden = false;
+    if (nd) nd.hidden = false;
+  }
+
   if (!status.connected) {
     // The domain list needs the Namecheap session; route to login.
     location.replace('index.html');
@@ -104,9 +113,23 @@
   /* topbar + mailcow links */
   $('#connected-as').textContent = status.username || '';
   if (status.mailcow_origin) {
-    $('#admin-link').href = status.mailcow_origin + '/home';
     $('#mailcow-link').href = status.mailcow_origin + '/home';
     $('#open-mailcow').href = status.mailcow_origin + '/home';
+    $('#mailcow-link').removeAttribute('aria-disabled');
+    $('#open-mailcow').removeAttribute('aria-disabled');
+  } else {
+    /* origin unknown: honest disabled state, aligned with webmail.js — no dead links. */
+    ['mailcow-link', 'open-mailcow'].forEach((id) => {
+      const link = document.getElementById(id);
+      if (link) {
+        link.removeAttribute('href');
+        link.setAttribute('aria-disabled', 'true');
+      }
+    });
+    const form = $('#new-mailbox-form');
+    if (form) form.parentNode.insertBefore(
+      el('p', 'msg error', 'The Mail UI is temporarily unreachable — please try again later.'),
+      form);
   }
 
   /* ---------------- domains + per-domain state ---------------- */

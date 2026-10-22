@@ -1,0 +1,143 @@
+/* dashboard.css — founder control dashboard, page-specific and
+   self-contained (CSP 'self' only: no CDN, no external fonts).
+   Pattern: use-cases.css — tokens restated from theme.css so this file
+   has no coupling. Shared primitives (.card, .badge, .table-scroll,
+   .skeleton, .empty-state, .num, .sr-only) come from style.css + theme.css. */
+
+:root {
+  --bg: #14181f;
+  --bg-soft: #1a202b;
+  --panel: #1e2530;
+  --panel-2: #232b38;
+  --border: #2d3748;
+  --text: #e8ebf1;
+  --muted: #93a0b4;
+  --accent: #2fbf71;
+  --accent-soft: rgba(47, 191, 113, 0.12);
+  --blue: #4f8ef7;
+  --blue-soft: rgba(79, 142, 247, 0.12);
+  --warn: #ff8a80;
+  --warn-soft: rgba(255, 138, 128, 0.12);
+  --skeleton: #2a3342;
+  --radius: 12px;
+}
+
+/* hero minimale */
+.dash-hero { padding: 26px 0 6px; }
+.dash-hero h1 {
+  font-size: 34px; line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.02em;
+}
+.dash-hero .lede { max-width: 640px; }
+
+/* stat strip — 4 metric cards (uc-card look), 2 per row on mobile */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin: 18px 0 22px;
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stat-card:hover { border-color: rgba(47, 191, 113, 0.45); }
+
+.stat-label { font-size: 0.8rem; color: var(--muted); }
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.skeleton-line {
+  display: inline-block;
+  height: 22px;
+  width: 56px;
+  border-radius: 6px;
+  background: var(--skeleton);
+  vertical-align: middle;
+}
+
+/* infrastructure rows — label/value + 6px progress bar (accent on panel-2) */
+.infra-row { margin: 0 0 16px; }
+
+.infra-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 0 0 6px;
+  font-size: 0.92rem;
+}
+.infra-row-head .k { color: var(--muted); }
+.infra-row-head .v {
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  min-width: 0;
+}
+
+/* services sub-list */
+.sub-title { font-size: 0.95rem; margin: 18px 0 0; color: var(--text); }
+
+/* full-page honest gates (not authorized / API down) */
+.gate { padding: 26px 0 34px; }
+
+.gate-card {
+  max-width: 560px;
+  margin: 32px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gate-card h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+.gate-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+/* reduced-motion fallback: no transitions/animations on this page's elements */
+@media (prefers-reduced-motion: reduce) {
+  .stat-card,
+  .bar-fill,
+  .gate-card {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stat-card { transition: border-color 120ms ease; }
+}
+
+/* responsive: stat strip 4 → 2 columns, gates full-width */
+@media (max-width: 760px) {
+  .dash-stats { grid-template-columns: repeat(2, 1fr); }
+  .dash-hero { padding: 20px 0 4px; }
+  .dash-hero h1 { font-size: 28px; }
+  .gate-card { margin: 16px auto; padding: 22px; }
+}

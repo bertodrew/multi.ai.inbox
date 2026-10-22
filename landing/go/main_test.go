@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,6 +36,11 @@ func testEnv(t *testing.T, xml string) {
 	ipHits.mu.Lock()
 	ipHits.m = map[string][]time.Time{}
 	ipHits.mu.Unlock()
+	// Reset the process-global audit ring: tests share one process and
+	// accumulate each other's events.
+	auditRing.Lock()
+	auditRing.evs = nil
+	auditRing.Unlock()
 	nc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml")
 		_, _ = w.Write([]byte(xml))
@@ -396,5 +402,338 @@ func TestGatewayDomainTenantScoping(t *testing.T) {
 	}
 	if code := patch("example.org").Code; code != http.StatusBadGateway {
 		t.Fatalf("ownership failure must fail closed, got %d", code)
+	}
+}
+
+// statusGet calls handleStatus with the given session cookie and decodes the
+// JSON body.
+func statusGet(t *testing.T, sid string) map[string]any {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://status.test/landingpage/api/status", nil)
+	if err != nil {
+		t.Fatalf("request build failed: %v", err)
+	}
+	if sid != "" {
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	}
+	rec := httptest.NewRecorder()
+	handleStatus(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("status body is not JSON: %v", err)
+	}
+	return body
+}
+
+// TestStatusAdminGate: the status admin flag is env-gated and fail-closed —
+// only the LANDING_ADMIN_USER match answers admin=true; anything else
+// (unset env, wrong username, anonymous) stays false.
+func TestStatusAdminGate(t *testing.T) {
+	testEnv(t, ncOKXML)
+	t.Setenv("LANDING_ADMIN_USER", "demo")
+	sid := gwConnect(t)
+
+	if body := statusGet(t, sid); body["admin"] != true {
+		t.Fatalf("LANDING_ADMIN_USER match must answer admin=true, got %v", body["admin"])
+	}
+	t.Setenv("LANDING_ADMIN_USER", "")
+	if body := statusGet(t, sid); body["admin"] != false {
+		t.Fatalf("unset LANDING_ADMIN_USER must fail closed (admin=false), got %v", body["admin"])
+	}
+	if body := statusGet(t, ""); body["admin"] != false {
+		t.Fatalf("anonymous session must answer admin=false, got %v", body["admin"])
+	}
+}
+
+// TestNotificationsAnon401: an anonymous session gets the honest sign-in
+// refusal, never a fake empty items list.
+func TestNotificationsAnon401(t *testing.T) {
+	testEnv(t, ncOKXML)
+
+	req, err := http.NewRequest(http.MethodGet, "http://notifications.test/landingpage/api/notifications", nil)
+	if err != nil {
+		t.Fatalf("request build failed: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	handleNotifications(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for anonymous session, got %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("401 body is not JSON: %v", err)
+	}
+	if s, _ := body["error"].(string); s == "" {
+		t.Fatalf("401 must carry an honest error message")
+	}
+}
+
+// TestNotificationsForSession: after a connect, the session's audit event
+// surfaces as a bell item — newest first, honest kind and title.
+func TestNotificationsForSession(t *testing.T) {
+	testEnv(t, ncOKXML)
+	sid := gwConnect(t)
+
+	req, err := http.NewRequest(http.MethodGet, "http://notifications.test/landingpage/api/notifications", nil)
+	if err != nil {
+		t.Fatalf("request build failed: %v", err)
+	}
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	handleNotifications(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("notifications returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Ok    bool `json:"ok"`
+		Items []struct {
+			ID    string `json:"id"`
+			Kind  string `json:"kind"`
+			Title string `json:"title"`
+			Ts    string `json:"ts"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("notifications body is not JSON: %v", err)
+	}
+	if !body.Ok || len(body.Items) == 0 {
+		t.Fatalf("connected session must get its audit events, got ok=%v items=%d", body.Ok, len(body.Items))
+	}
+	first := body.Items[0]
+	if first.Kind != "account" || first.Title != "Registrar connected" {
+		t.Fatalf("unexpected first item: kind=%q title=%q", first.Kind, first.Title)
+	}
+	if first.ID == "" || first.Ts == "" {
+		t.Fatalf("notification item carries no id/ts")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Account auth: register + OAuth + founder console gates
+// ---------------------------------------------------------------------------
+
+// anonSession establishes a fresh anonymous session and returns its cookie
+// sid and CSRF token (the client gets both from GET /api/status).
+func anonSession(t *testing.T) (string, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://auth.test/landingpage/api/status", nil)
+	if err != nil {
+		t.Fatalf("request build failed: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	handleStatus(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("status body is not JSON: %v", err)
+	}
+	csrf, _ := body["csrf"].(string)
+	sid := ""
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == cookieName && c.Value != "" {
+			sid = c.Value
+		}
+	}
+	if sid == "" || csrf == "" {
+		t.Fatalf("anonymous session did not yield sid/csrf (sid=%q csrf=%q)", sid, csrf)
+	}
+	return sid, csrf
+}
+
+func registerPost(t *testing.T, sid, csrf string, form map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	vals := url.Values{}
+	for k, v := range form {
+		vals.Set(k, v)
+	}
+	req, err := http.NewRequest(http.MethodPost, "http://auth.test/landingpage/api/auth/register", strings.NewReader(vals.Encode()))
+	if err != nil {
+		t.Fatalf("request build failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if sid != "" {
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	}
+	if csrf != "" {
+		req.Header.Set("X-Landing-CSRF", csrf)
+	}
+	rec := httptest.NewRecorder()
+	handleRegister(rec, req)
+	return rec
+}
+
+// TestRegisterSignsIn: a valid registration stores the account, rotates the
+// session and signs the user in — and a duplicate email is refused honestly.
+func TestRegisterSignsIn(t *testing.T) {
+	testEnv(t, ncOKXML)
+	sid, csrf := anonSession(t)
+	rec := registerPost(t, sid, csrf, map[string]string{
+		"first_name": "Andrea", "last_name": "Bertoneri",
+		"email": "Andrea@Example.com", "country": "CH",
+		"password": "correct horse", "password_confirm": "correct horse",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("register returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Ok       bool   `json:"ok"`
+		Username string `json:"username"`
+		Next     string `json:"next"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("register body is not JSON: %v", err)
+	}
+	if !body.Ok || body.Username != "andrea@example.com" || body.Next != "onboarding.html" {
+		t.Fatalf("unexpected register body: %+v", body)
+	}
+	// The account file exists under the temp cred dir — hashed, never clear.
+	if _, err := os.Stat(accountPath("andrea@example.com")); err != nil {
+		t.Fatalf("account file missing: %v", err)
+	}
+	a, err := readAccount("andrea@example.com")
+	if err != nil {
+		t.Fatalf("account unreadable: %v", err)
+	}
+	if a.Hash == "correct horse" || strings.Contains(a.Hash, "correct") {
+		t.Fatalf("password must be stored hashed, never clear")
+	}
+	// Duplicate email → 409 (the first register rotated the session: use the
+	// new cookie and a fresh CSRF).
+	newSID := ""
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == cookieName && c.Value != "" {
+			newSID = c.Value
+		}
+	}
+	csrf2, _ := statusGet(t, newSID)["csrf"].(string)
+	rec2 := registerPost(t, newSID, csrf2, map[string]string{
+		"first_name": "A", "last_name": "B", "email": "andrea@example.com",
+		"country": "CH", "password": "another pass", "password_confirm": "another pass",
+	})
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("duplicate register must be 409, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+// TestRegisterValidation: field rules are enforced with honest messages.
+func TestRegisterValidation(t *testing.T) {
+	testEnv(t, ncOKXML)
+	sid, csrf := anonSession(t)
+	cases := []struct {
+		name string
+		form map[string]string
+		want string
+	}{
+		{"mismatch", map[string]string{
+			"first_name": "A", "last_name": "B", "email": "a@b.co", "country": "CH",
+			"password": "password1", "password_confirm": "password2",
+		}, "Passwords do not match"},
+		{"short", map[string]string{
+			"first_name": "A", "last_name": "B", "email": "a@b.co", "country": "CH",
+			"password": "short", "password_confirm": "short",
+		}, "at least 8 characters"},
+		{"bad_email", map[string]string{
+			"first_name": "A", "last_name": "B", "email": "not-an-email", "country": "CH",
+			"password": "password1", "password_confirm": "password1",
+		}, "valid email"},
+		{"missing_name", map[string]string{
+			"first_name": "", "last_name": "B", "email": "a@b.co", "country": "CH",
+			"password": "password1", "password_confirm": "password1",
+		}, "First and last name are required"},
+	}
+	for _, tc := range cases {
+		rec := registerPost(t, sid, csrf, tc.form)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d: %s", tc.name, rec.Code, rec.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s: body is not JSON", tc.name)
+		}
+		if s, _ := body["error"].(string); !strings.Contains(s, tc.want) {
+			t.Fatalf("%s: error %q does not mention %q", tc.name, s, tc.want)
+		}
+	}
+}
+
+// TestOAuthNotConfigured: fail-closed — without provider env the entry point
+// answers the honest 501, never a fake redirect.
+func TestOAuthNotConfigured(t *testing.T) {
+	testEnv(t, ncOKXML)
+	for _, provider := range []string{"google", "github", "microsoft"} {
+		req, err := http.NewRequest(http.MethodGet, "http://auth.test/landingpage/api/auth/oauth/"+provider, nil)
+		if err != nil {
+			t.Fatalf("request build failed: %v", err)
+		}
+		req.SetPathValue("provider", provider)
+		rec := httptest.NewRecorder()
+		handleOAuth(rec, req)
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("%s: expected honest 501, got %d: %s", provider, rec.Code, rec.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s: 501 body is not JSON", provider)
+		}
+		if s, _ := body["error"].(string); !strings.Contains(s, "not configured yet") {
+			t.Fatalf("%s: error must name the missing env, got %q", provider, s)
+		}
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://auth.test/landingpage/api/auth/oauth/nope", nil)
+	req.SetPathValue("provider", "nope")
+	rec := httptest.NewRecorder()
+	handleOAuth(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown provider must be 404, got %d", rec.Code)
+	}
+}
+
+// TestAdminMetricsGate: the founder console data is admin-gated — anonymous
+// gets the honest 403 and no scoped data; a LANDING_ADMIN_USER match gets the
+// metric shapes.
+func TestAdminMetricsGate(t *testing.T) {
+	testEnv(t, ncOKXML)
+	req, _ := http.NewRequest(http.MethodGet, "http://admin.test/landingpage/api/admin/metrics", nil)
+	rec := httptest.NewRecorder()
+	handleAdminMetrics(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("anonymous metrics must be 403, got %d", rec.Code)
+	}
+	var ebody map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &ebody); err != nil {
+		t.Fatalf("403 body is not JSON")
+	}
+	if s, _ := ebody["error"].(string); s != "Admin session required" {
+		t.Fatalf("403 must say Admin session required, got %q", s)
+	}
+
+	// An admin session (connect as the allowlisted user) reads the shapes.
+	t.Setenv("LANDING_ADMIN_USER", "demo")
+	sid := gwConnect(t)
+	req2, _ := http.NewRequest(http.MethodGet, "http://admin.test/landingpage/api/admin/metrics", nil)
+	req2.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec2 := httptest.NewRecorder()
+	handleAdminMetrics(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("admin metrics returned %d: %s", rec2.Code, rec2.Body.String())
+	}
+	var body struct {
+		Ok           bool `json:"ok"`
+		Admin        bool `json:"admin"`
+		Mail         map[string]any
+		Sessions     map[string]any `json:"sessions"`
+		Provisioning map[string]any `json:"provisioning"`
+		Audit        map[string]any `json:"audit"`
+	}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &body); err != nil {
+		t.Fatalf("metrics body is not JSON: %v", err)
+	}
+	if !body.Ok || !body.Admin || body.Mail == nil || body.Sessions == nil || body.Provisioning == nil || body.Audit == nil {
+		t.Fatalf("metrics shapes incomplete: %+v", body)
 	}
 }

@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Set up AImulti.inbox in three steps: verify the mail origin, connect a provider, inspect your first domain.">
+  <meta property="og:title" content="Setup — AImulti.inbox">
+  <meta property="og:description" content="Set up AImulti.inbox in three steps: verify the mail origin, connect a provider, inspect your first domain.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/onboarding.html">
+  <meta property="og:url" content="https://multi.ai/onboarding.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
   <title>Setup — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
@@ -23,7 +29,12 @@
         </svg>
         <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
-      <nav class="bar-nav" aria-label="Main">
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="inbox.html">Mailboxes</a>
         <a class="btn ghost" href="webmail.html">Webmail</a>
@@ -74,7 +85,7 @@
       </section>
 
       <div id="wizard">
-        <!-- Step 1 — mailcow origin -->
+        <!-- Step 1 — mail origin -->
         <section class="card" id="step-1" aria-labelledby="step-1-title">
           <div class="card-head">
             <h2 id="step-1-title" tabindex="-1">Mail origin</h2>
@@ -90,7 +101,7 @@
             <li><span class="k">Landing API</span><span class="v" id="api-state">&hellip;</span></li>
           </ul>
           <div class="form-actions">
-            <a class="btn ghost" id="open-mailcow" href="#" target="_blank" rel="noopener">Open Mail UI</a>
+            <a class="btn ghost" id="open-mailcow" target="_blank" rel="noopener" aria-disabled="true">Open Mail UI</a>
             <button class="btn primary" type="button" id="to-step-2">Continue to connection</button>
           </div>
         </section>
@@ -190,5 +201,7 @@
   </footer>
 
   <script src="assets/onboarding.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
 </body>
 </html>

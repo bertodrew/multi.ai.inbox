@@ -561,6 +561,10 @@ tbody tr[role="button"]:focus-visible {
 .num { font-variant-numeric: tabular-nums; }
 .hidden { display: none !important; }
 
+/* [hidden] must beat author display rules (e.g. .btn sets display: inline-flex):
+   nav gating and hidden panels rely on the attribute, not the .hidden class. */
+[hidden] { display: none !important; }
+
 .table-title { margin: 18px 0 0; font-size: 0.95rem; color: var(--text); }
 
 /* --------------------------------------------------------------------------
@@ -626,15 +630,30 @@ tbody tr[role="button"]:focus-visible {
 .sogo-gate {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   align-items: flex-start;
-  justify-content: center;
-  min-height: min(76vh, 860px);
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel);
-  padding: 32px;
+  padding: 24px;
 }
+
+/* honest state disclosure: the raw same-origin directive lives here, not in the
+   primary copy — keeps notice → CTA → error orchestration readable */
+.tech-disclosure {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.tech-disclosure summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+.tech-disclosure[open] summary { color: var(--text); }
+.tech-disclosure p { margin: 8px 0 0; }
 
 footer a {
   color: var(--muted);

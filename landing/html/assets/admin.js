@@ -45,6 +45,21 @@
     container.appendChild(card);
   }
 
+  function notAuthorized(container) {
+    container.replaceChildren();
+    const card = el('section', 'card');
+    const h = el('h2', null, 'Not authorized');
+    const p = el('p', null, 'This view needs an admin session. If you believe this is a mistake, ask the operator to enable your account.');
+    const actions = el('div', 'form-actions');
+    const back = el('a', 'btn ghost', 'Back to the site');
+    back.href = 'use-cases.html';
+    actions.appendChild(back);
+    card.append(h, p, actions);
+    container.appendChild(card);
+    // Operator-facing hint stays out of the visible UI.
+    console.warn('Admin gate: set LANDING_ADMIN_USER on the server to the connected username to grant admin access.');
+  }
+
   function table(captionText, headers, rows) {
     const scroll = el('div', 'table-scroll');
     const t = el('table');
@@ -97,9 +112,49 @@
     return;
   }
 
-  /* topbar + session card */
+  /* topbar: who is connected (visible in every state) */
   $('#connected-as').textContent = status.username || '';
-  if (status.mailcow_origin) $('#admin-link').href = status.mailcow_origin + '/home';
+
+  /* disconnect — two-step confirm (no modal on this page), then the endpoint.
+     The nav is visible in every state, so this wires before the admin gate. */
+  const btnDisconnect = $('#btn-disconnect');
+  if (btnDisconnect) {
+    let armed = false;
+    let resetTimer = null;
+    btnDisconnect.addEventListener('click', async () => {
+      if (!armed) {
+        armed = true;
+        btnDisconnect.textContent = 'Confirm disconnect';
+        resetTimer = setTimeout(() => {
+          armed = false;
+          btnDisconnect.textContent = 'Disconnect';
+        }, 4000);
+        return;
+      }
+      clearTimeout(resetTimer);
+      armed = false;
+      btnDisconnect.textContent = 'Disconnect';
+      btnDisconnect.disabled = true;
+      const body = new URLSearchParams();
+      body.set('csrf', status.csrf || '');
+      await api('api/disconnect', {
+        method: 'POST',
+        body,
+        headers: { 'X-Landing-CSRF': status.csrf || '' },
+      });
+      location.replace('index.html');
+    });
+  }
+
+  /* admin gate — fail-closed: nav entries + scoped data only for admins */
+  if (!status.admin) {
+    notAuthorized(page);
+    return;
+  }
+  $('#nav-admin').hidden = false;
+  $('#nav-dashboard').hidden = false;
+
+  /* session card */
   $('#kv-user').textContent = status.username || 'unknown';
   $('#kv-sandbox').textContent = status.sandbox ? 'sandbox' : 'production';
   $('#kv-origin').textContent = status.mailcow_origin || 'not configured';

@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Per-domain settings: FQDN, branding, PTR target, quotas and DNS snippets.">
+  <meta property="og:title" content="Domain settings — AImulti.inbox">
+  <meta property="og:description" content="Per-domain settings: FQDN, branding, PTR target, quotas and DNS snippets.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/settings.html">
+  <meta property="og:url" content="https://multi.ai/settings.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
   <title>Domain settings — AImulti.inbox</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
@@ -23,7 +29,12 @@
         </svg>
         <span class="brand-name">AI<b>multi.inbox</b></span>
       </a>
-      <nav class="bar-nav" aria-label="Main">
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
         <span class="connected-as" id="connected-as"></span>
         <a class="btn ghost" href="use-cases.html">Use cases</a>
         <a class="btn ghost" href="inbox.html">Mailboxes</a>
@@ -31,8 +42,8 @@
         <a class="btn ghost" href="pricing.html">Pricing</a>
         <a class="btn ghost" href="docs.html">Docs</a>
         <a class="btn ghost" href="settings.html" aria-current="page">Settings</a>
-        <a class="btn ghost" href="admin.html">Admin</a>
-        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
+        <a class="btn ghost" id="nav-dashboard" href="dashboard.html" hidden>Dashboard</a>
+        <a class="btn ghost" id="nav-admin" href="admin.html" hidden>Admin</a>
         <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
       </nav>
     </div>
@@ -157,5 +168,7 @@
   </footer>
 
   <script src="assets/settings.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
 </body>
 </html>
