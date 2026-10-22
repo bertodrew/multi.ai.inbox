@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +54,9 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 	}
 	now := s.now()
 	for _, rc := range rcpts {
-		rawKey := fmt.Sprintf("raw/%s/%s/%s-%s.eml", rc.OrgID, now.Format("2006/01"), rc.InboxID, strings.Trim(parsed.MessageID, "<>"))
+		// Unique key per delivery: never derived from the sender controlled Message-ID,
+		// so a duplicate Message-ID cannot overwrite an earlier message's raw source.
+		rawKey := fmt.Sprintf("raw/%s/%s/%s-%s.eml", rc.OrgID, now.Format("2006/01"), rc.InboxID, newBlobID())
 		if err := s.Blob.Put(ctx, rawKey, raw); err != nil {
 			return fmt.Errorf("store raw: %w", err)
 		}
@@ -176,4 +180,10 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func newBlobID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }

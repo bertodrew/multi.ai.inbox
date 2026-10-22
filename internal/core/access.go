@@ -135,7 +135,11 @@ func (s *Service) CreateScopedKey(ctx context.Context, p *Principal, req CreateK
 		req.ExpiresAt = p.ExpiresAt // a child never outlives its parent
 	}
 	if perms != nil {
-		perms = slices.Compact(slices.Sorted(slices.Values(perms)))
+		if len(perms) == 0 {
+			return nil, Validation("permissions must not be empty; omit the field to copy the calling key's permissions")
+		}
+		// append onto a non nil slice: a nil result would be stored as NULL, which means every permission.
+		perms = append([]string{}, slices.Compact(slices.Sorted(slices.Values(perms)))...)
 	}
 	return s.insertKey(ctx, p.Org.ID, req.Name, perms, req.ExpiresAt, p.KeyID)
 }
@@ -144,6 +148,10 @@ func (s *Service) insertKey(ctx context.Context, orgID, name string, perms []str
 	plain, prefix, hash, err := keys.New()
 	if err != nil {
 		return nil, err
+	}
+	if parent != "" && perms == nil && !s.parentIsFull(ctx, orgID, parent) {
+		// Fail closed: a child of a scoped key must never become a full access key.
+		return nil, errf(http.StatusForbidden, "permission_escalation", "a scoped key cannot create a full access key")
 	}
 	k := &APIKey{Key: plain, Prefix: prefix, Name: name, Permissions: perms, ExpiresAt: expires}
 	var createdBy any
@@ -263,4 +271,12 @@ func (s *Service) ListAudit(ctx context.Context, p *Principal, limit int) ([]*Au
 		return rows.Err()
 	})
 	return list, err
+}
+
+func (s *Service) parentIsFull(ctx context.Context, orgID, parent string) bool {
+	var full bool
+	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select permissions is null from api_keys where id = $1", parent).Scan(&full)
+	})
+	return err == nil && full
 }

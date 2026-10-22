@@ -518,6 +518,16 @@ func TestPlatformEndToEnd(t *testing.T) {
 	if code, body := reader.do("POST", "/v0/api-keys", map[string]any{"permissions": []string{"message_send"}}, nil); code != 403 {
 		t.Fatalf("reader creating keys: %d %v", code, body)
 	}
+	// Regression: an empty permission list must never become a full access key.
+	_, writer := a.do("POST", "/v0/api-keys", map[string]any{"name": "keymaker", "permissions": []string{"api_key_write"}}, nil)
+	keymaker := client{t: t, base: httpSrv.URL, key: writer["api_key"].(string)}
+	if code, body := keymaker.do("POST", "/v0/api-keys", map[string]any{"name": "x", "permissions": []string{}}, nil); code != 400 {
+		t.Fatalf("empty permissions must be rejected: %d %v", code, body)
+	}
+	code, copied := keymaker.do("POST", "/v0/api-keys", map[string]any{"name": "copy"}, nil)
+	if code != 201 || fmt.Sprint(copied["permissions"]) != "[api_key_write]" {
+		t.Fatalf("omitted permissions must copy the caller's scope: %d %v", code, copied)
+	}
 	// The MCP gateway enforces the same permissions.
 	readerMCP := func() map[string]any {
 		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": map[string]any{
