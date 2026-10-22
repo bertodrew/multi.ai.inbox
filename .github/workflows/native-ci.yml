@@ -55,3 +55,15 @@ jobs:
           MAI_TEST_GATEKEEPER_BIN: ${{ github.workspace }}/bin/gatekeeper
         run: go test -race -count=1 ./...
       - run: CGO_ENABLED=0 go build -o /tmp/mai ./cmd/mai
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install sigs.k8s.io/kustomize/kustomize/v5@v5.8.1 && go install github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0
+      - name: kustomize build + kubeconform
+        run: kustomize build deploy/k8s/staging | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+      - run: bash -n deploy/hetzner/bootstrap.sh && sh -n deploy/k8s/base/postgres-init.sh

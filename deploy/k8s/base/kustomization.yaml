@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mai
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - mai.yaml
+  - rspamd.yaml
+  - caddy.yaml
+  - backup.yaml
+  - networkpolicy.yaml
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - 10-mai.sh=postgres-init.sh
+images:
+  - name: mai
+    newName: ghcr.io/bertodrew/multi-ai-inbox

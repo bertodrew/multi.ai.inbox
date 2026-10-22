@@ -1,0 +1,57 @@
+# Nightly backup: pg_dump plus the blob store, copied off the server to
+# Hetzner Object Storage (S3 compatible) with rclone. Configure the
+# BACKUP_S3_* keys in the mai-backup secret (see deploy/hetzner/bootstrap.sh).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "17 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: { app: backup }
+        spec:
+          restartPolicy: OnFailure
+          initContainers:
+            - name: dump
+              image: postgres:16-alpine
+              command: ["/bin/sh", "-c", "pg_dump -h postgres -U postgres -d mai -Fc -f /work/mai-$(date +%F).dump"]
+              env:
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: mai-secrets, key: POSTGRES_PASSWORD } }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+          containers:
+            - name: upload
+              image: rclone/rclone:1.75.2
+              command: ["/bin/sh", "-c"]
+              args:
+                - >-
+                  rclone copy /work "store:$BACKUP_S3_BUCKET/postgres" &&
+                  rclone sync /blobs "store:$BACKUP_S3_BUCKET/blobs" &&
+                  rclone delete --min-age 30d "store:$BACKUP_S3_BUCKET/postgres"
+              env:
+                - { name: RCLONE_CONFIG_STORE_TYPE, value: s3 }
+                - { name: RCLONE_CONFIG_STORE_PROVIDER, value: Other }
+                - name: RCLONE_CONFIG_STORE_ENDPOINT
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ENDPOINT } }
+                - name: RCLONE_CONFIG_STORE_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ACCESS_KEY } }
+                - name: RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_SECRET_KEY } }
+                - name: BACKUP_S3_BUCKET
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_BUCKET } }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: blobs, mountPath: /blobs, readOnly: true }
+          volumes:
+            - name: work
+              emptyDir: {}
+            - name: blobs
+              persistentVolumeClaim: { claimName: mai-blobs }

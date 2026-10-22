@@ -1,6 +1,6 @@
-# multi.ai.inbox on a single Hetzner server.
+# multi.ai.inbox for local development (production runs on k3s, see deploy/k8s).
 # Public ports: 25 (SMTP in) and 443 (API + MCP through Caddy). Nothing else.
-# Usage: cp deploy/.env.example deploy/.env && docker compose -f deploy/docker-compose.yml up -d
+# Usage: cp deploy/local/.env.example deploy/local/.env && docker compose -f deploy/local/docker-compose.yml up -d
 
 name: mai
 
@@ -22,7 +22,7 @@ services:
       retries: 10
 
   mai:
-    build: ..
+    build: ../..
     image: ghcr.io/bertodrew/multi-ai-inbox:${MAI_VERSION:-latest}
     restart: unless-stopped
     depends_on:
@@ -41,11 +41,11 @@ services:
       - blobs:/var/lib/mai/blobs
 
   rspamd:
-    image: rspamd/rspamd:3.13
+    image: rspamd/rspamd:4.2.3
     restart: unless-stopped
 
   caddy:
-    image: caddy:2.10-alpine
+    image: caddy:2.11.7-alpine
     restart: unless-stopped
     ports:
       - "80:80"

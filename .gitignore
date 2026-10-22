@@ -1,5 +1,5 @@
 # multi.ai.inbox
-deploy/.env
+deploy/local/.env
 var/
 gatekeeper/target/
 /mai

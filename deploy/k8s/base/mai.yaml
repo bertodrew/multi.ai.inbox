@@ -1,0 +1,92 @@
+# The platform: one pod running every role (api, mx, sender, dispatcher,
+# enrich, scheduler). Recreate strategy: port 25 and the blob volume are
+# single node resources.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mai-blobs
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 50Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mai
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: mai }
+  template:
+    metadata:
+      labels: { app: mai }
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: mai
+          image: mai
+          args: ["serve"]
+          envFrom:
+            - configMapRef: { name: mai-config }
+          env:
+            - name: MAI_APP_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_APP_PASSWORD } }
+            - name: DATABASE_URL
+              value: postgres://mai_app:$(MAI_APP_PASSWORD)@postgres:5432/mai?sslmode=disable
+            - name: MAI_SMTP_RELAY
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SMTP_RELAY, optional: true } }
+            - name: MAI_RSPAMD_URL
+              value: http://rspamd:11333
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: smtp, containerPort: 2525 }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: blobs
+              mountPath: /var/lib/mai/blobs
+      volumes:
+        - name: blobs
+          persistentVolumeClaim: { claimName: mai-blobs }
+---
+# Public SMTP on the node's IP (k3s ServiceLB). Local traffic policy keeps the
+# real client IP, which the spam filter needs.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mai-smtp
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector: { app: mai }
+  ports:
+    - { name: smtp, port: 25, targetPort: smtp }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mai-http
+spec:
+  selector: { app: mai }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
