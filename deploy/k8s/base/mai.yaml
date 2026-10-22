@@ -46,6 +46,11 @@ spec:
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SMTP_RELAY, optional: true } }
             - name: MAI_RSPAMD_URL
               value: http://rspamd:11333
+            # STARTTLS certificate for the MX host, obtained and renewed by Caddy.
+            - name: MAI_SMTP_TLS_CERT
+              value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).crt
+            - name: MAI_SMTP_TLS_KEY
+              value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).key
           ports:
             - { name: http, containerPort: 8080 }
             - { name: smtp, containerPort: 2525 }
@@ -65,9 +70,14 @@ spec:
           volumeMounts:
             - name: blobs
               mountPath: /var/lib/mai/blobs
+            - name: caddy-data
+              mountPath: /caddy-data
+              readOnly: true
       volumes:
         - name: blobs
           persistentVolumeClaim: { claimName: mai-blobs }
+        - name: caddy-data
+          persistentVolumeClaim: { claimName: caddy-data, readOnly: true }
 ---
 # Public SMTP on the node's IP (k3s ServiceLB). Local traffic policy keeps the
 # real client IP, which the spam filter needs.

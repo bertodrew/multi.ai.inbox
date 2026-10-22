@@ -6,6 +6,11 @@ metadata:
   name: caddy
 data:
   Caddyfile: |
+    {
+      # Unprivileged ports: the Service maps 80 and 443 to these.
+      http_port 8080
+      https_port 8443
+    }
     {$MAI_API_HOST} {
       encode zstd gzip
       reverse_proxy mai-http:8080
@@ -16,8 +21,12 @@ data:
       try_files {path} {path}.html {path}/index.html /index.html
       file_server
     }
+    # Certificate for the MX host name only: the SMTP edge reads it for STARTTLS.
+    {$MAI_HOSTNAME} {
+      respond "multi.ai.inbox mail host" 200
+    }
     # Plain HTTP on the raw IP shows the landing too.
-    :80 {
+    :8080 {
       root * /srv
       try_files {path} {path}.html {path}/index.html /index.html
       file_server
@@ -48,6 +57,13 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull
+      # Same user as the platform, so the SMTP edge can read the certificates.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: caddy
           image: landing
@@ -56,18 +72,26 @@ spec:
               valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_API_HOST } }
             - name: MAI_SITE_HOST
               valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_SITE_HOST } }
+            - name: MAI_HOSTNAME
+              valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_HOSTNAME } }
           ports:
-            - { name: http, containerPort: 80 }
-            - { name: https, containerPort: 443 }
+            - { name: http, containerPort: 8080 }
+            - { name: https, containerPort: 8443 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
           resources:
             requests: { cpu: 20m, memory: 32Mi }
             limits: { memory: 256Mi }
           volumeMounts:
             - { name: config, mountPath: /etc/caddy }
             - { name: data, mountPath: /data }
+            - { name: runtime, mountPath: /config }
       volumes:
         - name: config
           configMap: { name: caddy }
+        - name: runtime
+          emptyDir: {}
         - name: data
           persistentVolumeClaim: { claimName: caddy-data }
 ---
