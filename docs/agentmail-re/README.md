@@ -46,7 +46,8 @@ No private endpoint was probed, no account was created and no authenticated cons
 | Frontend stack | partial | `/_next/image`, `next-size-adjust`, `dpl_` ids point to Next.js on Vercel [inferred] |
 | Third party scripts and analytics | open | Needs HAR capture (blocked) |
 | Console (dashboard) screens | partial | Inferred from docs and pricing copy; no authenticated access |
-| Backend stack and email provider | open | Not public; our architecture is a [decision], not a copy |
+| Email provider | answered | DNS records in custom domain docs point to Amazon SES (us-east-1, eu-central-1) [observed] |
+| Backend services stack | open | Not public; our architecture is a [decision], not a copy |
 | Agent Armor model internals | open | Only public description available |
 
 ## Legal and ethical boundary

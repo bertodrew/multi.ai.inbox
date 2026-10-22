@@ -59,4 +59,4 @@ Priority is by reach per hour of work for a solo founder.
 
 ## 4. Webhook contract (Svix compatible)
 
-Headers: `webhook-id`, `webhook-timestamp`, `webhook-signature` (`v1,<base64 HMAC SHA256 of "{id}.{timestamp}.{body}">`). Secret format `whsec_<base64>`. Reject timestamps older than 5 minutes. Retry schedule: immediately, 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, 10 h (about 28 h total), then disable after 5 days of failures with an email to the owner.
+The reference signs with Svix headers `svix-id`, `svix-timestamp`, `svix-signature` [observed]. We emit both header families with the same value. Headers: `webhook-id`, `webhook-timestamp`, `webhook-signature` (`v1,<base64 HMAC SHA256 of "{id}.{timestamp}.{body}">`). Secret format `whsec_<base64>`. Reject timestamps older than 5 minutes. Retry schedule: immediately, 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, 10 h (about 28 h total), then disable after 5 days of failures with an email to the owner.

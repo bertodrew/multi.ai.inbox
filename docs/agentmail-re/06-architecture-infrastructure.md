@@ -1,6 +1,6 @@
 # 06 · Architecture, infrastructure and scalability
 
-AgentMail does not publish its backend. Public facts that constrain the design [observed]: peak 100K API requests per minute, 1B+ emails processed, 10M+ inboxes, webhooks plus WebSockets plus polling, IMAP and SMTP access, EU region and BYO cloud for Enterprise, optimized shared IPs and dedicated IPs, Svix style polling webhooks. Everything below is our [decision] for multi.ai.inbox, built on the mailcow stack already running in this repo.
+AgentMail does not publish its backend, but its custom domain DNS records show that mail runs on Amazon SES (inbound MX `inbound-smtp.<region>.amazonaws.com`, SPF `include:amazonses.com`) and webhooks are signed by Svix [observed]. Other public facts that constrain the design [observed]: peak 100K API requests per minute, 1B+ emails processed, 10M+ inboxes, webhooks plus WebSockets plus polling, IMAP and SMTP access, EU region and BYO cloud for Enterprise, optimized shared IPs and dedicated IPs, Svix style polling webhooks. Everything below is our [decision] for multi.ai.inbox, built on the mailcow stack already running in this repo.
 
 ## 1. Key design insight: an inbox is a row, not a mailbox
 
