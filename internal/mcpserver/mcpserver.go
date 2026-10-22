@@ -66,6 +66,10 @@ type pageIn struct {
 	PageToken string `json:"page_token,omitempty"`
 }
 
+type inboxIn struct {
+	Inbox string `json:"inbox" jsonschema:"inbox address"`
+}
+
 type getMessageIn struct {
 	Inbox     string `json:"inbox"`
 	MessageID string `json:"message_id" jsonschema:"message id or RFC Message-ID"`
@@ -152,6 +156,17 @@ func newServer(g *gate, version string) *mcp.Server {
 			}
 			items, next, err := svc.ListInboxes(ctx, org, core.Page{Limit: in.Limit, Token: in.PageToken})
 			return nil, listOut("inboxes", items, next), err
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_inbox", Description: "Delete an inbox with all its mail. Irreversible; the address stays reserved for 90 days."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in inboxIn) (*mcp.CallToolResult, any, error) {
+			if err := g.need(core.PermInboxWrite); err != nil {
+				return nil, nil, err
+			}
+			if err := svc.DeleteInbox(ctx, org, in.Inbox); err != nil {
+				return nil, nil, err
+			}
+			g.audit(ctx, "delete_inbox", in.Inbox)
+			return nil, map[string]any{"inbox_id": in.Inbox, "deleted": true}, nil
 		})
 	mcp.AddTool(s, &mcp.Tool{Name: "list_threads", Description: "List conversation threads of an inbox, or of all inboxes."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in pageIn) (*mcp.CallToolResult, any, error) {

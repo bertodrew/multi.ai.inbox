@@ -7,6 +7,8 @@
 //	mai admin org-plan -org <uuid> -plan team
 //	mai admin key-create -org <uuid> [-name agent]
 //	mai admin domain-add -name agents.example.eu [-org <uuid>]
+//	mai admin inbox-resume -inbox a@b.eu        resume sending paused by the bounce breaker
+//	mai admin org-resume -org <uuid>            resume sending for a paused organization
 //	mai admin check-port25                      can this host deliver directly?
 //	mai mcp-config -url https://api.example.eu  MCP setup for Claude Code, Cursor, Codex
 package main
@@ -44,23 +46,25 @@ import (
 var version = "dev"
 
 type config struct {
-	DatabaseURL   string
-	HTTPAddr      string
-	SMTPAddr      string
-	Hostname      string
-	SharedDomain  string
-	BlobDir       string
-	Relay         string
-	RspamdURL     string
-	GatekeeperBin string
-	MaxMessage    int64
-	AllowHTTPHook bool
-	SPFInclude    string
-	RatePerSecond float64
-	Gateway       api.Gateway
-	TLSCert       string
-	TLSKey        string
-	SendMaxAge    time.Duration
+	DatabaseURL    string
+	HTTPAddr       string
+	SMTPAddr       string
+	Hostname       string
+	SharedDomain   string
+	BlobDir        string
+	Relay          string
+	RspamdURL      string
+	ClamdAddr      string
+	ClamdFailClose bool
+	GatekeeperBin  string
+	MaxMessage     int64
+	AllowHTTPHook  bool
+	SPFInclude     string
+	RatePerSecond  float64
+	Gateway        api.Gateway
+	TLSCert        string
+	TLSKey         string
+	SendMaxAge     time.Duration
 }
 
 func env(key, def string) string {
@@ -86,23 +90,25 @@ func loadConfig() config {
 		os.Exit(2)
 	}
 	return config{
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		HTTPAddr:      env("MAI_HTTP_ADDR", ":8080"),
-		SMTPAddr:      env("MAI_SMTP_ADDR", ":2525"),
-		Hostname:      env("MAI_HOSTNAME", "localhost"),
-		SharedDomain:  os.Getenv("MAI_SHARED_DOMAIN"),
-		BlobDir:       env("MAI_BLOB_DIR", "./var/blobs"),
-		Relay:         os.Getenv("MAI_SMTP_RELAY"),
-		RspamdURL:     os.Getenv("MAI_RSPAMD_URL"),
-		GatekeeperBin: os.Getenv("MAI_GATEKEEPER_BIN"),
-		MaxMessage:    maxMsg,
-		AllowHTTPHook: os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
-		SPFInclude:    os.Getenv("MAI_SPF_INCLUDE"),
-		RatePerSecond: rate,
-		Gateway:       api.Gateway{CORSOrigins: splitList(os.Getenv("MAI_CORS_ORIGINS")), TrustedProxies: proxies},
-		TLSCert:       os.Getenv("MAI_SMTP_TLS_CERT"),
-		TLSKey:        os.Getenv("MAI_SMTP_TLS_KEY"),
-		SendMaxAge:    sendMaxAge,
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		HTTPAddr:       env("MAI_HTTP_ADDR", ":8080"),
+		SMTPAddr:       env("MAI_SMTP_ADDR", ":2525"),
+		Hostname:       env("MAI_HOSTNAME", "localhost"),
+		SharedDomain:   os.Getenv("MAI_SHARED_DOMAIN"),
+		BlobDir:        env("MAI_BLOB_DIR", "./var/blobs"),
+		Relay:          os.Getenv("MAI_SMTP_RELAY"),
+		RspamdURL:      os.Getenv("MAI_RSPAMD_URL"),
+		ClamdAddr:      os.Getenv("MAI_CLAMD_ADDR"),
+		ClamdFailClose: os.Getenv("MAI_CLAMD_FAIL_CLOSED") == "true",
+		GatekeeperBin:  os.Getenv("MAI_GATEKEEPER_BIN"),
+		MaxMessage:     maxMsg,
+		AllowHTTPHook:  os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
+		SPFInclude:     os.Getenv("MAI_SPF_INCLUDE"),
+		RatePerSecond:  rate,
+		Gateway:        api.Gateway{CORSOrigins: splitList(os.Getenv("MAI_CORS_ORIGINS")), TrustedProxies: proxies},
+		TLSCert:        os.Getenv("MAI_SMTP_TLS_CERT"),
+		TLSKey:         os.Getenv("MAI_SMTP_TLS_KEY"),
+		SendMaxAge:     sendMaxAge,
 	}
 }
 
@@ -200,8 +206,13 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		}
 		if enabled["mx"] {
 			certs := &tlsx.Loader{CertGlob: cfg.TLSCert, KeyGlob: cfg.TLSKey, Hostname: cfg.Hostname}
-			smtpSrv := mx.NewServer(&mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL},
-				cfg.SMTPAddr, cfg.Hostname, certs.Config())
+			backend := &mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL, ClamdFailClosed: cfg.ClamdFailClose}
+			if cfg.ClamdAddr != "" {
+				backend.Clamd = &mx.Clamd{Addr: cfg.ClamdAddr}
+			} else {
+				log.Warn("antivirus disabled: MAI_CLAMD_ADDR is not set")
+			}
+			smtpSrv := mx.NewServer(backend, cfg.SMTPAddr, cfg.Hostname, certs.Config())
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -253,7 +264,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 
 func admin(ctx context.Context, cfg config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mai admin seed|org-create|org-plan|key-create|domain-add|check-port25")
+		return errors.New("usage: mai admin seed|org-create|org-plan|key-create|domain-add|inbox-resume|org-resume|check-port25")
 	}
 	if args[0] == "check-port25" {
 		return checkPort25(ctx)
@@ -262,6 +273,7 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	name := fs.String("name", "", "name")
 	org := fs.String("org", "", "organization id")
 	plan := fs.String("plan", "", "plan: free, builder, team")
+	inbox := fs.String("inbox", "", "inbox address")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
 		if err := d.Migrate(ctx); err != nil {
@@ -285,6 +297,17 @@ func admin(ctx context.Context, cfg config, args []string) error {
 			out, err = svc.CreateKey(ctx, *org, *name)
 		case "domain-add":
 			out, err = svc.AddDomain(ctx, *org, *name)
+		case "inbox-resume":
+			if *inbox == "" {
+				return errors.New("-inbox is required")
+			}
+			out, err = svc.ResumeInboxSending(ctx, *inbox)
+		case "org-resume":
+			if *org == "" {
+				return errors.New("-org is required")
+			}
+			err = svc.ResumeOrgSending(ctx, *org)
+			out = map[string]string{"organization_id": *org, "sending": "resumed"}
 		default:
 			return fmt.Errorf("unknown admin command %q", args[0])
 		}

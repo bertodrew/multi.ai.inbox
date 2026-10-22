@@ -8,9 +8,14 @@ const eventDescriptions: Record<string, string> = {
   "message.received.spam": "A message arrived and the spam filter flagged it (it carries the `spam` label).",
   "message.sent": "An outbound message was accepted by the next hop.",
   "message.failed": "An outbound message failed after all retries.",
+  "message.bounced": "A delivery status notification reported that an outbound message could not be delivered (it gets the `bounced` label).",
   "message.security.completed": "Gatekeeper screening finished; `extracted_text` and the verdict are set.",
   "message.security.review": "Gatekeeper screening finished with verdict `review`.",
   "domain.verified": "All DNS records of a custom domain were found.",
+  "inbox.sending.paused": "The bounce breaker paused sending from an inbox: hard bounce rate above 5% over at least 20 sends in 24 hours.",
+  "inbox.sending.resumed": "Support resumed sending from an inbox.",
+  "organization.sending.paused": "The bounce breaker paused sending for the whole organization.",
+  "organization.sending.resumed": "Support resumed sending for the organization.",
 };
 
 export const customDomains: DocPage = {
@@ -115,7 +120,7 @@ export const webhooks: DocPage = {
     { type: "h2", text: "Payload" },
     {
       type: "p",
-      text: "Message events carry the message and its thread. `domain.verified` carries the domain.",
+      text: "Message events carry the message and its thread. `domain.verified` carries the domain. Sending pause events carry the inbox or organization, the reason and the counts that tripped the breaker.",
     },
     {
       type: "code",
@@ -197,6 +202,7 @@ export const mcp: DocPage = {
       rows: [
         ["`create_inbox`", "Create an email inbox for an agent. Optional `username`, `domain`, `display_name`, `client_id`."],
         ["`list_inboxes`", "List inboxes, newest first."],
+        ["`delete_inbox`", "Delete an inbox with all its mail. Irreversible; the address stays reserved for 90 days."],
         ["`list_threads`", "List conversation threads of an inbox, or of all inboxes."],
         ["`get_thread`", "Get a thread with all its messages, oldest first."],
         ["`list_messages`", "List message metadata of an inbox (no bodies)."],
@@ -227,6 +233,8 @@ const errorMeaning: Record<string, [string, string]> = {
   cannot_delete: ["409", "The domain still has inboxes."],
   limit_exceeded: ["403 or 429", "A plan limit: inboxes or domains (403), daily or monthly sends (429)."],
   rate_limit_exceeded: ["429", "Too many requests. Wait for the `Retry-After` header."],
+  address_quarantined: ["409", "The address belonged to an inbox deleted less than 90 days ago; it is reserved until the date in the message."],
+  sending_paused: ["403", "Sending from the inbox or organization is paused because too many recent sends hard bounced. Contact support."],
   missing_permission: ["403", "The API key is scoped and lacks the permission this endpoint needs."],
   permission_escalation: ["403", "A key tried to grant or revoke permissions it does not hold."],
   api_key_expired: ["401", "The API key passed its expiry date."],

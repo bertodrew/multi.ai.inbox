@@ -1,5 +1,6 @@
-// Package scheduler runs periodic platform jobs (domain verification today;
-// retention and warm up later).
+// Package scheduler runs periodic platform jobs: domain verification, blob
+// deletion for deleted inboxes and the address quarantine purge (retention
+// and warm up later).
 package scheduler
 
 import (
@@ -29,10 +30,34 @@ func (s *Scheduler) Run(ctx context.Context) {
 		} else if n > 0 {
 			s.Log.Info("domains checked", "count", n)
 		}
+		s.purgeBlobs(ctx)
+		if n, err := s.Svc.PurgeExpiredQuarantine(ctx); err != nil {
+			s.Log.Error("quarantine purge failed", "err", err)
+		} else if n > 0 {
+			s.Log.Info("expired address quarantines purged", "count", n)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
+	}
+}
+
+// purgeBlobs drains the blob deletion queue in batches.
+func (s *Scheduler) purgeBlobs(ctx context.Context) {
+	total := 0
+	for ctx.Err() == nil {
+		n, err := s.Svc.ProcessBlobDeletions(ctx, 200)
+		total += n
+		if err != nil {
+			s.Log.Error("blob deletion failed", "err", err)
+		}
+		if n < 200 {
+			break // queue drained, or the rest is waiting for a retry
+		}
+	}
+	if total > 0 {
+		s.Log.Info("blobs deleted", "count", total)
 	}
 }

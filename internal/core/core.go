@@ -131,7 +131,7 @@ func nextToken(at time.Time, id string) string {
 }
 
 // System labels are set by the platform and cannot be changed through the API.
-var systemLabels = map[string]bool{"received": true, "sent": true, "queued": true, "failed": true}
+var systemLabels = map[string]bool{"received": true, "sent": true, "queued": true, "failed": true, "bounced": true}
 
 func uniqueLabels(in []string) []string {
 	seen := map[string]bool{}

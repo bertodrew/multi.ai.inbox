@@ -6,6 +6,7 @@ resources:
   - postgres.yaml
   - mai.yaml
   - rspamd.yaml
+  - clamd.yaml
   - caddy.yaml
   - backup.yaml
   - networkpolicy.yaml

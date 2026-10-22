@@ -357,6 +357,9 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	if n := len(o.to) + len(o.cc) + len(o.bcc); n > maxRecipients {
 		return nil, Validation("at most %d recipients per message, got %d", maxRecipients, n)
 	}
+	if err := sendingPaused(ctx, tx, orgID, inbox.ID, inbox.InboxID); err != nil {
+		return nil, err
+	}
 	var planName string
 	var sentToday, sentMonth int
 	if err := tx.QueryRow(ctx, `select o.plan,
