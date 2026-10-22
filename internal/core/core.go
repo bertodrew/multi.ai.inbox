@@ -22,6 +22,7 @@ type Service struct {
 	AllowHTTPWebhooks bool   // development only
 	SPFInclude        string // relay SPF include, e.g. spf.brevo.com
 	DNS               Resolver
+	SendMaxAge        time.Duration // retry window for temporary send failures; 0 = DefaultSendMaxAge
 	Now               func() time.Time
 }
 
