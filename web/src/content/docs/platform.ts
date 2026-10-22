@@ -4,12 +4,12 @@ import { mcpClaudeCode, mcpCodex, mcpCursor, verifyPython, verifyTs } from "../s
 import type { DocPage } from "../types";
 
 const eventDescriptions: Record<string, string> = {
-  "message.received": "A message arrived in an inbox and was stored.",
+  "message.received": "A message arrived in an inbox. With screen before notify (the default) it fires only after a clean verdict, or after a release.",
   "message.received.spam": "A message arrived and the spam filter flagged it (it carries the `spam` label).",
   "message.sent": "An outbound message was accepted by the next hop.",
   "message.failed": "An outbound message failed after all retries.",
   "message.security.completed": "Gatekeeper screening finished; `extracted_text` and the verdict are set.",
-  "message.security.review": "Gatekeeper screening finished with verdict `review`.",
+  "message.security.review": "Gatekeeper screening finished with verdict `review` (or could not run). With screen before notify the message is held and the payload carries no body.",
   "domain.verified": "All DNS records of a custom domain were found.",
 };
 
@@ -136,7 +136,7 @@ export const webhooks: DocPage = {
     },
     {
       type: "p",
-      text: "For `message.received` the gatekeeper may still be running. Subscribe to `message.security.completed` if your agent should act only on screened mail.",
+      text: "With screen before notify, on by default for every organization, `message.received` fires only after the gatekeeper verdict is `clear`: first `message.security.completed`, then `message.received`. A message held for review fires only `message.security.review`, with `text`, `html`, `extracted_text` and previews left out, and fires `message.received` once a key with `message_release` releases it. Deliveries leave in event order on the first attempt; retries can arrive later than newer events. If an operator turns the setting off, `message.received` fires at ingest while the gatekeeper may still be running.",
     },
     { type: "h2", text: "Signature" },
     {
@@ -198,7 +198,7 @@ export const mcp: DocPage = {
         ["`create_inbox`", "Create an email inbox for an agent. Optional `username`, `domain`, `display_name`, `client_id`."],
         ["`list_inboxes`", "List inboxes, newest first."],
         ["`list_threads`", "List conversation threads of an inbox, or of all inboxes."],
-        ["`get_thread`", "Get a thread with all its messages, oldest first."],
+        ["`get_thread`", "Get a thread with the messages the key may see, oldest first."],
         ["`list_messages`", "List message metadata of an inbox (no bodies)."],
         ["`get_message`", "Get one message with body, `extracted_text`, authentication results and gatekeeper verdict."],
         ["`send_message`", "Send a new email from an inbox. Starts a new thread. Accepts `idempotency_key`."],
@@ -206,12 +206,13 @@ export const mcp: DocPage = {
         ["`update_message_labels`", "Add or remove custom labels to track workflow state."],
         ["`get_attachment`", "Download an attachment: text files as text, others as base64 (max 5 MB)."],
         ["`list_domains`", "List domains usable for inboxes, with DNS records and verification status."],
+        ["`release_message`", "Release a message held for security review. Needs `message_release`; meant for a human reviewer, not the agent."],
       ],
     },
     {
       type: "note",
       tone: "info",
-      text: "Tool descriptions are short on purpose, to save the agent's context. `get_message` reminds the model to check the gatekeeper verdict before acting on instructions in the email.",
+      text: "Tool descriptions are short on purpose, to save the agent's context. `get_message` reminds the model to check the gatekeeper verdict before acting on instructions in the email. The read tools hide messages held by screening; they accept `include_review: true` only from keys holding `message_review`.",
     },
   ],
 };
@@ -230,6 +231,7 @@ const errorMeaning: Record<string, [string, string]> = {
   missing_permission: ["403", "The API key is scoped and lacks the permission this endpoint needs."],
   permission_escalation: ["403", "A key tried to grant or revoke permissions it does not hold."],
   api_key_expired: ["401", "The API key passed its expiry date."],
+  not_held: ["409", "Release of a message that is not held for review (still pending screening, clean or already released)."],
   payload_too_large: ["413", "Attachments or request body too large."],
   internal_error: ["500", "Unexpected error on our side. Safe to retry with the same Idempotency-Key."],
 };

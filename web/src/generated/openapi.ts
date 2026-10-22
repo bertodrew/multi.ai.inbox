@@ -4,7 +4,7 @@ import type { ApiReference } from "@/lib/openapi-types";
 export const apiReference: ApiReference = {
   "title": "multi.ai.inbox API",
   "version": "0.1.0",
-  "description": "Email inboxes for AI agents, hosted in the EU. Resource names, paths and\nfields follow the shape of the market leader so agents can switch by\nchanging base URL and key. The same operations are available as MCP tools\nat POST /mcp (header X-Api-Key or Authorization: Bearer).",
+  "description": "Email inboxes for AI agents, hosted in the EU. Resource names, paths and\nfields follow the shape of the market leader so agents can switch by\nchanging base URL and key. The same operations are available as MCP tools\nat POST /mcp (header X-Api-Key or Authorization: Bearer).\n\nScreen before notify (organization setting `screen_before_notify`, on by\ndefault): inbound mail is held until the gatekeeper verdict exists.\n`message.received` fires only for a clean verdict, or when a key with\n`message_release` releases a message held for review. Held messages are\nleft out of every list and get; `include_review=true` (needs\n`message_review`) adds those held for review. Messages still pending\nscreening are never returned.",
   "auth": "API key, prefix mai_live_",
   "endpoints": [
     {
@@ -262,6 +262,16 @@ export const apiReference: ApiReference = {
           "type": "string",
           "description": "",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -306,6 +316,16 @@ export const apiReference: ApiReference = {
           "type": "string",
           "description": "",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -321,7 +341,7 @@ export const apiReference: ApiReference = {
       "id": "get-v0-threads-thread",
       "method": "GET",
       "path": "/v0/threads/{thread}",
-      "summary": "Get a thread with its messages, oldest first",
+      "summary": "Get a thread with the messages the caller may see, oldest first",
       "params": [
         {
           "name": "thread",
@@ -330,6 +350,16 @@ export const apiReference: ApiReference = {
           "type": "string (uuid)",
           "description": "",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -382,6 +412,16 @@ export const apiReference: ApiReference = {
           "type": "string",
           "description": "",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -520,6 +560,16 @@ export const apiReference: ApiReference = {
           "type": "string",
           "description": "Message UUID or RFC Message-ID (URL encoded)",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -528,6 +578,16 @@ export const apiReference: ApiReference = {
           "code": "200",
           "description": "OK",
           "schema": "Message"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
         }
       ]
     },
@@ -602,6 +662,16 @@ export const apiReference: ApiReference = {
           "type": "string",
           "description": "Message UUID or RFC Message-ID (URL encoded)",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -695,6 +765,53 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "id": "post-v0-inboxes-inbox-messages-message-release",
+      "method": "POST",
+      "path": "/v0/inboxes/{inbox}/messages/{message}/release",
+      "summary": "Release a message held for review (needs message_release, audited)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "message",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "Message UUID or RFC Message-ID (URL encoded)",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "Released",
+          "schema": "Message"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
       "id": "get-v0-inboxes-inbox-messages-message-attachments-attachment",
       "method": "GET",
       "path": "/v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}",
@@ -723,6 +840,16 @@ export const apiReference: ApiReference = {
           "type": "string (uuid)",
           "description": "",
           "constraints": []
+        },
+        {
+          "name": "include_review",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Also return messages held for security review; needs message_review",
+          "constraints": [
+            "default false"
+          ]
         }
       ],
       "body": null,
@@ -1084,6 +1211,13 @@ export const apiReference: ApiReference = {
           "required": false,
           "description": "",
           "constraints": []
+        },
+        {
+          "name": "screen_before_notify",
+          "type": "boolean",
+          "required": false,
+          "description": "Hold inbound mail until screened (operator setting: mai admin org-screening)",
+          "constraints": []
         }
       ]
     },
@@ -1430,6 +1564,13 @@ export const apiReference: ApiReference = {
           "constraints": []
         },
         {
+          "name": "screening",
+          "type": "review | allowed | released",
+          "required": false,
+          "description": "Hold state under screen before notify; absent when the message was not held. Pending messages are never returned.",
+          "constraints": []
+        },
+        {
           "name": "attachments",
           "type": "object[]",
           "required": false,
@@ -1732,7 +1873,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | missing_permission | permission_escalation | api_key_expired | payload_too_large | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | missing_permission | permission_escalation | api_key_expired | not_held | payload_too_large | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -1761,6 +1902,7 @@ export const apiReference: ApiReference = {
     "missing_permission",
     "permission_escalation",
     "api_key_expired",
+    "not_held",
     "payload_too_large",
     "internal_error"
   ],
@@ -1785,6 +1927,8 @@ export const apiReference: ApiReference = {
     "webhook_write",
     "api_key_read",
     "api_key_write",
-    "audit_read"
+    "audit_read",
+    "message_review",
+    "message_release"
   ]
 };

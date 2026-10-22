@@ -8,12 +8,13 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * k3s + Flux GitOps manifests, Hetzner bootstrap and operations agent runbook, public website in web/, landing kept at /legacy/.
 * PR 1 merged on 2026-10-22.
 * Outbound retry window 5 days per RFC 5321 (DR8), `MAI_SEND_MAX_AGE` (default `120h`).
+* Screen before notify (doc 12 R08, migration `0005_screening.sql`): org setting on by default, `message.received` only after a clean verdict or a release, review messages hidden unless `include_review` with `message_review`, release endpoint and MCP tool with `message_release` and audit, fail closed on gatekeeper down or 15 minute timeout, `mai admin org-screening`.
 
 ## Next (in order)
 1. Release workflow green on master (fix: Docker build context was missing openapi/).
 2. Ops agent: runbook steps 1 to 7 on the CX33 (snapshot, rebuild, firewall, PTR, bootstrap, smoke test). Before that, protect the Primary IP and enable Hetzner backups.
-3. Security P0 from doc 12: split database roles (owner, runtime, system), screen before notify option with review messages hidden by default, encrypted append only backups with a restore drill (deploy/dr), least privilege token for the ops agent.
-4. Founder decisions: open questions in docs 11, 12, 13, 14 (pricing Growth plan, tools to approve, backup key custody, retention, legal counsel).
+3. Security P0 from doc 12: split database roles (owner, runtime, system), encrypted append only backups with a restore drill (deploy/dr), least privilege token for the ops agent.
+4. Founder decisions: open questions in docs 11, 12, 13, 14 (pricing Growth plan, tools to approve, backup key custody, retention, legal counsel); should full access keys hold `message_release` (the reference excludes it), and a tenant API to change `screen_before_notify` (new `organization_write` permission).
 5. Branding, then buy the domain: `mai admin domain-add`, update `deploy/k8s/staging` config, DNS records, PTR.
 6. Blob deletion on inbox delete and 90 day address quarantine (blocks deletion promises in DPA and Terms).
 7. Console (Next.js) and Stripe billing; drafts, WebSocket events; S3 blob store; pods; metrics.

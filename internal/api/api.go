@@ -80,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	route("PATCH /v0/inboxes/{inbox}/messages/{message}", core.PermMessageUpdate, s.updateMessage)
 	route("GET /v0/inboxes/{inbox}/messages/{message}/raw", core.PermMessageRead, s.rawMessage)
 	route("POST /v0/inboxes/{inbox}/messages/{message}/reply", core.PermMessageSend, s.reply)
+	route("POST /v0/inboxes/{inbox}/messages/{message}/release", core.PermMessageRelease, s.releaseMessage)
 	route("GET /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}", core.PermMessageRead, s.attachment)
 	route("POST /v0/domains", core.PermDomainWrite, s.createDomain)
 	route("GET /v0/domains", core.PermDomainRead, s.listDomains)
@@ -189,6 +190,20 @@ func decode(r *http.Request, v any) error {
 	return nil
 }
 
+// includeReview reads include_review=true: held for review messages are
+// returned only when asked for and only to keys holding message_review.
+func includeReview(r *http.Request) (bool, error) {
+	v := r.URL.Query().Get("include_review")
+	if v == "" {
+		return false, nil
+	}
+	on, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, core.Validation("include_review must be true or false")
+	}
+	return on, PrincipalFrom(r.Context()).ReviewAccess(on)
+}
+
 func page(r *http.Request) core.Page {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	return core.Page{Limit: limit, Token: r.URL.Query().Get("page_token")}
@@ -212,7 +227,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		perms = core.AllPermissions
 	}
 	s.ok(w, http.StatusOK, map[string]any{"organization_id": p.Org.ID, "name": p.Org.Name, "plan": p.Org.Plan,
-		"api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
+		"screen_before_notify": p.Org.ScreenBeforeNotify, "api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
 }
 
 // audit records a security relevant action; a failure is logged, never fatal.
@@ -337,7 +352,12 @@ func (s *Server) deleteInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listThreads(w http.ResponseWriter, r *http.Request) {
-	items, next, err := s.Svc.ListThreads(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	items, next, err := s.Svc.ListThreads(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -346,7 +366,12 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getThread(w http.ResponseWriter, r *http.Request) {
-	t, err := s.Svc.GetThread(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("thread"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	t, err := s.Svc.GetThread(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("thread"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -359,7 +384,12 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
-	items, next, err := s.Svc.ListMessages(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	items, next, err := s.Svc.ListMessages(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -368,11 +398,26 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getMessage(w http.ResponseWriter, r *http.Request) {
-	m, err := s.Svc.GetMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"))
+	review, err := includeReview(r)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	m, err := s.Svc.GetMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), review)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, m)
+}
+
+func (s *Server) releaseMessage(w http.ResponseWriter, r *http.Request) {
+	m, err := s.Svc.ReleaseMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "message.release", m.ID, map[string]any{"inbox": m.InboxID, "message_id": m.MessageID, "gatekeeper": m.Gatekeeper})
 	s.ok(w, http.StatusOK, m)
 }
 
@@ -394,7 +439,12 @@ func (s *Server) updateMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) rawMessage(w http.ResponseWriter, r *http.Request) {
-	raw, err := s.Svc.RawMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	raw, err := s.Svc.RawMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -465,7 +515,12 @@ func (s *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) attachment(w http.ResponseWriter, r *http.Request) {
-	info, data, err := s.Svc.GetAttachment(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), r.PathValue("attachment"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	info, data, err := s.Svc.GetAttachment(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), r.PathValue("attachment"), review)
 	if err != nil {
 		s.fail(w, err)
 		return

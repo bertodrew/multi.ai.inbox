@@ -67,7 +67,7 @@ MAI_TEST_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper \
 go test -race ./...
 ```
 
-The end to end test creates a fresh database owned by a non superuser role and covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP.
+The end to end test creates a fresh database owned by a non superuser role and covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP. `TestScreenBeforeNotify` covers the hold: no `message.received` before the verdict, review messages hidden on REST and MCP, release with its permission and audit entry, webhook order, and the fail closed paths (gatekeeper unavailable, screening timeout).
 
 ## API surface
 
@@ -78,7 +78,7 @@ REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP 
 | Identity | `GET /v0/auth/me` |
 | Inboxes | `POST/GET /v0/inboxes`, `GET/PATCH/DELETE /v0/inboxes/{inbox}` |
 | Threads | `GET /v0/inboxes/{inbox}/threads`, `GET /v0/threads`, `GET /v0/threads/{id}` |
-| Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply`, `{message}/attachments/{id}` |
+| Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply`, `{message}/attachments/{id}`, `POST {message}/release` (needs `message_release`, audited) |
 | Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
 | Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
 | Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
@@ -87,6 +87,14 @@ REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP 
 Security at the edge: request IDs, security headers, CORS allowlist, per organization rate limit, per IP limit on failed keys, X-Forwarded-For only from trusted proxies, SMTP STARTTLS (certificate from Caddy, self signed fallback). The MCP gateway applies the same permissions per tool and writes agent actions to the audit log. `mai mcp-config -url <api>` prints the setup for Claude Code, Cursor and Codex.
 
 Events: `message.received`, `message.received.spam`, `message.sent`, `message.failed`, `message.security.completed`, `message.security.review`, `domain.verified`.
+
+Screen before notify (organization setting `screen_before_notify`, on by default, shown in `GET /v0/auth/me`, changed with `mai admin org-screening -org <id> -on|-off`): inbound mail is held until the gatekeeper verdict exists. Clean mail fires `message.security.completed`, then `message.received`. Mail with verdict `review`, or that could not be screened (gatekeeper unavailable, or no verdict within 15 minutes), is held for review and fires only `message.security.review`, with bodies and previews left out of the payload. Held messages are hidden from every message and thread read on REST and MCP; `include_review=true` shows those held for review to keys with `message_review`. `POST .../messages/{message}/release` (MCP `release_message`, permission `message_release`) releases one, writes `message.release` to the audit log and fires `message.received`. Keep both permissions away from the agent that reads the inbox.
+
+| Event | Monitor mode (setting off) | Screen before notify (default) |
+|-------|----------------------------|--------------------------------|
+| `message.received` | at ingest | after a `clear` verdict, or after a release |
+| `message.security.completed` | after screening | after a `clear` verdict, before `message.received` |
+| `message.security.review` | after screening, full payload | when held for review, no bodies |
 
 Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; builder 10 inboxes, 1,000/day, 10,000/month; team 150 inboxes, 15,000/day, 150,000/month.
 

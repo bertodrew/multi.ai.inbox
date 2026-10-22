@@ -1,9 +1,11 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -178,31 +180,37 @@ type Delivery struct {
 	EventType string
 	Payload   json.RawMessage
 	CreatedAt time.Time
+	seq       int64 // events.id, the outbox order
 }
 
-// ClaimDeliveries leases due webhook deliveries for one minute.
+// ClaimDeliveries leases due webhook deliveries for one minute, oldest event
+// first, so a first attempt reaches each endpoint in outbox order (for
+// example message.security.completed before message.received). Retries can
+// still arrive later than newer events.
 func (s *Service) ClaimDeliveries(ctx context.Context, n int) ([]Delivery, error) {
 	var list []Delivery
 	err := s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `update webhook_deliveries d set attempt = attempt + 1, next_attempt_at = now() + interval '1 minute'
 			from webhooks w, events e
 			where d.id in (select id from webhook_deliveries where status = 'pending' and next_attempt_at <= now()
-				order by next_attempt_at limit $1 for update skip locked)
+				order by next_attempt_at, event_id limit $1 for update skip locked)
 			and w.id = d.webhook_id and e.id = d.event_id
-			returning d.id, d.attempt, w.url, w.secret, e.event_id, e.type, e.payload, e.created_at`, n)
+			returning d.id, d.attempt, w.url, w.secret, e.event_id, e.type, e.payload, e.created_at, e.id`, n)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var d Delivery
-			if err := rows.Scan(&d.ID, &d.Attempt, &d.URL, &d.Secret, &d.EventID, &d.EventType, &d.Payload, &d.CreatedAt); err != nil {
+			if err := rows.Scan(&d.ID, &d.Attempt, &d.URL, &d.Secret, &d.EventID, &d.EventType, &d.Payload, &d.CreatedAt, &d.seq); err != nil {
 				return err
 			}
 			list = append(list, d)
 		}
 		return rows.Err()
 	})
+	// update ... returning has no defined order; deliver in outbox order.
+	slices.SortFunc(list, func(a, b Delivery) int { return cmp.Compare(a.seq, b.seq) })
 	return list, err
 }
 
@@ -273,16 +281,51 @@ type Verdict struct {
 	ExtractedText string   `json:"-"`
 }
 
+// SaveEnrichment stores the verdict and emits the security events. For a
+// message held by screen before notify it also decides the hold:
+//   - clean verdict: message.security.completed, then message.received
+//   - review verdict, or no verdict because the gatekeeper was unavailable
+//     (fail closed): held for review, only message.security.review, redacted
+//
+// Messages that are not held keep the original behavior: completed, and
+// review when flagged, with message.received already sent at ingest.
 func (s *Service) SaveEnrichment(ctx context.Context, j EnrichJob, v Verdict) error {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	return s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `update messages set gatekeeper = $2, extracted_text = nullif($3, ''),
-			labels = case when $4 then array(select distinct l from unnest(labels || '{review}'::text[]) l) else labels end
-			where id = $1`, j.ID, body, v.ExtractedText, v.Verdict == "review"); err != nil {
+		var h heldMessage
+		if err := tx.QueryRow(ctx, `select screening, thread_id, subject, preview, labels from messages where id = $1 for update`, j.ID).
+			Scan(&h.screening, &h.threadID, &h.subject, &h.preview, &h.labels); err != nil {
 			return err
+		}
+		pending := h.screening != nil && *h.screening == "pending"
+		hold := pending && (v.Verdict != "clear" || v.Status != "complete")
+		next := h.screening
+		if pending {
+			next = ptr("allowed")
+			if hold {
+				next = ptr("review")
+			}
+		}
+		if _, err := tx.Exec(ctx, `update messages set gatekeeper = $2, extracted_text = nullif($3, ''), screening = $5,
+			labels = case when $4 then array(select distinct l from unnest(labels || '{review}'::text[]) l) else labels end
+			where id = $1`, j.ID, body, v.ExtractedText, v.Verdict == "review" || hold, next); err != nil {
+			return err
+		}
+		switch {
+		case hold:
+			return s.emitEvent(ctx, tx, "message.security.review", j.Address, j.ID, true)
+		case pending:
+			if err := s.emitMessageEvent(ctx, tx, "message.security.completed", j.Address, j.ID); err != nil {
+				return err
+			}
+			return s.notifyReceived(ctx, tx, j.Address, j.ID, h.threadID, h.subject, h.preview, h.labels)
+		case h.screening != nil:
+			// Held state already decided (screening timed out or the message
+			// was released meanwhile): record the verdict, emit nothing more.
+			return nil
 		}
 		if err := s.emitMessageEvent(ctx, tx, "message.security.completed", j.Address, j.ID); err != nil {
 			return err

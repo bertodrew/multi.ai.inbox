@@ -186,6 +186,14 @@ func TestPlatformEndToEnd(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// This test covers monitor mode (message.received at ingest, verdict
+	// later); screen before notify is covered by TestScreenBeforeNotify.
+	if !orgA.ScreenBeforeNotify {
+		t.Fatal("new organizations must default to screen_before_notify")
+	}
+	if _, err := svc.SetScreening(ctx, orgA.ID, false); err != nil {
+		t.Fatal(err)
+	}
 
 	srv := &api.Server{Svc: svc, Log: log}
 	srv.MCP = mcpserver.Handler(svc, func(ctx context.Context) mcpserver.Caller {

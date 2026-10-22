@@ -29,10 +29,17 @@ const (
 	PermAPIKeyRead    = "api_key_read"
 	PermAPIKeyWrite   = "api_key_write"
 	PermAuditRead     = "audit_read"
+	// PermMessageReview lets a key read messages held for review
+	// (include_review=true). Give it to a human review console, not to agents.
+	PermMessageReview = "message_review"
+	// PermMessageRelease lets a key release a held message, which then fires
+	// message.received. Same advice: never to the agent that reads the inbox.
+	PermMessageRelease = "message_release"
 )
 
 var AllPermissions = []string{PermInboxRead, PermInboxWrite, PermMessageRead, PermMessageSend, PermMessageUpdate,
-	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead}
+	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead,
+	PermMessageReview, PermMessageRelease}
 
 // Principal is the authenticated caller of a request.
 type Principal struct {
@@ -54,6 +61,15 @@ func (p *Principal) Require(perm string) error {
 	return errf(http.StatusForbidden, "missing_permission", "this API key lacks the %s permission", perm)
 }
 
+// ReviewAccess checks an include_review request: asking for held messages
+// needs message_review on top of message_read.
+func (p *Principal) ReviewAccess(includeReview bool) error {
+	if !includeReview {
+		return nil
+	}
+	return p.Require(PermMessageReview)
+}
+
 func (p *Principal) Actor() string { return "api_key:" + p.KeyID }
 
 // Authenticate resolves an API key to its organization and permissions.
@@ -67,8 +83,8 @@ func (s *Service) Authenticate(ctx context.Context, plain string) (*Principal, e
 		err := tx.QueryRow(ctx, `update api_keys k set last_used_at = now()
 			from organizations o
 			where k.hash = $1 and k.revoked_at is null and o.id = k.org_id
-			returning k.id, k.permissions, k.expires_at, o.id, o.name, o.plan`, keys.Hash(plain)).
-			Scan(&p.KeyID, &p.Permissions, &p.ExpiresAt, &p.Org.ID, &p.Org.Name, &p.Org.Plan)
+			returning k.id, k.permissions, k.expires_at, o.id, o.name, o.plan, o.screen_before_notify`, keys.Hash(plain)).
+			Scan(&p.KeyID, &p.Permissions, &p.ExpiresAt, &p.Org.ID, &p.Org.Name, &p.Org.Plan, &p.Org.ScreenBeforeNotify)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return unknown
 		}
