@@ -67,3 +67,21 @@ jobs:
       - name: kustomize build + kubeconform
         run: kustomize build deploy/k8s/staging | kubeconform -strict -summary -kubernetes-version 1.33.0 -
       - run: bash -n deploy/hetzner/bootstrap.sh && sh -n deploy/k8s/base/postgres-init.sh
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - name: build (static export, copy rule check)
+        run: npm run build

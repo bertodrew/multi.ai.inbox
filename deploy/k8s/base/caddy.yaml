@@ -15,11 +15,20 @@ data:
       encode zstd gzip
       reverse_proxy mai-http:8080
     }
-    {$MAI_SITE_HOST} {
+    (static_site) {
       encode zstd gzip
       root * /srv
-      try_files {path} {path}.html {path}/index.html /index.html
+      @markdown path *.md /llms.txt
+      header @markdown Content-Type "text/markdown; charset=utf-8"
+      try_files {path} {path}/index.html {path}.html
       file_server
+      handle_errors {
+        rewrite * /404.html
+        file_server
+      }
+    }
+    {$MAI_SITE_HOST} {
+      import static_site
     }
     # Certificate for the MX host name only: the SMTP edge reads it for STARTTLS.
     {$MAI_HOSTNAME} {
@@ -27,9 +36,7 @@ data:
     }
     # Plain HTTP on the raw IP shows the landing too.
     :8080 {
-      root * /srv
-      try_files {path} {path}.html {path}/index.html /index.html
-      file_server
+      import static_site
     }
 ---
 apiVersion: v1

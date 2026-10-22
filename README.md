@@ -35,7 +35,8 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 | `gatekeeper/` | Rust crate and JSON lines worker |
 | `openapi/openapi.yaml` | API contract |
 | `deploy/` | k3s manifests, Flux GitOps, Hetzner bootstrap, local Docker Compose |
-| `landing/` | static landing page, baked into the Caddy image (`deploy/landing/Dockerfile`) |
+| `web/` | public site (Next.js static export): home, docs from the OpenAPI spec, pricing, security, FAQ, privacy, terms, careers, `llms.txt`, Markdown twins of docs |
+| `landing/` | previous landing imported from the old server, served under `/legacy/` |
 
 ## Run locally
 
