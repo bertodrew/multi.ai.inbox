@@ -172,6 +172,7 @@
     // DNS record count from the existing endpoint
     $('#kv-dns').textContent = '\u2026';
     const res = await api('api/dns?domain=' + encodeURIComponent(domain));
+    if ($('#state-meta').textContent !== domain) return; // a newer selection owns the panel
     if (res.data && res.data.ok) {
       $('#kv-dns').textContent = String((res.data.hosts || []).length);
     } else {
@@ -188,6 +189,7 @@
     out.replaceChildren();
 
     const res = await api(GATEWAY_MAILBOXES + '?domain=' + encodeURIComponent(domain));
+    if ($('#list-meta').textContent !== domain) return; // stale response
     if (res.data && res.data.ok && Array.isArray(res.data.mailboxes)) {
       note.hidden = true;
       const mailboxes = res.data.mailboxes;

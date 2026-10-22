@@ -250,13 +250,20 @@
   }
 
   async function selectDomain(domain) {
-    current = { domain, record: null };
+    // Each selection gets its own object. After every await we check it is
+    // still the current one, so a slow response for a previously selected
+    // domain can never write into (and then be saved onto) the new domain.
+    const sel = { domain, record: null, loading: true };
+    current = sel;
+    const stale = () => current !== sel;
     $('#mail-meta').textContent = domain;
     $('#dns-meta').textContent = domain;
 
     // per-domain fields: gateway record (placeholder) + honest notice
     const rec = await loadGatewayRecord(domain);
-    if (rec) current.record = rec;
+    if (stale()) return;
+    if (rec) sel.record = rec;
+    sel.loading = false;
     const note = $('#gateway-read-note');
     if (rec) {
       note.hidden = true;
@@ -272,6 +279,7 @@
     skel.append(el('span'), el('span'), el('span'), el('span'));
     dnsOutput.appendChild(skel);
     const res = await api('api/dns?domain=' + encodeURIComponent(domain));
+    if (stale()) return; // the newer selection owns the DNS panel now
     skel.remove();
     if (!res.data || !res.data.ok) {
       showMsg($('#dns-error'), (res.data && res.data.error) || 'Failed to load DNS records.');
@@ -310,6 +318,11 @@
     hideMsg($('#save-ok'));
     hideMsg($('#save-error'));
     if (!current) return;
+    if (current.loading) {
+      showMsg($('#save-error'), 'Still loading this domain, try again in a moment.');
+      return;
+    }
+    const target = current; // the domain this save is for, even if the selection changes meanwhile
 
     if (!USE_GATEWAY_WRITES) {
       showMsg($('#save-error'), 'Writes are not live yet \u2014 the API gateway for domain settings is still being built. Changes here are read-only for now.');
@@ -324,7 +337,7 @@
     const btn = $('#btn-save');
     btn.disabled = true;
     btn.textContent = 'Saving\u2026';
-    const res = await api(GATEWAY_WRITE_BASE + encodeURIComponent(current.domain), {
+    const res = await api(GATEWAY_WRITE_BASE + encodeURIComponent(target.domain), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-Landing-CSRF': status.csrf || '' },
       body: JSON.stringify(payload),
@@ -332,8 +345,8 @@
     btn.disabled = false;
     btn.textContent = 'Save changes';
     if (res.data && res.data.ok) {
-      current.record = res.data.domain || payload;
-      fillForm(current.record);
+      target.record = res.data.domain || payload;
+      if (current === target) fillForm(target.record);
       let msg = 'Changes saved.';
       if (res.data.warnings && res.data.warnings.length) msg += ' Note: ' + res.data.warnings[0];
       showMsg($('#save-ok'), msg);

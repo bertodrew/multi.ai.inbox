@@ -198,6 +198,7 @@
     skel.append(el('span'), el('span'), el('span'), el('span'));
     dnsOutput.appendChild(skel);
     const res = await api('api/dns?domain=' + encodeURIComponent(domain));
+    if ($('#scope-meta').textContent !== domain) return; // stale response
     skel.remove();
     if (!res.data || !res.data.ok) {
       showMsg($('#dns-error'), (res.data && res.data.error) || 'Failed to load DNS records.');
@@ -229,6 +230,7 @@
     const out = $('#audit-output');
     out.replaceChildren();
     const res = await api(GATEWAY_READ_BASE + 'audit?domain=' + encodeURIComponent(domain));
+    if ($('#audit-meta').textContent !== domain) return; // stale response
     if (res.data && res.data.ok && Array.isArray(res.data.entries)) {
       note.hidden = true;
       const entries = res.data.entries;
@@ -261,6 +263,7 @@
     const out = $('#keys-output');
     out.replaceChildren();
     const res = await api(GATEWAY_READ_BASE + 'keys?domain=' + encodeURIComponent(domain));
+    if ($('#keys-meta').textContent !== domain) return; // stale response
     if (res.data && res.data.ok && Array.isArray(res.data.keys)) {
       note.hidden = true;
       const keys = res.data.keys;
