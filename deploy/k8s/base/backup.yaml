@@ -34,7 +34,7 @@ spec:
               args:
                 - >-
                   rclone copy /work "store:$BACKUP_S3_BUCKET/postgres" &&
-                  rclone sync /blobs "store:$BACKUP_S3_BUCKET/blobs" &&
+                  rclone copy /blobs "store:$BACKUP_S3_BUCKET/blobs" &&
                   rclone delete --min-age 30d "store:$BACKUP_S3_BUCKET/postgres"
               env:
                 - { name: RCLONE_CONFIG_STORE_TYPE, value: s3 }

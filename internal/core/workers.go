@@ -55,7 +55,10 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 }
 
 // SendRetries is the backoff schedule; after the last step the message fails.
-var SendRetries = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour}
+// It spans about 4.5 days, in line with RFC 5321 section 4.5.4.1, so a relay
+// outage of a few hours or days does not lose mail.
+var SendRetries = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour,
+	12 * time.Hour, 24 * time.Hour, 24 * time.Hour, 24 * time.Hour}
 
 // FinishOutbound records the outcome of a delivery attempt and emits an event.
 func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr error) error {
