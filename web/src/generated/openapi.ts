@@ -218,6 +218,11 @@ export const apiReference: ApiReference = {
           "code": "204",
           "description": "Deleted",
           "schema": ""
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
         }
       ]
     },
@@ -528,6 +533,11 @@ export const apiReference: ApiReference = {
           "schema": "SendResult"
         },
         {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
           "code": "409",
           "description": "Error envelope",
           "schema": "Error"
@@ -761,6 +771,11 @@ export const apiReference: ApiReference = {
           "code": "200",
           "description": "Queued",
           "schema": "SendResult"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
         }
       ]
     },
@@ -1293,6 +1308,20 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "client_id",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "sending_paused_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "Set when the bounce breaker paused sending (hard bounce rate above 5% over at least 20 sends in 24 hours); an operator resumes it.",
+          "constraints": []
+        },
+        {
+          "name": "sending_paused_reason",
           "type": "string",
           "required": false,
           "description": "",
@@ -1873,7 +1902,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | missing_permission | permission_escalation | api_key_expired | not_held | payload_too_large | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | payload_too_large | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -1899,6 +1928,8 @@ export const apiReference: ApiReference = {
     "cannot_delete",
     "limit_exceeded",
     "rate_limit_exceeded",
+    "address_quarantined",
+    "sending_paused",
     "missing_permission",
     "permission_escalation",
     "api_key_expired",
@@ -1911,9 +1942,14 @@ export const apiReference: ApiReference = {
     "message.received.spam",
     "message.sent",
     "message.failed",
+    "message.bounced",
     "message.security.completed",
     "message.security.review",
-    "domain.verified"
+    "domain.verified",
+    "inbox.sending.paused",
+    "inbox.sending.resumed",
+    "organization.sending.paused",
+    "organization.sending.resumed"
   ],
   "permissions": [
     "inbox_read",

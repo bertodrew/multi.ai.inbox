@@ -27,6 +27,12 @@ type Backend struct {
 	MaxBytes  int64
 	RspamdURL string // optional, e.g. http://rspamd:11333
 	HTTP      *http.Client
+	// Clamd scans every message when set (MAI_CLAMD_ADDR). Infected mail is
+	// rejected at DATA. When clamd cannot scan, mail is accepted with the
+	// av-unscanned label, or refused with a temporary failure when
+	// ClamdFailClosed is set (MAI_CLAMD_FAIL_CLOSED=true).
+	Clamd           *Clamd
+	ClamdFailClosed bool
 }
 
 // NewServer builds the SMTP edge. With tlsConfig set, STARTTLS is offered.
@@ -88,8 +94,29 @@ func (s *session) Data(r io.Reader) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	auth := map[string]any{"dkim": verifyDKIM(raw, mailx.DomainOf(headerFrom(raw)))}
 	var labels []string
+	antivirus := ""
+	if s.b.Clamd != nil {
+		res, err := s.b.Clamd.Scan(ctx, raw)
+		switch {
+		case err != nil && s.b.ClamdFailClosed:
+			s.b.Log.Error("clamd unavailable, deferring message", "err", err, "remote", s.remote)
+			return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "Virus scanner unavailable, try again later"}
+		case err != nil:
+			s.b.Log.Warn("clamd unavailable, accepting without virus scan", "err", err, "remote", s.remote)
+			labels = append(labels, "av-unscanned")
+			antivirus = "unscanned"
+		case res.Infected:
+			s.b.Log.Warn("virus rejected", "signature", res.Signature, "remote", s.remote, "from", s.from)
+			return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Message rejected: virus detected (" + res.Signature + ")"}
+		default:
+			antivirus = "clean"
+		}
+	}
+	auth := map[string]any{"dkim": verifyDKIM(raw, mailx.DomainOf(headerFrom(raw)))}
+	if antivirus != "" {
+		auth["antivirus"] = antivirus
+	}
 	if s.b.RspamdURL != "" {
 		verdict, err := s.rspamd(ctx, raw)
 		if err != nil {

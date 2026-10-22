@@ -36,8 +36,8 @@ Known facts this pack relies on: solo founder, pre revenue, staging only (`api.2
 
 **Top risks found while reading the repo** (each is reflected in the drafts so we do not over promise):
 
-1. No virus scanning is deployed. Doc 08 mentions clamd, but `deploy/k8s/base` has only rspamd. Do not claim antivirus.
-2. Inbox deletion removes database rows (`internal/core/inboxes.go`, cascades in `0001_init.sql`) but the blob store has no delete method (`internal/blob/blob.go` has `Put` and `Get` only), so raw `.eml` files and attachments stay on disk and are mirrored to backup. The 90 day address quarantine from doc 08 (T6) is not implemented either. Deletion promises must wait for a fix.
+1. Virus scanning: clamd now runs in `deploy/k8s/base/clamd.yaml` and the SMTP edge rejects infected inbound mail (`internal/mx/clamd.go`). By default mail is accepted unscanned (label `av-unscanned`) while clamd is down, and agent to agent mail and attachments uploaded through the API are not scanned. Claim "inbound mail from the internet is scanned for malware", not more.
+2. Inbox deletion now removes the raw `.eml` files and attachments from the blob store through a durable queue (`0006_deletion.sql`, processed by the scheduler within minutes), and the address is quarantined for 90 days (doc 08, T6). Still open: the nightly backup uses `rclone copy` for blobs (`deploy/k8s/base/backup.yaml`), so deleted blobs stay in Object Storage, and database dumps keep deleted rows for 30 days. Deletion promises must state the backup retention.
 3. Backups are nightly `pg_dump` plus `rclone sync` of blobs (`deploy/k8s/base/backup.yaml`); Postgres dumps are kept 30 days. RPO is up to 24 hours, and backups silently do nothing until the Object Storage keys are set (runbook section 0). No restore drill exists, so no RTO can be promised yet.
 4. Every deploy restarts the single `mai` pod (`strategy: Recreate` in `mai.yaml`), so API and SMTP blink on each merge to `master`. Deploys must count as maintenance or be excluded explicitly.
 5. Encryption at rest is not configured in the repo (local path volumes, `sslmode=disable` inside the cluster). TLS exists on the public API via Caddy and Let's Encrypt, and STARTTLS on SMTP when a certificate is configured.
@@ -358,7 +358,7 @@ Structure follows GDPR Art. 28(3), which requires the contract to set out "the s
 | Nightly off server backups, 30 day retention for database dumps | `deploy/k8s/base/backup.yaml` |
 | Secrets kept in the cluster only, never in the repo | `deploy/hetzner/AGENT_RUNBOOK.md` section 0 and 4 |
 | Firewall: inbound 22 (admin IP), 25, 80, 443 | runbook section 3 |
-| Gaps not to claim: virus scanning, encryption at rest, blob deletion, address quarantine, MFA console (no console yet), SOC 2 or ISO certification | |
+| Gaps not to claim: virus scanning beyond inbound internet mail, encryption at rest, deletion from backups, MFA console (no console yet), SOC 2 or ISO certification | |
 
 **Breach notification to customers:** we notify the Customer without undue delay after becoming aware of a Personal Data Breach affecting Customer Personal Data, with a target of 48 hours, even if information is incomplete, and follow up as facts emerge. See 5.4.
 

@@ -63,6 +63,9 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 		if err := s.Blob.Put(ctx, rawKey, raw); err != nil {
 			return fmt.Errorf("store raw: %w", err)
 		}
+		// Blobs written for this delivery; removed again unless the message row commits.
+		written := []string{rawKey}
+		inserted, bounced := false, false
 		err := s.DB.WithOrg(ctx, rc.OrgID, func(tx pgx.Tx) error {
 			var dup bool
 			if err := tx.QueryRow(ctx, "select exists(select 1 from messages where inbox_id = $1 and rfc_message_id = $2 and direction = 'in')",
@@ -109,6 +112,7 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 			}
 			for i, a := range parsed.Attachments {
 				key := fmt.Sprintf("att/%s/%s/%d", rc.OrgID, msgID, i)
+				written = append(written, key)
 				if err := s.Blob.Put(ctx, key, a.Data); err != nil {
 					return err
 				}
@@ -117,13 +121,29 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 					return err
 				}
 			}
+			inserted = true
+			// A DSN counts against the sending inbox whether or not it is held.
+			if bounced, err = s.recordBounce(ctx, tx, rc, parsed, raw, meta); err != nil {
+				return err
+			}
 			if hold {
 				return nil // counted and notified once screened or released
 			}
 			return s.notifyReceived(ctx, tx, rc.Address, msgID, threadID, parsed.Subject, preview, labels)
 		})
+		if err != nil || !inserted {
+			// A duplicate delivery or a rolled back transaction: nothing references these blobs.
+			for _, key := range written {
+				_ = s.Blob.Delete(ctx, key)
+			}
+		}
 		if err != nil {
 			return err
+		}
+		if bounced {
+			if err := s.CheckSendingHealth(ctx, rc.OrgID, rc.InboxID); err != nil {
+				return fmt.Errorf("sending health: %w", err)
+			}
 		}
 	}
 	return nil

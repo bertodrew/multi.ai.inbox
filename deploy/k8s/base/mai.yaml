@@ -71,6 +71,11 @@ spec:
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SMTP_RELAY, optional: true } }
             - name: MAI_RSPAMD_URL
               value: http://rspamd:11333
+            # Antivirus at SMTP DATA: infected mail gets 554 5.7.1. While clamd is
+            # down mail is accepted with the av-unscanned label; set
+            # MAI_CLAMD_FAIL_CLOSED=true to answer 451 4.7.1 instead.
+            - name: MAI_CLAMD_ADDR
+              value: clamd:3310
             # STARTTLS certificate for the MX host, obtained and renewed by Caddy.
             - name: MAI_SMTP_TLS_CERT
               value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).crt

@@ -33,7 +33,7 @@ export const inboxes: DocPage = {
     },
     {
       type: "p",
-      text: "Errors: `403 limit_exceeded` when the plan's inbox limit is reached, `403 domain_not_verified` when the domain is not verified for your organization, `409 already_exists` when the address is taken.",
+      text: "Errors: `403 limit_exceeded` when the plan's inbox limit is reached, `403 domain_not_verified` when the domain is not verified for your organization, `409 already_exists` when the address is taken, `409 address_quarantined` when it belonged to an inbox deleted less than 90 days ago.",
     },
     { type: "h2", text: "Identify an inbox" },
     {
@@ -43,7 +43,7 @@ export const inboxes: DocPage = {
     { type: "h2", text: "Delete" },
     {
       type: "p",
-      text: "Deleting an inbox deletes all its threads, messages and attachments. It cannot be undone.",
+      text: "Deleting an inbox deletes all its threads, messages and attachments, including the stored raw messages and files. It cannot be undone. The address is then reserved for 90 days: no organization can create it again in that window (`409 address_quarantined`), so nobody receives mail meant for the previous owner.",
     },
     { type: "h2", text: "Endpoints" },
     {
@@ -195,7 +195,7 @@ export const sendingAndReplying: DocPage = {
     { type: "h2", text: "Send a new message" },
     {
       type: "p",
-      text: "`POST /v0/inboxes/{inbox}/messages/send` starts a new thread. `to` needs at least one address; `text` or `html` is required. The response is `200` with the `message_id` and `thread_id` once the message is queued; delivery happens in the background and ends with a `message.sent` or `message.failed` event.",
+      text: "`POST /v0/inboxes/{inbox}/messages/send` starts a new thread. `to` needs at least one address; `text` or `html` is required. The response is `200` with the `message_id` and `thread_id` once the message is queued; delivery happens in the background and ends with a `message.sent` or `message.failed` event. When more than 5% of an inbox's (or organization's) last 24 hours of sends hard bounced, over at least 20 sends, sending is paused: the call returns `403 sending_paused` until support resumes it.",
     },
     {
       type: "code",

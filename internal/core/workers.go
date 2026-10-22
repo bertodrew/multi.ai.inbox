@@ -15,6 +15,7 @@ import (
 type OutboundJob struct {
 	ID         string
 	OrgID      string
+	InboxID    string
 	Address    string
 	Recipients []string
 	RawKey     string
@@ -38,10 +39,13 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 		rows, err := tx.Query(ctx, `update messages m set status = 'sending', attempts = attempts + 1,
 				next_attempt_at = now() + $2::interval
 			from inboxes i, domains d
-			where m.id in (select id from messages where status in ('queued', 'sending') and next_attempt_at <= now()
+			where m.id in (select id from messages q where status in ('queued', 'sending') and next_attempt_at <= now()
+				-- paused inboxes and organizations keep their queue until resumed
+				and not exists (select 1 from inboxes p where p.id = q.inbox_id and p.sending_paused_at is not null)
+				and not exists (select 1 from organizations p where p.id = q.org_id and p.sending_paused_at is not null)
 				order by next_attempt_at limit $1 for update skip locked)
 			and i.id = m.inbox_id and d.id = i.domain_id
-			returning m.id, m.org_id, i.address, m.to_addrs || m.cc_addrs || m.bcc_addrs, m.raw_key, m.attempts,
+			returning m.id, m.org_id, m.inbox_id, i.address, m.to_addrs || m.cc_addrs || m.bcc_addrs, m.raw_key, m.attempts,
 				d.name, d.dkim_selector, coalesce(d.dkim_private_key, ''), m.created_at`, n, sendLease.String())
 		if err != nil {
 			return err
@@ -49,7 +53,7 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 		defer rows.Close()
 		for rows.Next() {
 			var j OutboundJob
-			if err := rows.Scan(&j.ID, &j.OrgID, &j.Address, &j.Recipients, &j.RawKey, &j.Attempts,
+			if err := rows.Scan(&j.ID, &j.OrgID, &j.InboxID, &j.Address, &j.Recipients, &j.RawKey, &j.Attempts,
 				&j.DKIMDomain, &j.DKIMSel, &j.DKIMKeyPEM, &j.CreatedAt); err != nil {
 				return err
 			}
@@ -118,19 +122,41 @@ func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr err
 			if _, err := tx.Exec(ctx, "update messages set status = 'sent', last_error = null, next_attempt_at = null where id = $1", j.ID); err != nil {
 				return err
 			}
-			return s.emitMessageEvent(ctx, tx, "message.sent", j.Address, j.ID)
+			if err := s.emitMessageEvent(ctx, tx, "message.sent", j.Address, j.ID); err != nil {
+				return err
+			}
+			return s.finalOutcome(ctx, tx, j, "sent")
 		case !retry:
 			if _, err := tx.Exec(ctx, `update messages set status = 'failed', last_error = $2, next_attempt_at = null,
 				labels = array(select distinct l from unnest(labels || '{failed}'::text[]) l) where id = $1`, j.ID, sendErr.Error()); err != nil {
 				return err
 			}
-			return s.emitMessageEvent(ctx, tx, "message.failed", j.Address, j.ID)
+			if err := s.emitMessageEvent(ctx, tx, "message.failed", j.Address, j.ID); err != nil {
+				return err
+			}
+			// Only a permanent (5xx) refusal is a hard bounce; giving up after
+			// the retry window says nothing about the recipient address.
+			if errors.Is(sendErr, ErrPermanent) {
+				return s.finalOutcome(ctx, tx, j, "rejected")
+			}
+			return nil
 		default:
 			_, err := tx.Exec(ctx, "update messages set status = 'queued', last_error = $2, next_attempt_at = now() + $3::interval where id = $1",
 				j.ID, sendErr.Error(), delay.String())
 			return err
 		}
 	})
+}
+
+// finalOutcome records a send outcome and runs the bounce breaker.
+func (s *Service) finalOutcome(ctx context.Context, tx pgx.Tx, j OutboundJob, outcome string) error {
+	if j.InboxID == "" {
+		return nil // a job built by hand (tests) without its inbox
+	}
+	if _, err := recordOutcome(ctx, tx, j.OrgID, j.InboxID, j.ID, outcome); err != nil {
+		return err
+	}
+	return s.checkSendingHealth(ctx, tx, j.OrgID, j.InboxID)
 }
 
 // ErrPermanent marks a delivery error that must not be retried (5xx).

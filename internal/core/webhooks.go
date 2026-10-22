@@ -12,13 +12,18 @@ import (
 
 // EventTypes lists every event a webhook can subscribe to.
 var EventTypes = map[string]bool{
-	"message.received":           true,
-	"message.received.spam":      true,
-	"message.sent":               true,
-	"message.failed":             true,
-	"message.security.completed": true,
-	"message.security.review":    true,
-	"domain.verified":            true,
+	"message.received":             true,
+	"message.received.spam":        true,
+	"message.sent":                 true,
+	"message.failed":               true,
+	"message.bounced":              true,
+	"message.security.completed":   true,
+	"message.security.review":      true,
+	"domain.verified":              true,
+	"inbox.sending.paused":         true,
+	"inbox.sending.resumed":        true,
+	"organization.sending.paused":  true,
+	"organization.sending.resumed": true,
 }
 
 type Webhook struct {

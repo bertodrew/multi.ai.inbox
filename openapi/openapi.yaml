@@ -29,6 +29,9 @@ paths:
   /v0/inboxes:
     post:
       summary: Create an inbox (repeat client_id to get the same inbox)
+      description: |
+        409 already_exists when the address is taken, 409 address_quarantined
+        when it belonged to an inbox deleted less than 90 days ago.
       requestBody:
         content:
           application/json:
@@ -60,7 +63,13 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
     delete:
       summary: Delete an inbox and all its mail
-      responses: { "204": { description: Deleted } }
+      description: |
+        Removes the inbox, its threads, messages and attachments. Raw .eml
+        files and attachment blobs are queued for deletion in the same
+        transaction and removed from storage by the scheduler within minutes.
+        The address is quarantined for 90 days: no organization can create
+        it again in that window (409 address_quarantined).
+      responses: { "204": { description: Deleted }, "404": { $ref: "#/components/responses/Error" } }
   /v0/inboxes/{inbox}/threads:
     parameters: [{ $ref: "#/components/parameters/inbox" }]
     get:
@@ -92,12 +101,17 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/idempotency_key" }]
     post:
       summary: Send a new message (new thread)
+      description: |
+        403 sending_paused when the bounce breaker paused the inbox or the
+        organization (hard bounce rate above 5% over at least 20 sends in 24
+        hours). Queued mail is held, not sent, until an operator resumes.
       requestBody:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Send" }
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}:
@@ -138,6 +152,7 @@ paths:
             schema: { $ref: "#/components/schemas/Reply" }
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "403": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}/release:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     post:
@@ -265,6 +280,7 @@ components:
                 type: string
                 enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
+                       address_quarantined, sending_paused,
                        missing_permission, permission_escalation, api_key_expired, not_held,
                        payload_too_large, internal_error]
               message: { type: string }
@@ -292,6 +308,11 @@ components:
         email: { type: string, format: email }
         display_name: { type: string }
         client_id: { type: string }
+        sending_paused_at:
+          type: string
+          format: date-time
+          description: Set when the bounce breaker paused sending (hard bounce rate above 5% over at least 20 sends in 24 hours); an operator resumes it.
+        sending_paused_reason: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     InboxList:
@@ -380,7 +401,9 @@ components:
       properties: { message_id: { type: string }, thread_id: { type: string, format: uuid } }
     EventType:
       type: string
-      enum: [message.received, message.received.spam, message.sent, message.failed, message.security.completed, message.security.review, domain.verified]
+      enum: [message.received, message.received.spam, message.sent, message.failed, message.bounced, message.security.completed,
+             message.security.review, domain.verified, inbox.sending.paused, inbox.sending.resumed,
+             organization.sending.paused, organization.sending.resumed]
     Webhook:
       type: object
       properties:
