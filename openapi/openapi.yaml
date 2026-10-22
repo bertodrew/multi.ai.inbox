@@ -160,6 +160,35 @@ paths:
     post:
       summary: Check DNS now (the scheduler also checks every 5 minutes for 7 days)
       responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } } }
+  /v0/api-keys:
+    post:
+      summary: Create a key with at most the caller's permissions (key shown once)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 100 }
+                permissions: { type: array, items: { $ref: "#/components/schemas/Permission" }, description: "omit to copy the caller's permissions" }
+                expires_at: { type: string, format: date-time }
+      responses:
+        "201": { description: Created }
+        "403": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List active keys (requires api_key_read)
+      responses: { "200": { description: OK } }
+  /v0/api-keys/{key}:
+    delete:
+      parameters: [{ name: key, in: path, required: true, schema: { type: string, format: uuid } }]
+      summary: Revoke a key immediately (requires api_key_write, no escalation)
+      responses: { "204": { description: Revoked } }
+  /v0/audit-logs:
+    get:
+      summary: Security relevant actions of the organization (requires audit_read)
+      parameters: [{ name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }]
+      responses: { "200": { description: OK } }
   /v0/webhooks:
     post:
       summary: Create a webhook (secret is returned once)
@@ -208,6 +237,7 @@ components:
                 type: string
                 enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
+                       missing_permission, permission_escalation, api_key_expired,
                        payload_too_large, internal_error]
               message: { type: string }
   schemas:
@@ -342,3 +372,7 @@ components:
               status: { type: string, enum: [verified, missing] }
         last_checked_at: { type: string, format: date-time }
         verified_at: { type: string, format: date-time }
+    Permission:
+      type: string
+      enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
+             webhook_read, webhook_write, api_key_read, api_key_write, audit_read]

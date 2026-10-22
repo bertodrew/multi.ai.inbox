@@ -80,7 +80,10 @@ REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP 
 | Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply`, `{message}/attachments/{id}` |
 | Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
 | Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
-| Ops | `GET /healthz`, `GET /readyz` |
+| Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
+| Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml` |
+
+Security at the edge: request IDs, security headers, CORS allowlist, per organization rate limit, per IP limit on failed keys, X-Forwarded-For only from trusted proxies, SMTP STARTTLS (certificate from Caddy, self signed fallback). The MCP gateway applies the same permissions per tool and writes agent actions to the audit log. `mai mcp-config -url <api>` prints the setup for Claude Code, Cursor and Codex.
 
 Events: `message.received`, `message.received.spam`, `message.sent`, `message.failed`, `message.security.completed`, `message.security.review`, `domain.verified`.
 
