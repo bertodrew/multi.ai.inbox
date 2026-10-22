@@ -1,0 +1,175 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/bertodrew/multi.ai.inbox/internal/mailx"
+)
+
+// LocalRecipient is an inbox that accepts mail, resolved at RCPT time.
+type LocalRecipient struct {
+	InboxID string
+	OrgID   string
+	Address string
+}
+
+// ResolveRecipient looks up an address across all tenants (SMTP edge only).
+func (s *Service) ResolveRecipient(ctx context.Context, address string) (*LocalRecipient, error) {
+	r := &LocalRecipient{}
+	err := s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select id, org_id, address from inboxes where address = $1",
+			strings.ToLower(strings.TrimSpace(address))).Scan(&r.InboxID, &r.OrgID, &r.Address)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return r, err
+}
+
+// InboundMeta carries what the SMTP edge learned about a message.
+type InboundMeta struct {
+	MailFrom    string
+	AuthResults map[string]any
+	Labels      []string // e.g. "spam" from the spam filter verdict
+}
+
+// Ingest stores one inbound message for each local recipient, threads it and
+// emits message.received. The raw MIME is stored once.
+func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipient, meta InboundMeta) error {
+	parsed, err := mailx.Parse(raw)
+	if err != nil {
+		return err
+	}
+	auth, _ := json.Marshal(meta.AuthResults)
+	if meta.AuthResults == nil {
+		auth = []byte("{}")
+	}
+	now := s.now()
+	for _, rc := range rcpts {
+		rawKey := fmt.Sprintf("raw/%s/%s/%s-%s.eml", rc.OrgID, now.Format("2006/01"), rc.InboxID, strings.Trim(parsed.MessageID, "<>"))
+		if err := s.Blob.Put(ctx, rawKey, raw); err != nil {
+			return fmt.Errorf("store raw: %w", err)
+		}
+		err := s.DB.WithOrg(ctx, rc.OrgID, func(tx pgx.Tx) error {
+			var dup bool
+			if err := tx.QueryRow(ctx, "select exists(select 1 from messages where inbox_id = $1 and rfc_message_id = $2 and direction = 'in')",
+				rc.InboxID, parsed.MessageID).Scan(&dup); err != nil {
+				return err
+			}
+			if dup {
+				return nil // a retried delivery of a message we already stored
+			}
+			threadID, err := s.findThread(ctx, tx, rc.InboxID, parsed)
+			if err != nil {
+				return err
+			}
+			preview := mailx.Preview(parsed.Text, 200)
+			labels := uniqueLabels(append([]string{"received", "unread"}, meta.Labels...))
+			if threadID == "" {
+				if err := tx.QueryRow(ctx, "insert into threads (org_id, inbox_id, subject, preview) values ($1, $2, $3, $4) returning id",
+					rc.OrgID, rc.InboxID, parsed.Subject, preview).Scan(&threadID); err != nil {
+					return err
+				}
+			}
+			var inReplyTo any
+			if parsed.InReplyTo != "" {
+				inReplyTo = parsed.InReplyTo
+			}
+			var msgID string
+			if err := tx.QueryRow(ctx, `insert into messages (org_id, inbox_id, thread_id, direction, rfc_message_id, in_reply_to,
+				refs, from_addr, to_addrs, cc_addrs, subject, text_body, html_body, preview, labels, raw_key, size_bytes,
+				status, auth_results)
+				values ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, $10, nullif($11, ''), nullif($12, ''), $13, $14, $15, $16, 'received', $17)
+				returning id`,
+				rc.OrgID, rc.InboxID, threadID, parsed.MessageID, inReplyTo, nonNil(parsed.References), strings.ToLower(parsed.From),
+				nonNil(parsed.To), nonNil(parsed.Cc), parsed.Subject, parsed.Text, parsed.HTML, preview, labels, rawKey, len(raw),
+				auth).Scan(&msgID); err != nil {
+				return err
+			}
+			for i, a := range parsed.Attachments {
+				key := fmt.Sprintf("att/%s/%s/%d", rc.OrgID, msgID, i)
+				if err := s.Blob.Put(ctx, key, a.Data); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(ctx, `insert into attachments (org_id, message_id, filename, content_type, size_bytes, storage_key)
+					values ($1, $2, $3, $4, $5, $6)`, rc.OrgID, msgID, a.Filename, a.ContentType, len(a.Data), key); err != nil {
+					return err
+				}
+			}
+			if err := touchThread(ctx, tx, threadID, preview, labels); err != nil {
+				return err
+			}
+			eventType := "message.received"
+			if contains(labels, "spam") {
+				eventType = "message.received.spam"
+			}
+			return s.emitMessageEvent(ctx, tx, eventType, rc.Address, msgID)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// findThread joins a reply to the thread of the message it references in the same inbox.
+func (s *Service) findThread(ctx context.Context, tx pgx.Tx, inboxID string, p *mailx.Parsed) (string, error) {
+	ids := append([]string{}, p.References...)
+	if p.InReplyTo != "" {
+		ids = append(ids, p.InReplyTo)
+	}
+	if len(ids) == 0 {
+		return "", nil
+	}
+	var threadID string
+	err := tx.QueryRow(ctx, `select thread_id from messages where inbox_id = $1 and rfc_message_id = any($2)
+		order by created_at desc limit 1`, inboxID, ids).Scan(&threadID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return threadID, err
+}
+
+// emitMessageEvent writes an outbox event with the full message and its thread.
+func (s *Service) emitMessageEvent(ctx context.Context, tx pgx.Tx, eventType, address, msgID string) error {
+	m, err := s.messageTx(ctx, tx, address, msgID)
+	if err != nil {
+		return err
+	}
+	t, err := scanThread(tx.QueryRow(ctx, "select "+threadCols+threadFrom+" where t.id = $1", m.ThreadID))
+	if err != nil {
+		return err
+	}
+	return insertEvent(ctx, tx, m.orgID, m.inboxUUID, eventType, map[string]any{"message": m, "thread": t})
+}
+
+func insertEvent(ctx context.Context, tx pgx.Tx, orgID, inboxID, eventType string, data map[string]any) error {
+	body, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, "insert into events (org_id, inbox_id, type, payload) values ($1, $2, $3, $4)", orgID, inboxID, eventType, body)
+	return err
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
