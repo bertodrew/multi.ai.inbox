@@ -125,6 +125,41 @@ paths:
             schema: { $ref: "#/components/schemas/Reply" }
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+  /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}:
+    parameters:
+      - { $ref: "#/components/parameters/inbox" }
+      - { $ref: "#/components/parameters/message" }
+      - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Download an attachment
+      responses: { "200": { description: Attachment bytes with its content type } }
+  /v0/domains:
+    post:
+      summary: Add a custom domain; returns the DNS records to publish
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [domain], properties: { domain: { type: string } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List own and shared domains
+      responses: { "200": { description: OK } }
+  /v0/domains/{domain}:
+    parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Get a domain with record status
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } } }
+    delete:
+      summary: Delete a domain without inboxes
+      responses: { "204": { description: Deleted }, "409": { $ref: "#/components/responses/Error" } }
+  /v0/domains/{domain}/verify:
+    parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+    post:
+      summary: Check DNS now (the scheduler also checks every 5 minutes for 7 days)
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Domain" } } } } }
   /v0/webhooks:
     post:
       summary: Create a webhook (secret is returned once)
@@ -172,7 +207,8 @@ components:
               code:
                 type: string
                 enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
-                       domain_not_verified, conflict, limit_exceeded, payload_too_large, internal_error]
+                       domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
+                       payload_too_large, internal_error]
               message: { type: string }
   schemas:
     Org:
@@ -278,7 +314,7 @@ components:
       properties: { message_id: { type: string }, thread_id: { type: string, format: uuid } }
     EventType:
       type: string
-      enum: [message.received, message.received.spam, message.sent, message.failed, message.security.completed, message.security.review]
+      enum: [message.received, message.received.spam, message.sent, message.failed, message.security.completed, message.security.review, domain.verified]
     Webhook:
       type: object
       properties:
@@ -288,3 +324,21 @@ components:
         inbox_ids: { type: array, items: { type: string } }
         enabled: { type: boolean }
         secret: { type: string, description: "whsec_..., returned only on create" }
+    Domain:
+      type: object
+      properties:
+        domain_id: { type: string, format: uuid }
+        domain: { type: string }
+        shared: { type: boolean }
+        status: { type: string, enum: [pending, verified] }
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [MX, TXT] }
+              name: { type: string }
+              value: { type: string }
+              status: { type: string, enum: [verified, missing] }
+        last_checked_at: { type: string, format: date-time }
+        verified_at: { type: string, format: date-time }

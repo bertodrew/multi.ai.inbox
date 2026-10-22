@@ -2,15 +2,8 @@ package core
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
 	"errors"
-	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -86,58 +79,40 @@ func (s *Service) GetOrg(ctx context.Context, orgID string) (*Org, error) {
 	return o, err
 }
 
-type DNSRecord struct {
-	Type  string `json:"type"`
-	Name  string `json:"name"`
-	Value string `json:"value"`
+func (s *Service) plan(ctx context.Context, orgID string) (Plan, error) {
+	o, err := s.GetOrg(ctx, orgID)
+	if err != nil {
+		return Plan{}, err
+	}
+	return planOf(o.Plan), nil
 }
 
-type Domain struct {
-	ID      string      `json:"domain_id"`
-	Name    string      `json:"domain"`
-	Shared  bool        `json:"shared"`
-	Records []DNSRecord `json:"records"`
-}
-
-var domainRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
-
-// AddDomain registers a sending and receiving domain with a fresh DKIM key.
-// orgID empty means a shared platform domain. mxHost is the public MX name.
-func (s *Service) AddDomain(ctx context.Context, orgID, name, mxHost string) (*Domain, error) {
-	name = strings.ToLower(strings.TrimSpace(name))
-	if !domainRe.MatchString(name) {
-		return nil, Validation("invalid domain %q", name)
+// SetPlan changes an organization's plan (operator command, billing later).
+func (s *Service) SetPlan(ctx context.Context, orgID, plan string) error {
+	if _, ok := Plans[plan]; !ok {
+		return Validation("unknown plan %q", plan)
 	}
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, fmt.Errorf("dkim key: %w", err)
-	}
-	privPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-	pub, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-	d := &Domain{Name: name, Shared: orgID == ""}
-	var org any
-	if orgID != "" {
-		org = orgID
-	}
-	err = s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `insert into domains (org_id, name, dkim_private_key) values ($1, $2, $3) returning id`,
-			org, name, string(privPEM)).Scan(&d.ID)
-		if isUniqueViolation(err) {
-			return errf(http.StatusConflict, "already_exists", "domain %s already exists", name)
+	return s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, "update organizations set plan = $2 where id = $1", orgID, plan)
+		if err == nil && tag.RowsAffected() == 0 {
+			return NotFound("organization")
 		}
 		return err
 	})
-	if err != nil {
-		return nil, err
+}
+
+// EnsureOrg returns the organization with this name, creating it if needed.
+func (s *Service) EnsureOrg(ctx context.Context, name string) (*Org, bool, error) {
+	o := &Org{}
+	err := s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select id, name, plan from organizations where name = $1 order by created_at limit 1", name).Scan(&o.ID, &o.Name, &o.Plan)
+	})
+	if err == nil {
+		return o, false, nil
 	}
-	d.Records = []DNSRecord{
-		{Type: "MX", Name: name, Value: "10 " + mxHost + "."},
-		{Type: "TXT", Name: name, Value: "v=spf1 mx -all"},
-		{Type: "TXT", Name: "mai1._domainkey." + name, Value: "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(pub)},
-		{Type: "TXT", Name: "_dmarc." + name, Value: "v=DMARC1; p=quarantine; rua=mailto:dmarc@" + name},
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, err
 	}
-	return d, nil
+	o, err = s.CreateOrg(ctx, name)
+	return o, err == nil, err
 }

@@ -5,7 +5,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -69,6 +71,22 @@ type labelsIn struct {
 	Add       []string `json:"add_labels,omitempty"`
 	Remove    []string `json:"remove_labels,omitempty"`
 }
+
+type attachmentIn struct {
+	Inbox        string `json:"inbox"`
+	MessageID    string `json:"message_id"`
+	AttachmentID string `json:"attachment_id"`
+}
+
+type attachmentOut struct {
+	Filename      string `json:"filename"`
+	ContentType   string `json:"content_type"`
+	Size          int    `json:"size"`
+	Text          string `json:"text,omitempty"`
+	ContentBase64 string `json:"content_base64,omitempty"`
+}
+
+const maxToolAttachment = 5 << 20
 
 type threadIn struct {
 	ThreadID string `json:"thread_id"`
@@ -134,6 +152,28 @@ func newServer(svc *core.Service, org, version string) *mcp.Server {
 		func(ctx context.Context, _ *mcp.CallToolRequest, in labelsIn) (*mcp.CallToolResult, any, error) {
 			m, err := svc.UpdateMessageLabels(ctx, org, in.Inbox, in.MessageID, in.Add, in.Remove)
 			return nil, m, err
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "get_attachment", Description: "Download an attachment: text files as text, others as base64 (max 5 MB)."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in attachmentIn) (*mcp.CallToolResult, any, error) {
+			info, data, err := svc.GetAttachment(ctx, org, in.Inbox, in.MessageID, in.AttachmentID)
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(data) > maxToolAttachment {
+				return nil, nil, core.Validation("attachment is %d bytes; download it with the REST API", len(data))
+			}
+			out := attachmentOut{Filename: info.Filename, ContentType: info.ContentType, Size: info.Size}
+			if strings.HasPrefix(info.ContentType, "text/") || info.ContentType == "application/json" {
+				out.Text = string(data)
+			} else {
+				out.ContentBase64 = base64.StdEncoding.EncodeToString(data)
+			}
+			return nil, out, nil
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "list_domains", Description: "List domains usable for inboxes, with DNS records and verification status."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+			items, err := svc.ListDomains(ctx, org)
+			return nil, listOut("domains", items, ""), err
 		})
 	return s
 }

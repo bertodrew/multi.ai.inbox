@@ -154,7 +154,11 @@ func insertEvent(ctx context.Context, tx pgx.Tx, orgID, inboxID, eventType strin
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, "insert into events (org_id, inbox_id, type, payload) values ($1, $2, $3, $4)", orgID, inboxID, eventType, body)
+	var inbox any
+	if inboxID != "" {
+		inbox = inboxID
+	}
+	_, err = tx.Exec(ctx, "insert into events (org_id, inbox_id, type, payload) values ($1, $2, $3, $4)", orgID, inbox, eventType, body)
 	return err
 }
 

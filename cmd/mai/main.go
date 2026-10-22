@@ -1,10 +1,13 @@
 // Command mai runs the multi.ai.inbox platform. One binary, several roles:
 //
-//	mai serve [-roles api,mx,sender,dispatcher,enrich]
+//	mai serve [-roles api,mx,sender,dispatcher,enrich,scheduler]
 //	mai migrate
+//	mai admin seed                              staging org, user and admin testers
 //	mai admin org-create -name "Acme"
+//	mai admin org-plan -org <uuid> -plan team
 //	mai admin key-create -org <uuid> [-name agent]
-//	mai admin domain-add -name agents.example.eu [-org <uuid>] -mx mx.example.eu
+//	mai admin domain-add -name agents.example.eu [-org <uuid>]
+//	mai admin check-port25                      can this host deliver directly?
 package main
 
 import (
@@ -14,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,6 +35,7 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/enrich"
 	"github.com/bertodrew/multi.ai.inbox/internal/mcpserver"
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
+	"github.com/bertodrew/multi.ai.inbox/internal/scheduler"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
 )
 
@@ -48,6 +53,8 @@ type config struct {
 	GatekeeperBin string
 	MaxMessage    int64
 	AllowHTTPHook bool
+	SPFInclude    string
+	RatePerSecond float64
 }
 
 func env(key, def string) string {
@@ -59,6 +66,7 @@ func env(key, def string) string {
 
 func loadConfig() config {
 	maxMsg, _ := strconv.ParseInt(env("MAI_MAX_MESSAGE_BYTES", "26214400"), 10, 64)
+	rate, _ := strconv.ParseFloat(env("MAI_RATE_LIMIT_PER_SECOND", "20"), 64)
 	return config{
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		HTTPAddr:      env("MAI_HTTP_ADDR", ":8080"),
@@ -71,6 +79,8 @@ func loadConfig() config {
 		GatekeeperBin: os.Getenv("MAI_GATEKEEPER_BIN"),
 		MaxMessage:    maxMsg,
 		AllowHTTPHook: os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
+		SPFInclude:    os.Getenv("MAI_SPF_INCLUDE"),
+		RatePerSecond: rate,
 	}
 }
 
@@ -120,12 +130,12 @@ func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 
 func service(d *db.DB, cfg config) *core.Service {
 	return &core.Service{DB: d, Blob: blob.FS{Root: cfg.BlobDir}, SharedDomain: cfg.SharedDomain,
-		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook}
+		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude}
 }
 
 func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	roles := fs.String("roles", "api,mx,sender,dispatcher,enrich", "comma separated roles to run")
+	roles := fs.String("roles", "api,mx,sender,dispatcher,enrich,scheduler", "comma separated roles to run")
 	_ = fs.Parse(args)
 	enabled := map[string]bool{}
 	for _, r := range strings.Split(*roles, ",") {
@@ -141,6 +151,9 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 
 		if enabled["api"] {
 			srv := &api.Server{Svc: svc, Log: log}
+			if cfg.RatePerSecond > 0 {
+				srv.Limiter = api.NewLimiter(cfg.RatePerSecond, cfg.RatePerSecond*2)
+			}
 			srv.MCP = mcpserver.Handler(svc, api.OrgFrom, version)
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			wg.Add(1)
@@ -194,6 +207,11 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 				go func() { defer wg.Done(); e.Run(ctx) }()
 			}
 		}
+		if enabled["scheduler"] {
+			sc := &scheduler.Scheduler{Svc: svc, Log: log}
+			wg.Add(1)
+			go func() { defer wg.Done(); sc.Run(ctx) }()
+		}
 		select {
 		case err := <-errs:
 			return err
@@ -206,27 +224,38 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 
 func admin(ctx context.Context, cfg config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mai admin org-create|key-create|domain-add")
+		return errors.New("usage: mai admin seed|org-create|org-plan|key-create|domain-add|check-port25")
+	}
+	if args[0] == "check-port25" {
+		return checkPort25(ctx)
 	}
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	name := fs.String("name", "", "name")
 	org := fs.String("org", "", "organization id")
-	mxHost := fs.String("mx", cfg.Hostname, "public MX host name")
+	plan := fs.String("plan", "", "plan: free, builder, team")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
+		if err := d.Migrate(ctx); err != nil {
+			return err
+		}
 		svc := service(d, cfg)
 		var out any
 		var err error
 		switch args[0] {
+		case "seed":
+			out, err = seed(ctx, svc, cfg)
 		case "org-create":
 			out, err = svc.CreateOrg(ctx, *name)
+		case "org-plan":
+			err = svc.SetPlan(ctx, *org, *plan)
+			out = map[string]string{"organization_id": *org, "plan": *plan}
 		case "key-create":
 			if *org == "" {
 				return errors.New("-org is required")
 			}
 			out, err = svc.CreateKey(ctx, *org, *name)
 		case "domain-add":
-			out, err = svc.AddDomain(ctx, *org, *name, *mxHost)
+			out, err = svc.AddDomain(ctx, *org, *name)
 		default:
 			return fmt.Errorf("unknown admin command %q", args[0])
 		}
@@ -237,4 +266,72 @@ func admin(ctx context.Context, cfg config, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	})
+}
+
+type seedResult struct {
+	Organization *core.Org          `json:"organization"`
+	Inboxes      []*core.Inbox      `json:"inboxes"`
+	Keys         []*core.CreatedKey `json:"api_keys,omitempty"`
+	Note         string             `json:"note"`
+}
+
+// seed prepares a staging environment: the shared domain, a "Staging" org on
+// the team plan, user and admin tester inboxes, and one API key per tester.
+// It is safe to run again: existing objects are reused and keys are only
+// created the first time (they are shown once).
+func seed(ctx context.Context, svc *core.Service, cfg config) (*seedResult, error) {
+	if cfg.SharedDomain == "" {
+		return nil, errors.New("MAI_SHARED_DOMAIN is required")
+	}
+	if _, err := svc.AddDomain(ctx, "", cfg.SharedDomain); err != nil && core.AsError(err).Code != "already_exists" {
+		return nil, err
+	}
+	org, created, err := svc.EnsureOrg(ctx, "Staging")
+	if err != nil {
+		return nil, err
+	}
+	if err := svc.SetPlan(ctx, org.ID, "team"); err != nil {
+		return nil, err
+	}
+	org.Plan = "team"
+	res := &seedResult{Organization: org, Note: "API keys are printed only when the organization is created; use key-create to add more."}
+	for _, u := range []string{"user.tester", "admin.tester"} {
+		inbox, _, err := svc.CreateInbox(ctx, org.ID, core.CreateInboxRequest{Username: u, ClientID: "seed-" + u, DisplayName: u})
+		if err != nil {
+			return nil, err
+		}
+		res.Inboxes = append(res.Inboxes, inbox)
+		if created {
+			k, err := svc.CreateKey(ctx, org.ID, u)
+			if err != nil {
+				return nil, err
+			}
+			res.Keys = append(res.Keys, k)
+		}
+	}
+	return res, nil
+}
+
+// checkPort25 tells whether outbound SMTP is open on this host (Hetzner
+// blocks it on new accounts until a support request is approved).
+func checkPort25(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", "gmail-smtp-in.l.google.com:25")
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		fmt.Println("port 25 outbound: UNKNOWN, DNS lookup failed (" + err.Error() + "). Fix the resolver and retry.")
+		return nil
+	}
+	if err != nil {
+		fmt.Println("port 25 outbound: BLOCKED (" + err.Error() + "). Set MAI_SMTP_RELAY to the Brevo relay or ask Hetzner to unblock it.")
+		return nil
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	banner := make([]byte, 128)
+	n, _ := conn.Read(banner)
+	fmt.Printf("port 25 outbound: OPEN (%s)\n", strings.TrimSpace(string(banner[:n])))
+	return nil
 }

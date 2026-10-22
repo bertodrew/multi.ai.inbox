@@ -230,7 +230,6 @@ type SendResult struct {
 const (
 	maxRecipients   = 50
 	maxRequestBytes = 6 << 20
-	freeDailySends  = 100
 	freeFooterText  = "\n\n--\nSent via multi.ai.inbox"
 	freeFooterHTML  = `<p style="color:#888;font-size:12px">Sent via multi.ai.inbox</p>`
 )
@@ -358,17 +357,22 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	if n := len(o.to) + len(o.cc) + len(o.bcc); n > maxRecipients {
 		return nil, Validation("at most %d recipients per message, got %d", maxRecipients, n)
 	}
-	var plan string
-	var sentToday int
-	if err := tx.QueryRow(ctx, `select o.plan, (select count(*) from messages
-		where org_id = o.id and direction = 'out' and created_at > now() - interval '1 day')
-		from organizations o where o.id = $1`, orgID).Scan(&plan, &sentToday); err != nil {
+	var planName string
+	var sentToday, sentMonth int
+	if err := tx.QueryRow(ctx, `select o.plan,
+		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at > now() - interval '1 day'),
+		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at >= date_trunc('month', now()))
+		from organizations o where o.id = $1`, orgID).Scan(&planName, &sentToday, &sentMonth); err != nil {
 		return nil, err
 	}
-	if plan == "free" {
-		if sentToday >= freeDailySends {
-			return nil, errf(http.StatusTooManyRequests, "limit_exceeded", "daily send limit of %d reached on the free plan", freeDailySends)
-		}
+	plan := planOf(planName)
+	if sentToday >= plan.SendsPerDay {
+		return nil, errf(http.StatusTooManyRequests, "limit_exceeded", "daily send limit of %d reached on the %s plan", plan.SendsPerDay, plan.Name)
+	}
+	if sentMonth >= plan.SendsPerMonth {
+		return nil, errf(http.StatusTooManyRequests, "limit_exceeded", "monthly send limit of %d reached on the %s plan", plan.SendsPerMonth, plan.Name)
+	}
+	if plan.Footer {
 		o.text += freeFooterText
 		if o.html != "" {
 			o.html += freeFooterHTML
@@ -478,4 +482,32 @@ func (s *Service) idempotent(ctx context.Context, orgID, key string, req any, fn
 		return err
 	})
 	return out, err
+}
+
+// GetAttachment returns attachment metadata and its bytes.
+func (s *Service) GetAttachment(ctx context.Context, orgID, address, messageID, attachmentID string) (*AttachmentInfo, []byte, error) {
+	var info *AttachmentInfo
+	var key string
+	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		m, err := s.messageTx(ctx, tx, address, messageID)
+		if err != nil {
+			return err
+		}
+		a := &AttachmentInfo{}
+		err = tx.QueryRow(ctx, `select id, filename, content_type, size_bytes, storage_key from attachments
+			where message_id = $1 and id::text = $2`, m.ID, attachmentID).Scan(&a.ID, &a.Filename, &a.ContentType, &a.Size, &key)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return NotFound("attachment")
+		}
+		info = a
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := s.Blob.Get(ctx, key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load attachment: %w", err)
+	}
+	return info, data, nil
 }

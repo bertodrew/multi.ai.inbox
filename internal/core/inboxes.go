@@ -87,12 +87,24 @@ func (s *Service) CreateInbox(ctx context.Context, orgID string, req CreateInbox
 			}
 		}
 		var domainID string
-		err := tx.QueryRow(ctx, "select id from domains where name = $1", req.Domain).Scan(&domainID)
+		var verified bool
+		err := tx.QueryRow(ctx, "select id, verified_at is not null from domains where name = $1", req.Domain).Scan(&domainID, &verified)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errf(http.StatusForbidden, "domain_not_verified", "domain %s is not available to this organization", req.Domain)
 		}
 		if err != nil {
 			return err
+		}
+		if !verified {
+			return errf(http.StatusForbidden, "domain_not_verified", "domain %s is not verified yet; check its DNS records", req.Domain)
+		}
+		var planName string
+		var count int
+		if err := tx.QueryRow(ctx, "select o.plan, (select count(*) from inboxes) from organizations o where o.id = $1", orgID).Scan(&planName, &count); err != nil {
+			return err
+		}
+		if plan := planOf(planName); count >= plan.Inboxes {
+			return errf(http.StatusForbidden, "limit_exceeded", "the %s plan allows %d inboxes", plan.Name, plan.Inboxes)
 		}
 		out, err = scanInbox(tx.QueryRow(ctx, `insert into inboxes (org_id, domain_id, address, display_name, client_id)
 			values ($1, $2, $3, $4, $5) returning `+inboxCols, orgID, domainID, address, req.DisplayName, clientID))

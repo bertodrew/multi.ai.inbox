@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ type Server struct {
 	Svc *core.Service
 	Log *slog.Logger
 	MCP http.Handler // optional, mounted at /mcp behind the same auth
+	// Limiter caps requests per organization; nil disables it.
+	Limiter *Limiter
 }
 
 const maxBody = 8 << 20
@@ -34,6 +37,13 @@ const maxBody = 8 << 20
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.Svc.DB.Pool.Ping(r.Context()); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	auth := http.NewServeMux()
 	auth.HandleFunc("GET /v0/auth/me", s.me)
@@ -52,6 +62,12 @@ func (s *Server) Handler() http.Handler {
 	auth.HandleFunc("PATCH /v0/inboxes/{inbox}/messages/{message}", s.updateMessage)
 	auth.HandleFunc("GET /v0/inboxes/{inbox}/messages/{message}/raw", s.rawMessage)
 	auth.HandleFunc("POST /v0/inboxes/{inbox}/messages/{message}/reply", s.reply)
+	auth.HandleFunc("GET /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}", s.attachment)
+	auth.HandleFunc("POST /v0/domains", s.createDomain)
+	auth.HandleFunc("GET /v0/domains", s.listDomains)
+	auth.HandleFunc("GET /v0/domains/{domain}", s.getDomain)
+	auth.HandleFunc("DELETE /v0/domains/{domain}", s.deleteDomain)
+	auth.HandleFunc("POST /v0/domains/{domain}/verify", s.verifyDomain)
 	auth.HandleFunc("POST /v0/webhooks", s.createWebhook)
 	auth.HandleFunc("GET /v0/webhooks", s.listWebhooks)
 	auth.HandleFunc("DELETE /v0/webhooks/{webhook}", s.deleteWebhook)
@@ -81,6 +97,11 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			s.fail(w, err)
 			return
 		}
+		if s.Limiter != nil && !s.Limiter.Allow(org.ID) {
+			s.fail(w, &core.Error{Status: http.StatusTooManyRequests, Name: "Too Many Requests", Code: "rate_limit_exceeded",
+				Message: "too many requests for this organization, retry shortly"})
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, org)))
 	})
 }
@@ -88,7 +109,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 func (s *Server) ok(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // Message-IDs like <id@host> stay readable
+	if err := enc.Encode(v); err != nil {
 		s.Log.Warn("write response", "err", err)
 	}
 }
@@ -99,7 +122,11 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		s.Log.Error("request failed", "err", err)
 	}
 	if e.Status == http.StatusTooManyRequests {
-		w.Header().Set("Retry-After", "60")
+		retry := "60"
+		if e.Code == "rate_limit_exceeded" {
+			retry = "1"
+		}
+		w.Header().Set("Retry-After", retry)
 	}
 	s.ok(w, e.Status, e)
 }
@@ -322,4 +349,67 @@ func (s *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) attachment(w http.ResponseWriter, r *http.Request) {
+	info, data, err := s.Svc.GetAttachment(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), r.PathValue("attachment"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", info.ContentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": info.Filename}))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(data)
+}
+
+func (s *Server) createDomain(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Domain string `json:"domain"`
+	}
+	if err := decode(r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	d, err := s.Svc.CreateDomain(r.Context(), OrgFrom(r.Context()).ID, req.Domain)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusCreated, d)
+}
+
+func (s *Server) listDomains(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Svc.ListDomains(r.Context(), OrgFrom(r.Context()).ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, listBody("domains", items, ""))
+}
+
+func (s *Server) getDomain(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Svc.GetDomain(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("domain"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, d)
+}
+
+func (s *Server) deleteDomain(w http.ResponseWriter, r *http.Request) {
+	if err := s.Svc.DeleteDomain(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("domain")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) verifyDomain(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Svc.VerifyDomain(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("domain"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, d)
 }

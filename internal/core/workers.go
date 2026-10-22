@@ -189,9 +189,11 @@ type EnrichJob struct {
 func (s *Service) ClaimEnrich(ctx context.Context, n int) ([]EnrichJob, error) {
 	var jobs []EnrichJob
 	err := s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `update messages m set gatekeeper = '{"status":"pending"}'
+		// A claim older than 10 minutes belongs to a crashed worker and is taken again.
+		rows, err := tx.Query(ctx, `update messages m set gatekeeper = jsonb_build_object('status', 'pending', 'claimed_at', now())
 			from inboxes i
-			where m.id in (select id from messages where direction = 'in' and gatekeeper is null
+			where m.id in (select id from messages where direction = 'in' and (gatekeeper is null
+					or (gatekeeper->>'status' = 'pending' and (gatekeeper->>'claimed_at')::timestamptz < now() - interval '10 minutes'))
 				order by created_at limit $1 for update skip locked)
 			and i.id = m.inbox_id
 			returning m.id, i.address, m.subject, coalesce(m.text_body, ''), coalesce(m.html_body, ''), m.auth_results`, n)

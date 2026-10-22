@@ -20,7 +20,32 @@ type Service struct {
 	SharedDomain      string // free inboxes live here, e.g. agents.example.eu
 	Hostname          string // used in generated Message-IDs and HELO
 	AllowHTTPWebhooks bool   // development only
+	SPFInclude        string // relay SPF include, e.g. spf.brevo.com
+	DNS               Resolver
 	Now               func() time.Time
+}
+
+// Plan holds the limits of a pricing plan (doc 01, section 7).
+type Plan struct {
+	Name          string `json:"name"`
+	Inboxes       int    `json:"inboxes"`
+	Domains       int    `json:"domains"`
+	SendsPerDay   int    `json:"sends_per_day"`
+	SendsPerMonth int    `json:"sends_per_month"`
+	Footer        bool   `json:"footer"`
+}
+
+var Plans = map[string]Plan{
+	"free":    {Name: "free", Inboxes: 3, Domains: 1, SendsPerDay: 100, SendsPerMonth: 3000, Footer: true},
+	"builder": {Name: "builder", Inboxes: 10, Domains: 5, SendsPerDay: 1000, SendsPerMonth: 10000},
+	"team":    {Name: "team", Inboxes: 150, Domains: 50, SendsPerDay: 15000, SendsPerMonth: 150000},
+}
+
+func planOf(name string) Plan {
+	if p, ok := Plans[name]; ok {
+		return p
+	}
+	return Plans["free"]
 }
 
 func (s *Service) now() time.Time {

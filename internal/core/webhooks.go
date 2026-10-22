@@ -18,6 +18,7 @@ var EventTypes = map[string]bool{
 	"message.failed":             true,
 	"message.security.completed": true,
 	"message.security.review":    true,
+	"domain.verified":            true,
 }
 
 type Webhook struct {
