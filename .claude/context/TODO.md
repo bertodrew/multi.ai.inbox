@@ -7,6 +7,7 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * mailcow removed from the repository (2026-10-22, founder approval).
 * Production MVP: custom domains with DNS verification, attachments download, plan limits, rate limit, readiness, scheduler, staging seed, k3s + Flux GitOps, CI image release.
 * Native MVP in Go + Rust replacing mailcow: inboxes, threads, messages, send, reply, labels, signed webhooks, MCP, gatekeeper heuristics, DKIM, agent to agent delivery, RLS, e2e test.
+* Outbound retry window 5 days per RFC 5321 (DR8), `MAI_SEND_MAX_AGE` (default `120h`).
 
 ## Next (in order)
 1. Founder: rebuild the CX33 with Ubuntu 24.04 and run `deploy/hetzner/bootstrap.sh` (needs GitHub PATs, Brevo SMTP key, Object Storage keys); set firewall and PTR.
