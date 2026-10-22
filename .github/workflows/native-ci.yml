@@ -85,3 +85,23 @@ jobs:
       - run: npx tsc --noEmit
       - name: build (static export, copy rule check)
         run: npm run build
+
+  images:
+    # Builds both release images without pushing, so a broken Docker build
+    # context fails the pull request instead of the release on master.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+      - name: site image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/landing/Dockerfile
+          push: false
