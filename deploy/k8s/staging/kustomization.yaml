@@ -11,6 +11,7 @@ configMapGenerator:
       # sslip.io gives a real hostname (and a Let's Encrypt certificate) for
       # the server IP until the brand domain is bought.
       - MAI_API_HOST=api.2-28-99-252.sslip.io
+      - MAI_SITE_HOST=2-28-99-252.sslip.io
       - MAI_HOSTNAME=mx.2-28-99-252.sslip.io
       # Local only for now (founder decision): agent to agent mail works,
       # mail from the internet needs the brand domain.
@@ -19,4 +20,6 @@ configMapGenerator:
       - MAI_RATE_LIMIT_PER_SECOND=20
 images:
   - name: ghcr.io/bertodrew/multi-ai-inbox
+    newTag: latest
+  - name: ghcr.io/bertodrew/multi-ai-inbox-landing
     newTag: latest

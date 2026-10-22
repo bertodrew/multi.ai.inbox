@@ -1,4 +1,5 @@
-# TLS termination with automatic Let's Encrypt certificates for the API host.
+# TLS termination with automatic Let's Encrypt certificates for the API host,
+# plus the static landing page (baked into the image, see deploy/landing).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,6 +9,18 @@ data:
     {$MAI_API_HOST} {
       encode zstd gzip
       reverse_proxy mai-http:8080
+    }
+    {$MAI_SITE_HOST} {
+      encode zstd gzip
+      root * /srv
+      try_files {path} {path}.html {path}/index.html /index.html
+      file_server
+    }
+    # Plain HTTP on the raw IP shows the landing too.
+    :80 {
+      root * /srv
+      try_files {path} {path}.html {path}/index.html /index.html
+      file_server
     }
 ---
 apiVersion: v1
@@ -33,12 +46,16 @@ spec:
     metadata:
       labels: { app: caddy }
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: caddy
-          image: caddy:2.11.7-alpine
+          image: landing
           env:
             - name: MAI_API_HOST
               valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_API_HOST } }
+            - name: MAI_SITE_HOST
+              valueFrom: { configMapKeyRef: { name: mai-config, key: MAI_SITE_HOST } }
           ports:
             - { name: http, containerPort: 80 }
             - { name: https, containerPort: 443 }

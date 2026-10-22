@@ -16,3 +16,5 @@ configMapGenerator:
 images:
   - name: mai
     newName: ghcr.io/bertodrew/multi-ai-inbox
+  - name: landing
+    newName: ghcr.io/bertodrew/multi-ai-inbox-landing

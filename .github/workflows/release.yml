@@ -40,6 +40,15 @@ jobs:
             ghcr.io/bertodrew/multi-ai-inbox:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build and push landing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/landing/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/bertodrew/multi-ai-inbox-landing:${{ github.sha }}
+            ghcr.io/bertodrew/multi-ai-inbox-landing:latest
 
   deploy:
     needs: image

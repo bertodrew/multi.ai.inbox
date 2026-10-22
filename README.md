@@ -35,6 +35,7 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 | `gatekeeper/` | Rust crate and JSON lines worker |
 | `openapi/openapi.yaml` | API contract |
 | `deploy/` | k3s manifests, Flux GitOps, Hetzner bootstrap, local Docker Compose |
+| `landing/` | static landing page, baked into the Caddy image (`deploy/landing/Dockerfile`) |
 
 ## Run locally
 

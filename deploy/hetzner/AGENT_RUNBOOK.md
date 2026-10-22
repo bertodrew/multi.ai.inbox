@@ -13,8 +13,24 @@ Target: the existing CX33 at `2.28.99.252` (staging, no customers), reinstalled 
 | `GHCR_TOKEN` | Classic PAT with `read:packages` | same |
 | `BREVO_LOGIN`, `BREVO_KEY` | Brevo SMTP login and SMTP key | Brevo > SMTP & API > SMTP |
 | `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` | Hetzner Object Storage (optional; backups fail until set) | Hetzner console > Object Storage |
-| `ADMIN_IP` | Founder's public IP for SSH | `curl ifconfig.me` on the founder's machine |
+| `ADMIN_IP` | Public IP allowed to SSH (the founder's, and the agent's if it runs elsewhere) | `curl ifconfig.me` on that machine |
 | `SSH_KEY_NAME` | Name of the founder's SSH key already in the Hetzner project | `hcloud ssh-key list` |
+
+## 0b. Before the merge: save the landing (read only on the server)
+
+The CX33 also serves the current landing page next to mailcow. The rebuild wipes it, so copy it into the repository first; the new stack serves `landing/` from the Caddy image.
+
+1. Find the landing root on the server, read only:
+   `ssh root@2.28.99.252 'grep -rhoE "root[[:space:]]+[^;]+" /etc/nginx /opt/*/data/conf/nginx 2>/dev/null | sort -u; docker ps --format "{{.Names}} {{.Image}}"'`
+   and look for the directory that holds the landing `index.html` (not `/web`, which is the mailcow admin UI).
+2. Copy it into a checkout of the PR branch:
+   `git clone -b claude/nice-franklin-5o6p0r https://github.com/bertodrew/multi.ai.inbox && rsync -av root@2.28.99.252:<landing root>/ multi.ai.inbox/landing/`
+   Keep `landing/README.md`. Remove server side files that must not be published (`*.php` with credentials, `.env`, `config*.php`, keys). Only static files are served.
+3. `grep -rniE "password|secret|api[_-]?key|token" landing/` must return nothing sensitive. If it does, stop and ask the founder.
+4. Commit and push to the PR branch: `git add landing && git commit -m "feat: import current landing page" && git push`.
+5. Tell the founder the PR is ready to merge.
+
+Check: `landing/index.html` on the PR branch is the real landing, and the PR CI is green. Merging the PR does not touch the server; only step 2 (rebuild) does.
 
 ## 1. Preconditions
 
@@ -75,8 +91,9 @@ The script installs k3s and Flux, creates the secrets, runs `flux bootstrap gith
 Checks:
 * `ssh root@2.28.99.252 'kubectl get nodes'` shows one `Ready` node.
 * `ssh root@2.28.99.252 'flux get kustomizations -A'` shows `flux-system` and `mai` with `Ready True`.
-* `ssh root@2.28.99.252 'kubectl -n mai get pods'`: `postgres-0`, `mai-*`, `rspamd-*`, `caddy-*` all `Running`.
+* `ssh root@2.28.99.252 'kubectl -n mai get pods'`: `postgres-0`, `mai-*`, `rspamd-*`, `caddy-*` (landing + TLS) all `Running`.
 * `curl -fsS https://api.2-28-99-252.sslip.io/healthz` returns HTTP 204 (the certificate can take up to a minute).
+* `curl -fsS https://2-28-99-252.sslip.io/` and `curl -fsS http://2.28.99.252/` return the landing page.
 
 ## 5. Smoke test
 
