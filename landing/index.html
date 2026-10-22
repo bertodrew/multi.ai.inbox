@@ -1,24 +1,357 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>multi.ai.inbox</title>
-<style>
-  :root { --bg: #F7F6F2; --fg: #14161A; --muted: #6B6F76; --primary: #1F5BFF; --accent: #F2B705; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0D1117; --fg: #E8E6E1; --muted: #8B9099; --primary: #4C7DFF; --accent: #F2C230; } }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg);
-         font: 16px/1.5 system-ui, sans-serif; padding: 16px; box-sizing: border-box; }
-  main { max-width: 560px; }
-  h1 { font-size: 40px; margin: 0 0 8px; } h1 span { color: var(--accent); }
-  p { color: var(--muted); } code { color: var(--primary); }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AImulti.inbox — a self-hosted, multi-brand mail platform: every brand on its own domain, agents over MCP, sovereign EU/CH inference.">
+  <meta property="og:title" content="AImulti.inbox — every brand, one inbox">
+  <meta property="og:description" content="Self-hosted multi-brand mail platform with sovereign inference and an agent-native MCP gateway.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/">
+  <meta property="og:url" content="https://multi.ai/">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>AImulti.inbox — every brand, one inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+  <link rel="stylesheet" href="assets/landing.css">
 </head>
 <body>
-<main>
-  <h1>multi<span>.</span>ai<span>.</span>inbox</h1>
-  <p>Email inboxes for AI agents. Hosted in Europe.</p>
-  <p>Placeholder page: the operations agent replaces this folder with the current landing during the deploy.</p>
-</main>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./" aria-current="page">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav class="bar-nav" id="bar-nav" aria-label="Main">
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="pricing.html">Pricing</a>
+        <a class="btn ghost" href="docs.html">Docs</a>
+        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
+        <button class="btn primary" type="button" data-open-login>Sign in</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" id="hero">
+      <div class="hero-copy">
+        <p class="hero-eyebrow" data-reveal>Self-hosted &middot; multi-brand &middot; agent-native</p>
+        <h1 data-reveal>Every brand.<br><span class="grad">One inbox.</span></h1>
+        <p class="lede" data-reveal>
+          AImulti.inbox runs the full mail stack on your own host &mdash; one tenant per
+          brand, its own domain, its own billing. Agents work the mail over a native
+          MCP gateway; inference stays on sovereign EU/CH providers.
+        </p>
+        <div class="hero-cta" data-reveal>
+          <button class="btn primary" type="button" data-open-login>Get started</button>
+          <a class="btn ghost" href="#features">What&rsquo;s inside</a>
+          <a class="btn ghost" href="pricing.html">See pricing</a>
+        </div>
+        <p class="hero-trust" data-reveal>
+          <span>Sovereign inference</span>
+          <span>No US hyperscalers</span>
+          <span>Per-tenant billing</span>
+        </p>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="orb orb-a"></div>
+        <div class="orb orb-b"></div>
+        <div class="orb orb-c"></div>
+        <div class="stack">
+          <div class="layer l1"></div>
+          <div class="layer l2"></div>
+          <div class="layer l3">
+            <span class="env-from">billing@brand-one.com</span>
+            <span class="env-subject">Invoice #4213 &mdash; paid</span>
+            <span class="env-bar"></span>
+            <span class="env-bar short"></span>
+            <span class="env-chip">AI triage</span>
+            <span class="env-chip chip-2">MCP</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap stat-strip" id="stats" data-reveal>
+      <div class="stat"><span class="stat-k">Multi-brand</span><span class="stat-v">one tenant per brand</span></div>
+      <div class="stat"><span class="stat-k">Per-tenant</span><span class="stat-v">billing and branding</span></div>
+      <div class="stat"><span class="stat-k">Sovereign</span><span class="stat-v">EU/CH inference</span></div>
+      <div class="stat"><span class="stat-k">Agent-native</span><span class="stat-v">MCP gateway built in</span></div>
+    </section>
+
+    <section class="wrap features" id="features">
+      <article class="feature-card" data-reveal>
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h3>Admin auth</h3>
+        <p>The complete mail platform, untouched: the Mailbox login on <code>/home</code> works exactly as upstream.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>
+          </svg>
+        </div>
+        <h3>Namecheap connector</h3>
+        <p>Connect once with your Namecheap API key, then browse your domains and inspect their DNS records from here.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 4V2M15 4V2M9 22v-2M15 22v-2M4 9H2M4 15H2M22 9h-2M22 15h-2"/><circle cx="12" cy="12" r="2.5"/>
+          </svg>
+        </div>
+        <h3>Dedicated MCP server</h3>
+        <p>Let Claude or Hermes read and update domain settings through the fork&rsquo;s native MCP endpoint: <code>list_domains</code>, <code>get_domain_settings</code>, <code>set_domain_settings</code>.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>
+          </svg>
+        </div>
+        <h3>Groupware webmail</h3>
+        <p>Mail, folders, compose, calendar, contacts and tasks in one client &mdash; shipped with the platform, no external SaaS.</p>
+      </article>
+    </section>
+
+    <section class="wrap tour" id="tour">
+      <div class="page-head">
+        <div>
+          <h2>See it in action</h2>
+          <p class="lede small">Click a screen to walk through it &mdash; no signup needed for the tour.</p>
+        </div>
+      </div>
+      <div class="tour-grid">
+        <button class="tour-card" type="button" data-open-tour="tour-webmail" data-reveal>
+          <span class="miniwin" aria-hidden="true">
+            <span class="mw-bar"><i></i><i></i><i></i><b>mail.brand-one.com</b></span>
+            <span class="mw-row"><b>billing@brand-one.com</b><em>Invoice #4213 &mdash; paid</em><u class="chip-a">AI triage</u></span>
+            <span class="mw-row"><b>hello@brand-two.com</b><em>Re: launch timeline</em><u class="chip-b">Flagged</u></span>
+            <span class="mw-row"><b>team@brand-one.com</b><em>Sprint notes attached</em></span>
+            <span class="mw-row"><b>no-reply@brand-three.com</b><em>Your receipt</em></span>
+          </span>
+          <span class="tour-k">The web-inbox</span>
+          <span class="tour-d">Every brand&rsquo;s mail in one client &mdash; how the unified inbox, per-brand identity and AI triage fit together.</span>
+        </button>
+        <button class="tour-card" type="button" data-open-tour="tour-agents" data-reveal>
+          <span class="miniterm" aria-hidden="true">
+            <span class="mt-bar"><i></i><i></i><i></i><b>agent &mdash; mcp</b></span>
+            <span class="mt-line"><em>$</em> hermes mcp add multi-ai-inbox \</span>
+            <span class="mt-line cont">--url https://&lt;instance-host&gt;/&hellip;/api/mcp</span>
+            <span class="mt-line ok">&check; tools: list_domains &middot; set_domain_settings</span>
+            <span class="mt-line"><em>$</em> _</span>
+          </span>
+          <span class="tour-k">Agent-native setup</span>
+          <span class="tour-d">Connect a domain, mint a key, one command &mdash; your agents work the mail over MCP.</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="wrap cta-band" id="cta" data-reveal>
+      <div>
+        <h2>Ready to run your brands on it?</h2>
+        <p class="lede small">Pick a shared or dedicated environment at signup and switch anytime. Onboarding walks origin, DNS and the first domain in three screens.</p>
+      </div>
+      <div class="cta-actions">
+        <button class="btn primary" type="button" data-open-login>Get started</button>
+        <a class="btn ghost" href="docs.html">Read the docs</a>
+        <a class="btn ghost" href="pricing.html">See pricing</a>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="login-modal" class="login-modal" aria-labelledby="login-modal-title">
+    <div class="login-card">
+      <div class="login-orbit" aria-hidden="true">
+        <p class="orbit-brand">AI<b>multi.inbox</b></p>
+        <div class="orbit-display">
+          <div class="orbit-ring orbit-1"><svg class="orbit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 7l9 6 9-6"/></svg></div>
+          <div class="orbit-ring orbit-2"><svg class="orbit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div class="orbit-ring orbit-3 reverse"><svg class="orbit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9S14.5 18.5 12 21c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z"/></svg></div>
+          <div class="ripple-dot ripple-1"></div>
+          <div class="ripple-dot ripple-2"></div>
+          <div class="ripple-dot ripple-3"></div>
+        </div>
+      </div>
+      <div class="login-main">
+      <button class="modal-close" type="button" id="login-close" aria-label="Close sign-in">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="login-modal-title" class="login-title">Sign in</h2>
+      <div class="tabs" role="tablist" aria-label="Sign-in method">
+        <button class="tab active" id="tab-register" data-tab="register" role="tab" aria-selected="true" aria-controls="panel-register">Create account</button>
+        <button class="tab" id="tab-mailcow" data-tab="mailcow" role="tab" aria-selected="false" aria-controls="panel-mailcow" tabindex="-1">Mailbox login</button>
+      </div>
+
+      <div class="panel" id="panel-mailcow" role="tabpanel" aria-labelledby="tab-mailcow" tabindex="0">
+        <form id="mailcow-form" method="post" action="">
+          <label for="login_user">Email</label>
+          <div class="field-glow"><input id="login_user" name="login_user" type="text" autocorrect="off" autocapitalize="none"
+                 placeholder="you@example.com" autocomplete="username" required></div>
+          <label for="pass_user">Password</label>
+          <div class="field-glow"><input id="pass_user" name="pass_user" type="password"
+                 placeholder="Password" autocomplete="current-password" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
+          <button class="btn primary w100" type="submit">Sign in</button>
+        </form>
+        <p class="hint" id="mailcow-hint">
+          Same authentication as the AImulti.inbox webmail &mdash; you land straight in your inbox.
+        </p>
+      </div>
+
+      <div class="panel active" id="panel-register" role="tabpanel" aria-labelledby="tab-register" tabindex="0">
+        <div class="oauth-row">
+          <button class="btn ghost oauth-btn" type="button" data-oauth="google">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.3h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-6-2.1-6.9-5.1H1.3v3C3.3 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3v-3H1.3C.5 8.3 0 10.1 0 12s.5 3.7 1.3 5.3l3.8-3z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.6 14.2 0 12 0 7.3 0 3.3 2.7 1.3 6.7l3.8 3c.9-3 3.7-5 6.9-5z"/></svg>
+            Google
+          </button>
+          <button class="btn ghost oauth-btn" type="button" data-oauth="github">
+            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+          </button>
+          <button class="btn ghost oauth-btn" type="button" data-oauth="microsoft">
+            <svg viewBox="0 0 23 23" width="18" height="18" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>
+            Microsoft
+          </button>
+        </div>
+        <div class="login-divider" role="separator"><span>or continue with email</span></div>
+        <form id="register-form" method="post" action="">
+          <div class="reg-row">
+            <div class="reg-field">
+              <label for="reg-first">First name</label>
+              <div class="field-glow"><input id="reg-first" name="first_name" type="text" autocomplete="given-name" placeholder="Andrea" required></div>
+            </div>
+            <div class="reg-field">
+              <label for="reg-last">Last name</label>
+              <div class="field-glow"><input id="reg-last" name="last_name" type="text" autocomplete="family-name" placeholder="Bertoneri" required></div>
+            </div>
+          </div>
+          <label for="reg-email">Email</label>
+          <div class="field-glow"><input id="reg-email" name="email" type="email" autocomplete="email" autocorrect="off" autocapitalize="none" placeholder="you@example.com" required></div>
+          <label for="reg-country">Country</label>
+          <div class="field-glow"><select id="reg-country" name="country" required>
+            <option value="" selected disabled>Select your country</option>
+            <option value="CH">Switzerland</option>
+            <option value="IT">Italy</option>
+            <option value="DE">Germany</option>
+            <option value="FR">France</option>
+            <option value="AT">Austria</option>
+            <option value="ES">Spain</option>
+            <option value="PT">Portugal</option>
+            <option value="NL">Netherlands</option>
+            <option value="BE">Belgium</option>
+            <option value="LU">Luxembourg</option>
+            <option value="DK">Denmark</option>
+            <option value="SE">Sweden</option>
+            <option value="FI">Finland</option>
+            <option value="IE">Ireland</option>
+            <option value="PL">Poland</option>
+            <option value="CZ">Czechia</option>
+            <option value="Other">Other</option>
+          </select></div>
+          <div class="reg-row">
+            <div class="reg-field">
+              <label for="reg-pass">Password</label>
+              <div class="field-glow"><input id="reg-pass" name="password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
+            </div>
+            <div class="reg-field">
+              <label for="reg-pass2">Confirm password</label>
+              <div class="field-glow"><input id="reg-pass2" name="password_confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Repeat the password" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
+            </div>
+          </div>
+          <p class="msg error" id="reg-error" role="alert" hidden></p>
+          <button class="btn primary w100" type="submit">Create account</button>
+          <p class="hint">Password stored hashed, server-side only &mdash; never in clear text.</p>
+        </form>
+      </div>
+
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="tour-webmail" class="tour-modal" aria-labelledby="tour-webmail-title">
+    <div class="tour-body">
+      <button class="modal-close" type="button" data-close-tour aria-label="Close the web-inbox tour">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="tour-webmail-title" class="login-title">Inside the web-inbox</h2>
+      <ol class="tour-steps">
+        <li><strong>Sign in once.</strong> The Mailbox login opens the webmail session &mdash; same credentials as the AImulti.inbox webmail.</li>
+        <li><strong>One client, every brand.</strong> Mail, folders, compose, calendar, contacts and tasks in one place; each brand&rsquo;s domain is its own identity.</li>
+        <li><strong>Pick the right sender.</strong> Outbound mail leaves with the brand&rsquo;s own domain and signature, so SPF, DKIM and DMARC stay clean per brand.</li>
+        <li><strong>AI triage.</strong> Agents file, flag and draft replies over MCP &mdash; inference stays on sovereign EU/CH providers.</li>
+        <li><strong>Search and archive.</strong> Full-text search across brands, with retention you control.</li>
+      </ol>
+      <div class="form-actions">
+        <a class="btn primary" href="webmail.html">Open the webmail</a>
+        <a class="btn ghost" href="inbox.html">See mailboxes</a>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="tour-agents" class="tour-modal" aria-labelledby="tour-agents-title">
+    <div class="tour-body">
+      <button class="modal-close" type="button" data-close-tour aria-label="Close the agent setup tour">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="tour-agents-title" class="login-title">Set it up agent-native</h2>
+      <ol class="tour-steps">
+        <li><strong>Connect a domain.</strong> The connector verifies the DNS records &mdash; MX, SPF, DKIM, DMARC &mdash; before anything ships.</li>
+        <li><strong>Mint a read-write key.</strong> Settings issues a per-tenant key; it is stored server-side only, never in the repository or logs.</li>
+        <li><strong>One command.</strong> Point your agent at the MCP gateway &mdash; the exact endpoint and config snippet are in the <a href="docs.html">docs</a>.</li>
+        <li><strong>Work the mail.</strong> Tools <code>list_domains</code>, <code>get_domain_settings</code>, <code>set_domain_settings</code>: agents read and update settings; mail itself flows over IMAP/SMTP.</li>
+        <li><strong>Everything audited.</strong> Connections, zone mutations and key grants land in the audit log.</li>
+      </ol>
+      <div class="form-actions">
+        <a class="btn primary" href="connectors.html">Agent setup</a>
+        <a class="btn ghost" href="docs.html">Read the docs</a>
+      </div>
+    </div>
+  </dialog>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/app.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
 </body>
 </html>

@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Step-by-step guides for AImulti.inbox: create your first mailbox, connect a domain, use the webmail, automate with agents over MCP and manage tenants.">
+  <meta property="og:title" content="Docs — AImulti.inbox">
+  <meta property="og:description" content="Step-by-step guides for AImulti.inbox: create your first mailbox, connect a domain, use the webmail, automate with agents over MCP and manage tenants.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/docs.html">
+  <meta property="og:url" content="https://multi.ai/docs.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Docs — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body data-page="docs">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="pricing.html">Pricing</a>
+        <a class="btn ghost" href="docs.html" aria-current="page">Docs</a>
+        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
+        <button class="btn ghost" type="button" data-open-login>Sign in</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap narrow">
+      <div class="page-head">
+        <div>
+          <h1>Docs</h1>
+          <p class="lede small">Self-service quick start &mdash; five step-by-step guides, from the first mailbox to tenant management. No tickets: every step is self-serve.</p>
+        </div>
+      </div>
+
+      <nav class="card" aria-label="Docs contents">
+        <ul class="kv">
+          <li><span class="k">Guide 1</span><span class="v"><a href="#first-mailbox">Create your first mailbox</a></span></li>
+          <li><span class="k">Guide 2</span><span class="v"><a href="#connect-domain">Connect a domain</a></span></li>
+          <li><span class="k">Guide 3</span><span class="v"><a href="#webmail">Use the webmail</a></span></li>
+          <li><span class="k">Guide 4</span><span class="v"><a href="#agents">Automate with agents</a></span></li>
+          <li><span class="k">Guide 5</span><span class="v"><a href="#tenants">Manage tenants</a></span></li>
+        </ul>
+      </nav>
+
+      <!-- Guide 1 — first mailbox -->
+      <section class="card" id="first-mailbox" aria-labelledby="first-mailbox-title">
+        <div class="card-head">
+          <h2 id="first-mailbox-title">Create your first mailbox</h2>
+          <span class="card-meta">Guide 1 &middot; Setup wizard</span>
+        </div>
+        <p>
+          A mailbox lives on a mail domain of yours. The Setup wizard walks the whole
+          path &mdash; origin, DNS, done &mdash; in three screens; the mailbox itself is
+          created from the Mailboxes page.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Origin</b> &mdash; open the <a href="onboarding.html">Setup</a> wizard and confirm the mail origin: the admin UI on this host, reached with your admin credentials.</span></li>
+          <li><code>Step 2</code><span><b>DNS</b> &mdash; connect Namecheap with your API key (validated and stored server-side only) so the wizard can read DNS records for your domains. Skippable &mdash; you can connect later.</span></li>
+          <li><code>Step 3</code><span><b>First domain</b> &mdash; pick the domain to inspect; MX on the apex, an SPF TXT and a DKIM selector are what inbox placement reads first.</span></li>
+          <li><code>Step 4</code><span><b>Done</b> &mdash; create the mailbox from <a href="inbox.html">Mailboxes</a>: pick the domain, add the address, and the welcome mail goes out.</span></li>
+        </ol>
+        <p class="hint">
+          Records not green yet? Follow <a href="#connect-domain">Guide 2 &mdash; Connect a domain</a>.
+        </p>
+      </section>
+
+      <!-- Guide 2 — connect a domain -->
+      <section class="card" id="connect-domain" aria-labelledby="connect-domain-title">
+        <div class="card-head">
+          <h2 id="connect-domain-title">Connect a domain</h2>
+          <span class="card-meta">Guide 2 &middot; Namecheap DNS</span>
+        </div>
+        <p>
+          A mail domain can send and receive once five records exist at your DNS
+          provider (Namecheap). Add the domain in the admin UI first, then publish
+          the records below.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Add the domain</b> &mdash; add it from the admin UI (it cannot be renamed from these pages), then open <a href="settings.html">Settings</a> &rarr; DNS snippets to see the records as the registrar serves them.</span></li>
+          <li><code>Step 2</code><span><b>A record</b> &mdash; at Namecheap &rarr; Advanced DNS, create host <code>mail</code> pointing to the IPv4 of your host.</span></li>
+          <li><code>Step 3</code><span><b>MX</b> &mdash; on the apex (<code>@</code>), point to <code>mail.yourdomain.com</code> with priority 10.</span></li>
+          <li><code>Step 4</code><span><b>SPF</b> &mdash; a single TXT on the apex: <code>v=spf1 mx ~all</code>.</span></li>
+          <li><code>Step 5</code><span><b>DKIM</b> &mdash; a TXT at <code>&lt;selector&gt;._domainkey</code>; the key is generated per domain &mdash; copy the exact selector and key from the admin UI.</span></li>
+          <li><code>Step 6</code><span><b>DMARC</b> &mdash; a TXT at <code>_dmarc</code>: start with <code>v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code> and tighten the policy after monitoring.</span></li>
+          <li><code>Step 7</code><span><b>Verify</b> &mdash; back on <a href="settings.html">Settings</a> &rarr; DNS snippets (or <a href="connectors.html">Connectors</a> &rarr; Browse domains), refresh and confirm each record resolves. Propagation takes minutes to hours.</span></li>
+        </ol>
+        <p class="table-title">The five records at a glance</p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th scope="col">Record</th><th scope="col">Type</th><th scope="col">Host</th><th scope="col">Value</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Mail host</td><td>A</td><td><code>mail</code></td><td>the IPv4 of your host</td></tr>
+              <tr><td>Delivery</td><td>MX</td><td><code>@</code></td><td><code id="dns-mx">mail.yourdomain.com</code> &middot; priority 10 <button class="btn ghost small-btn" data-copy="#dns-mx" type="button">Copy</button></td></tr>
+              <tr><td>Sender policy</td><td>TXT (SPF)</td><td><code>@</code></td><td><code id="dns-spf">v=spf1 mx ~all</code> <button class="btn ghost small-btn" data-copy="#dns-spf" type="button">Copy</button></td></tr>
+              <tr><td>Signing</td><td>TXT (DKIM)</td><td><code>&lt;selector&gt;._domainkey</code></td><td>key from the admin UI</td></tr>
+              <tr><td>Inbound policy</td><td>TXT (DMARC)</td><td><code>_dmarc</code></td><td><code id="dns-dmarc">v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code> <button class="btn ghost small-btn" data-copy="#dns-dmarc" type="button">Copy</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="hint">
+          One SPF record only &mdash; extra SPF TXTs void the first.
+        </p>
+      </section>
+
+      <!-- Guide 3 — use the webmail -->
+      <section class="card" id="webmail" aria-labelledby="webmail-title">
+        <div class="card-head">
+          <h2 id="webmail-title">Use the webmail</h2>
+          <span class="card-meta">Guide 3 &middot; Groupware client</span>
+        </div>
+        <p>
+          The groupware client ships with the platform &mdash; mail, folders, compose,
+          calendar, contacts and tasks in one interface. Sign-in is your mailbox
+          address + password, the same authentication as the admin UI.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Sign in</b> &mdash; open <a href="webmail.html">Webmail</a> and click &ldquo;Open the webmail client&rdquo;; the client opens in its own tab, then sign in with your mailbox address + password.</span></li>
+          <li><code>Step 2</code><span><b>Mail</b> &mdash; read conversations in the Inbox and organise them into folders from the folder tree on the left.</span></li>
+          <li><code>Step 3</code><span><b>Compose</b> &mdash; write, attach files and send; drafts are kept automatically.</span></li>
+          <li><code>Step 4</code><span><b>Calendar</b> &mdash; create events and invitations in the same session.</span></li>
+          <li><code>Step 5</code><span><b>Contacts</b> &mdash; add addresses to your address book; they autocomplete while composing.</span></li>
+          <li><code>Step 6</code><span><b>Tasks</b> &mdash; keep per-mailbox to-dos with due dates.</span></li>
+        </ol>
+        <p class="hint">
+          Switch modules inside the client&rsquo;s own navigation: Mail &middot; Calendar &middot; Contacts &middot; Tasks.
+        </p>
+      </section>
+
+      <!-- Guide 4 — automate with agents -->
+      <section class="card" id="agents" aria-labelledby="agents-title">
+        <div class="card-head">
+          <h2 id="agents-title">Automate with agents</h2>
+          <span class="card-meta">Guide 4 &middot; MCP</span>
+        </div>
+        <p>
+          Connect Claude or Hermes to the platform&rsquo;s MCP endpoint and let them read
+          and change mail domain settings without opening the panel.
+        </p>
+
+        <div class="endpoint-row">
+          <code>/landingpage/api/mcp</code>
+        </div>
+
+        <ul class="tools-list">
+          <li><code>list_domains</code><span>&mdash; list all mail domains with quota, aliases and active state</span></li>
+          <li><code>get_domain_settings</code><span>&mdash; full settings of one domain (quota, DKIM, relay&hellip;)</span></li>
+          <li><code>set_domain_settings</code><span>&mdash; change only the attributes you pass, e.g. <code>{"active":"1"}</code></span></li>
+        </ul>
+
+        <details>
+          <summary>Connect a client</summary>
+          <p class="hint">
+            Point the MCP client at the endpoint above with the header
+            <code>Authorization: Bearer &lt;API&nbsp;key&gt;</code> &mdash; the read-write key from
+            the platform config. Then prompts like &ldquo;list domains and show the settings
+            of <code>example.com</code>&rdquo; call <code>list_domains</code> and
+            <code>get_domain_settings</code>; changes go through <code>set_domain_settings</code>.
+          </p>
+        </details>
+
+        <p class="hint">
+          The mail API must be enabled (System &rarr; Configuration &rarr; Access &rarr; API) with the
+          docker subnet allowed in <code>API_ALLOW_FROM</code>. The key is read from
+          the platform config at runtime &mdash; it is never written to this page or the
+          repository. The full connector surface lives on <a href="connectors.html">Connectors</a>.
+        </p>
+      </section>
+
+      <!-- Guide 5 — manage tenants -->
+      <section class="card" id="tenants" aria-labelledby="tenants-title">
+        <div class="card-head">
+          <h2 id="tenants-title">Manage tenants</h2>
+          <span class="card-meta">Guide 5 &middot; Per-domain administration</span>
+        </div>
+        <p>
+          Multi-brand operation means one tenant per domain: configuration on
+          <a href="settings.html">Settings</a>, the operator view on <a href="admin.html">Admin</a>
+          &mdash; everything scoped to the selected domain.
+        </p>
+        <ol class="tools-list">
+          <li><code>Step 1</code><span><b>Pick the scope</b> &mdash; choose the tenant&rsquo;s domain from the selector at the top of <a href="settings.html">Settings</a> or <a href="admin.html">Admin</a>; everything below follows that scope.</span></li>
+          <li><code>Step 2</code><span><b>Tune the domain</b> &mdash; on Settings, set branding (description), PTR target and the default/max quota in MiB. The FQDN cannot be renamed here; add or remove domains from the admin UI.</span></li>
+          <li><code>Step 3</code><span><b>Watch the domain</b> &mdash; on Admin, follow the DNS records in scope, the recent audit trail (connector changes, MCP writes, mailbox operations) and the session details.</span></li>
+          <li><code>Step 4</code><span><b>Delegate</b> &mdash; access keys for agents and integrations are scoped per domain; creation and revocation ship with the API gateway. Use them with the MCP endpoint from <a href="#agents">Guide 4</a>.</span></li>
+        </ol>
+        <p class="hint">
+          Operators see only their brand&rsquo;s domains &mdash; the domain-admin view is the same page, narrowed by scope.
+        </p>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
+  <dialog id="login-modal" class="login-modal" aria-labelledby="login-modal-title">
+    <div class="login-card">
+      <div class="login-orbit" aria-hidden="true">
+        <p class="orbit-brand">AI<b>multi.inbox</b></p>
+        <div class="orbit-display">
+          <div class="orbit-ring orbit-1"><svg class="orbit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 7l9 6 9-6"/></svg></div>
+          <div class="orbit-ring orbit-2"><svg class="orbit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div class="orbit-ring orbit-3 reverse"><svg class="orbit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9S14.5 18.5 12 21c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z"/></svg></div>
+          <div class="ripple-dot ripple-1"></div>
+          <div class="ripple-dot ripple-2"></div>
+          <div class="ripple-dot ripple-3"></div>
+        </div>
+      </div>
+      <div class="login-main">
+      <button class="modal-close" type="button" id="login-close" aria-label="Close sign-in">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <h2 id="login-modal-title" class="login-title">Sign in</h2>
+      <div class="tabs" role="tablist" aria-label="Sign-in method">
+        <button class="tab active" id="tab-register" data-tab="register" role="tab" aria-selected="true" aria-controls="panel-register">Create account</button>
+        <button class="tab" id="tab-mailcow" data-tab="mailcow" role="tab" aria-selected="false" aria-controls="panel-mailcow" tabindex="-1">Mailbox login</button>
+      </div>
+
+      <div class="panel" id="panel-mailcow" role="tabpanel" aria-labelledby="tab-mailcow" tabindex="0">
+        <form id="mailcow-form" method="post" action="">
+          <label for="login_user">Email</label>
+          <div class="field-glow"><input id="login_user" name="login_user" type="text" autocorrect="off" autocapitalize="none"
+                 placeholder="you@example.com" autocomplete="username" required></div>
+          <label for="pass_user">Password</label>
+          <div class="field-glow"><input id="pass_user" name="pass_user" type="password"
+                 placeholder="Password" autocomplete="current-password" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
+          <button class="btn primary w100" type="submit">Sign in</button>
+        </form>
+        <p class="hint" id="mailcow-hint">
+          Same authentication as the AImulti.inbox webmail &mdash; you land straight in your inbox.
+        </p>
+      </div>
+
+      <div class="panel active" id="panel-register" role="tabpanel" aria-labelledby="tab-register" tabindex="0">
+        <div class="oauth-row">
+          <button class="btn ghost oauth-btn" type="button" data-oauth="google">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.3h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-6-2.1-6.9-5.1H1.3v3C3.3 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3v-3H1.3C.5 8.3 0 10.1 0 12s.5 3.7 1.3 5.3l3.8-3z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.6 14.2 0 12 0 7.3 0 3.3 2.7 1.3 6.7l3.8 3c.9-3 3.7-5 6.9-5z"/></svg>
+            Google
+          </button>
+          <button class="btn ghost oauth-btn" type="button" data-oauth="github">
+            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+          </button>
+          <button class="btn ghost oauth-btn" type="button" data-oauth="microsoft">
+            <svg viewBox="0 0 23 23" width="18" height="18" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>
+            Microsoft
+          </button>
+        </div>
+        <div class="login-divider" role="separator"><span>or continue with email</span></div>
+        <form id="register-form" method="post" action="">
+          <div class="reg-row">
+            <div class="reg-field">
+              <label for="reg-first">First name</label>
+              <div class="field-glow"><input id="reg-first" name="first_name" type="text" autocomplete="given-name" placeholder="Andrea" required></div>
+            </div>
+            <div class="reg-field">
+              <label for="reg-last">Last name</label>
+              <div class="field-glow"><input id="reg-last" name="last_name" type="text" autocomplete="family-name" placeholder="Bertoneri" required></div>
+            </div>
+          </div>
+          <label for="reg-email">Email</label>
+          <div class="field-glow"><input id="reg-email" name="email" type="email" autocomplete="email" autocorrect="off" autocapitalize="none" placeholder="you@example.com" required></div>
+          <label for="reg-country">Country</label>
+          <div class="field-glow"><select id="reg-country" name="country" required>
+            <option value="" selected disabled>Select your country</option>
+            <option value="CH">Switzerland</option>
+            <option value="IT">Italy</option>
+            <option value="DE">Germany</option>
+            <option value="FR">France</option>
+            <option value="AT">Austria</option>
+            <option value="ES">Spain</option>
+            <option value="PT">Portugal</option>
+            <option value="NL">Netherlands</option>
+            <option value="BE">Belgium</option>
+            <option value="LU">Luxembourg</option>
+            <option value="DK">Denmark</option>
+            <option value="SE">Sweden</option>
+            <option value="FI">Finland</option>
+            <option value="IE">Ireland</option>
+            <option value="PL">Poland</option>
+            <option value="CZ">Czechia</option>
+            <option value="Other">Other</option>
+          </select></div>
+          <div class="reg-row">
+            <div class="reg-field">
+              <label for="reg-pass">Password</label>
+              <div class="field-glow"><input id="reg-pass" name="password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
+            </div>
+            <div class="reg-field">
+              <label for="reg-pass2">Confirm password</label>
+              <div class="field-glow"><input id="reg-pass2" name="password_confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Repeat the password" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
+            </div>
+          </div>
+          <p class="msg error" id="reg-error" role="alert" hidden></p>
+          <button class="btn primary w100" type="submit">Create account</button>
+          <p class="hint">Password stored hashed, server-side only &mdash; never in clear text.</p>
+        </form>
+      </div>
+
+      </div>
+    </div>
+  </dialog>
+
+  <script src="assets/app.js" defer></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
+</body>
+</html>

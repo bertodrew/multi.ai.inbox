@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Choose a connector: Namecheap DNS or the dedicated MCP server.">
+  <meta property="og:title" content="Connectors — AImulti.inbox">
+  <meta property="og:description" content="Choose a connector: Namecheap DNS or the dedicated MCP server.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/connectors.html">
+  <meta property="og:url" content="https://multi.ai/connectors.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Connectors — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="pricing.html">Pricing</a>
+        <a class="btn ghost" href="docs.html">Docs</a>
+        <a class="btn ghost" href="settings.html">Settings</a>
+        <a class="btn ghost" id="nav-dashboard" href="dashboard.html" hidden>Dashboard</a>
+        <a class="btn ghost" id="nav-admin" href="admin.html" hidden>Admin</a>
+        <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap">
+      <h1 class="page-title">Connectors</h1>
+      <p class="lede small">Choose what to connect to this instance.</p>
+
+      <div class="connector-grid">
+        <article class="connector-card">
+          <div class="connector-head">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>
+            </svg>
+            <h3>Namecheap DNS</h3>
+          </div>
+          <p>List your Namecheap domains and inspect their DNS records.</p>
+          <div class="connector-actions">
+            <button class="btn primary" id="btn-load-domains" type="button">Browse domains</button>
+          </div>
+          <p class="msg error" id="domains-error" hidden></p>
+          <div id="domains-output" hidden></div>
+          <div id="dns-output" hidden></div>
+        </article>
+
+        <article class="connector-card" id="nc-panel" hidden>
+          <div class="connector-head">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 7V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v3"/><rect x="6" y="7" width="12" height="9" rx="2"/><path d="M12 16v5"/>
+            </svg>
+            <h3>Connect registrar</h3>
+          </div>
+          <p>Connect a Namecheap account with its API key. The key is validated, then stored server-side only.</p>
+          <form id="nc-form">
+            <div class="field">
+              <label for="nc-username">Namecheap username</label>
+              <input id="nc-username" name="username" type="text" autocorrect="off" autocapitalize="none"
+                     placeholder="yourname" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="nc-api-key">Namecheap API key</label>
+              <input id="nc-api-key" name="api_key" type="password"
+                     placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="nc-client-ip">Whitelisted client IP</label>
+              <input id="nc-client-ip" name="client_ip" type="text" placeholder="auto-detected" autocomplete="off">
+            </div>
+            <div class="field">
+              <label class="check">
+                <input type="checkbox" id="nc-sandbox" name="use_sandbox">
+                Use Namecheap sandbox for testing
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="btn primary" type="submit" id="nc-submit">Connect registrar</button>
+            </div>
+          </form>
+          <p class="msg error" id="nc-error" hidden></p>
+        </article>
+
+        <article class="connector-card">
+          <div class="connector-head">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 4V2M15 4V2M9 22v-2M15 22v-2M4 9H2M4 15H2M22 9h-2M22 15h-2"/><circle cx="12" cy="12" r="2.5"/>
+            </svg>
+            <h3>Use dedicated MCP</h3>
+          </div>
+          <p>
+            Connect Claude or Hermes to this fork&rsquo;s native MCP server to read and change
+            mail domain settings without opening the webmail.
+          </p>
+
+          <div class="endpoint-row">
+            <code id="mcp-endpoint">/landingpage/api/mcp</code>
+            <button class="btn ghost small-btn" data-copy="#mcp-endpoint" type="button">Copy</button>
+          </div>
+
+          <ul class="tools-list">
+            <li><code>list_domains</code><span>&mdash; list all mail domains with quota, aliases and active state</span></li>
+            <li><code>get_domain_settings</code><span>&mdash; full settings of one domain (quota, DKIM, relay&hellip;)</span></li>
+            <li><code>set_domain_settings</code><span>&mdash; change only the attributes you pass, e.g. <code>{"active":"1"}</code></span></li>
+          </ul>
+
+          <details>
+            <summary>Claude Desktop / Claude Code config</summary>
+            <pre id="claude-config"></pre>
+            <button class="btn ghost small-btn" data-copy="#claude-config" type="button">Copy</button>
+          </details>
+
+          <details>
+            <summary>Hermes config example</summary>
+            <p class="hint">
+              Add the server to <code>~/.hermes/config.yaml</code> under <code>mcp_servers</code>,
+              with the read-write key from the platform config, then restart Hermes so the
+              tools are discovered. Point <code>url</code> at this instance:
+            </p>
+            <pre id="hermes-config">mcp_servers:
+  multi-ai-inbox:
+    url: "https://&lt;instance-host&gt;/landingpage/api/mcp"
+    headers:
+      Authorization: "Bearer &lt;read-write API key&gt;"</pre>
+            <button class="btn ghost small-btn" data-copy="#hermes-config" type="button">Copy</button>
+            <p class="hint">
+              Or from the CLI: <code>hermes mcp add multi-ai-inbox --url https://&lt;instance-host&gt;/landingpage/api/mcp --auth header</code>.
+              The tools register as <code>mcp_multi_ai_inbox_list_domains</code>,
+              <code>mcp_multi_ai_inbox_get_domain_settings</code> and
+              <code>mcp_multi_ai_inbox_set_domain_settings</code>; prompts like
+              &ldquo;list domains and show the settings of <code>example.com</code>&rdquo; call
+              <code>list_domains</code> and <code>get_domain_settings</code>; changes go
+              through <code>set_domain_settings</code>.
+            </p>
+          </details>
+
+          <p class="hint">
+            The mail API must be enabled in the webmail (System &rarr; Configuration &rarr; Access &rarr; API)
+            with the docker subnet allowed in <code>API_ALLOW_FROM</code>. The read-write key is read from
+            the platform config at runtime &mdash; it is never written to this page or the repository.
+          </p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/connectors.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
+</body>
+</html>

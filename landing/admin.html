@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Operator and domain-admin view: scoped operations, session details and the recent audit trail.">
+  <meta property="og:title" content="Admin — AImulti.inbox">
+  <meta property="og:description" content="Operator and domain-admin view: scoped operations, session details and the recent audit trail.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/admin.html">
+  <meta property="og:url" content="https://multi.ai/admin.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Admin — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="inbox.html">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="pricing.html">Pricing</a>
+        <a class="btn ghost" href="docs.html">Docs</a>
+        <a class="btn ghost" href="settings.html">Settings</a>
+        <a class="btn ghost" id="nav-dashboard" href="dashboard.html" hidden>Dashboard</a>
+        <a class="btn ghost" id="nav-admin" href="admin.html" aria-current="page" hidden>Admin</a>
+        <button class="btn danger" id="btn-disconnect" type="button">Disconnect</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap" id="page">
+      <div class="page-head">
+        <div>
+          <h1>Admin</h1>
+          <p class="lede small">Operator and domain-admin view: everything here is scoped to the selected domain.</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label for="domain-select">Domain scope</label>
+        <select id="domain-select" aria-describedby="scope-help"><option value="">Loading domains&hellip;</option></select>
+        <p class="help" id="scope-help">Audit and session details below follow this scope.</p>
+      </div>
+
+      <div class="stat-strip" aria-label="Scope summary">
+        <div class="stat">
+          <span class="stat-label">Domains in session</span>
+          <span class="stat-value num" id="stat-domains">&ndash;</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">DNS records in scope</span>
+          <span class="stat-value num" id="stat-dns">&ndash;</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Audit entries</span>
+          <span class="stat-value num" id="stat-audit">&ndash;</span>
+        </div>
+      </div>
+
+      <!-- Domain-scoped DNS view (existing endpoint) -->
+      <section class="card" aria-labelledby="scope-title">
+        <div class="card-head">
+          <h2 id="scope-title">Domain scope</h2>
+          <span class="card-meta" id="scope-meta"></span>
+        </div>
+        <p>DNS records of the scoped domain, as the registrar serves them.</p>
+        <p class="msg error" id="dns-error" role="alert" hidden></p>
+        <div id="dns-output"></div>
+      </section>
+
+      <!-- Recent audit trail (gateway endpoint, in costruzione) -->
+      <section class="card" aria-labelledby="audit-title">
+        <div class="card-head">
+          <h2 id="audit-title">Recent audit</h2>
+          <span class="card-meta" id="audit-meta"></span>
+        </div>
+        <p>
+          Server-side audit trail for this domain &mdash; connector changes, MCP writes,
+          mailbox operations. The audit API ships with the gateway.
+        </p>
+        <p class="msg notice" id="audit-note" role="status" aria-live="polite" hidden></p>
+        <div id="audit-output"></div>
+      </section>
+
+      <!-- Session details -->
+      <section class="card" aria-labelledby="session-title">
+        <div class="card-head">
+          <h2 id="session-title">Session details</h2>
+          <span class="card-meta">This browser session</span>
+        </div>
+        <ul class="kv">
+          <li><span class="k">Connected as</span><span class="v" id="kv-user">&ndash;</span></li>
+          <li><span class="k">Registrar environment</span><span class="v" id="kv-sandbox">&ndash;</span></li>
+          <li><span class="k">Mail origin</span><span class="v" id="kv-origin">&ndash;</span></li>
+          <li><span class="k">Landing API</span><span class="v" id="kv-api">&ndash;</span></li>
+        </ul>
+      </section>
+
+      <!-- Access keys (gateway endpoint, in costruzione) -->
+      <section class="card" aria-labelledby="keys-title">
+        <div class="card-head">
+          <h2 id="keys-title">Access keys</h2>
+          <span class="card-meta" id="keys-meta"></span>
+        </div>
+        <p>
+          Scoped API keys for agents and integrations. Creation and revocation
+          ship with the API gateway.
+        </p>
+        <p class="msg notice" id="keys-note" role="status" aria-live="polite" hidden></p>
+        <div id="keys-output"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/admin.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
+</body>
+</html>

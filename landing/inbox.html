@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Mailboxes per domain: list, state and basic actions.">
+  <meta property="og:title" content="Mailboxes — AImulti.inbox">
+  <meta property="og:description" content="Mailboxes per domain: list, state and basic actions.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/inbox.html">
+  <meta property="og:url" content="https://multi.ai/inbox.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Mailboxes — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="./">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav" aria-label="Main">
+        <span class="connected-as" id="connected-as"></span>
+        <a class="btn ghost" href="use-cases.html">Use cases</a>
+        <a class="btn ghost" href="inbox.html" aria-current="page">Mailboxes</a>
+        <a class="btn ghost" href="webmail.html">Webmail</a>
+        <a class="btn ghost" href="pricing.html">Pricing</a>
+        <a class="btn ghost" href="docs.html">Docs</a>
+        <a class="btn ghost" href="settings.html">Settings</a>
+        <a class="btn ghost" id="nav-dashboard" href="dashboard.html" hidden>Dashboard</a>
+        <a class="btn ghost" id="nav-admin" href="admin.html" hidden>Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap" id="page">
+      <div class="page-head">
+        <div>
+          <h1>Mailboxes</h1>
+          <p class="lede small">Mailboxes per domain: list, state and the basic actions.</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label for="domain-select">Domain</label>
+        <select id="domain-select" aria-describedby="scope-help"><option value="">Loading domains&hellip;</option></select>
+        <span class="toolbar-spacer"></span>
+        <button class="btn ghost" type="button" id="btn-refresh">Refresh</button>
+        <p class="help" id="scope-help">Registrar domains from this session &mdash; mailbox data follows the selected domain.</p>
+      </div>
+
+      <!-- Domain state (existing endpoints) -->
+      <section class="card" aria-labelledby="state-title">
+        <div class="card-head">
+          <h2 id="state-title">Domain state</h2>
+          <span class="card-meta" id="state-meta"></span>
+        </div>
+        <ul class="kv">
+          <li><span class="k">Registrar state</span><span class="v" id="kv-registrar">&ndash;</span></li>
+          <li><span class="k">Expires</span><span class="v num" id="kv-expires">&ndash;</span></li>
+          <li><span class="k">DNS records</span><span class="v num" id="kv-dns">&ndash;</span></li>
+        </ul>
+        <p class="msg error" id="state-error" role="alert" hidden></p>
+      </section>
+
+      <!-- Mailbox list (gateway endpoint, in costruzione) -->
+      <section class="card" aria-labelledby="list-title">
+        <div class="card-head">
+          <h2 id="list-title">Mailboxes</h2>
+          <span class="card-meta" id="list-meta"></span>
+        </div>
+        <p>
+          Mailboxes of the selected domain with usage and state. The mailbox listing
+          ships with the API gateway; today mailbox operations run agent-side via MCP
+          (see <a href="connectors.html">Connectors</a> for the setup).
+        </p>
+        <p class="msg notice" id="list-note" role="status" aria-live="polite" hidden></p>
+        <div id="list-output"></div>
+      </section>
+
+      <!-- Basic actions -->
+      <section class="card" aria-labelledby="actions-title">
+        <div class="card-head">
+          <h2 id="actions-title">Basic actions</h2>
+        </div>
+        <p>
+          Prepare the next mailbox address and copy it &mdash; creation itself is applied
+          in the <a id="mailcow-link" target="_blank" rel="noopener" aria-disabled="true">Mail UI</a>
+          (Mailboxes &rarr; Add mailbox) until the gateway takes writes.
+        </p>
+        <form id="new-mailbox-form" novalidate>
+          <div class="form-grid">
+            <div class="field">
+              <label for="mb-alias">Alias (local part)</label>
+              <input id="mb-alias" type="text" autocorrect="off" autocapitalize="none"
+                     autocomplete="off" spellcheck="false" aria-describedby="mb-preview-help">
+            </div>
+            <div class="field">
+              <label for="mb-preview">Address preview</label>
+              <input id="mb-preview" type="text" readonly>
+              <p class="help" id="mb-preview-help">Local part + the selected domain.</p>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn ghost" type="button" id="btn-copy-address">Copy address</button>
+            <a class="btn primary" id="open-mailcow" target="_blank" rel="noopener" aria-disabled="true">Open Mail UI</a>
+            <a class="btn ghost" href="webmail.html">Open Webmail</a>
+          </div>
+        </form>
+        <p class="msg ok" id="copy-ok" role="status" aria-live="polite" hidden></p>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span class="foot-brand">
+        <svg class="logo" viewBox="0 0 48 48" width="20" height="20" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </span>
+      <span class="foot-nav"><a href="use-cases.html">Use cases</a> &middot; <a href="webmail.html">Webmail</a> &middot; <a href="pricing.html">Pricing</a> &middot; <a href="docs.html">Docs</a></span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="legal/terms.html">Terms</a> &middot; <a href="legal/privacy.html">Privacy</a> &middot; <a href="legal/sla.html">SLA</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/inbox.js"></script>
+  <script src="assets/nav.js"></script>
+  <script src="assets/notifications.js"></script>
+</body>
+</html>
