@@ -53,6 +53,9 @@ Check: all three are true. If not, stop and report which one failed.
 3. **STOP**: ask the founder "Rebuild $SERVER (2.28.99.252) with Ubuntu 24.04? This wipes mailcow staging. Snapshot <id> exists. SSH key $SSH_KEY_NAME attached: <yes/no>." Continue only on yes.
 4. Rebuild, keeping the IP: `hcloud server rebuild $SERVER --image ubuntu-24.04`.
    If the command prints a root password, use it once to install the SSH key; otherwise the attached SSH keys are re-injected.
+   If SSH then refuses the key and no root password was printed, do not rebuild again: run
+   `hcloud server reset-password $SERVER` (requires the server running), log in once with that password
+   through the Hetzner web console, add the key to `/root/.ssh/authorized_keys`, then continue.
 5. Wait for SSH: `until ssh -o StrictHostKeyChecking=accept-new root@2.28.99.252 true; do sleep 5; done`.
    The host key changed with the rebuild: remove the old one first with `ssh-keygen -R 2.28.99.252`.
 
