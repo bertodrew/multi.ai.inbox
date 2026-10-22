@@ -287,6 +287,13 @@
   color: var(--text);
   box-shadow: 0 40px 90px rgba(0, 0, 0, 0.6);
 }
+/* il layout two-column della card (280px orbita + form) entra a >=720px:
+   il dialog deve allargarsi insieme, altrimenti il form viene clippato
+   al bordo destro (UX review: login UI "corrotta" — testi troncati a metà
+   parola, tab Mailbox login invisibile, submit senza etichetta) */
+@media (min-width: 720px) {
+  .login-modal { width: min(764px, calc(100vw - 32px)); }
+}
 .login-modal[open] { animation: modal-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(22px) scale(0.97); }

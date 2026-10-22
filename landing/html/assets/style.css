@@ -213,7 +213,7 @@ pre {
 .oauth-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 8px; font-size: 0.9rem; }
 .reg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .reg-field { display: flex; flex-direction: column; }
-@media (max-width: 480px) { .reg-row { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .reg-row, .oauth-row { grid-template-columns: 1fr; } }
 
 /* primary button bottom gradient (hover reveal) */
 .btn.primary { position: relative; }
