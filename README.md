@@ -115,15 +115,17 @@ Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; buil
 
 Production runs on the Hetzner CX33 with k3s and Flux; this repository is the source of truth.
 
-1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root (an operations agent can do all of this: see `deploy/hetzner/AGENT_RUNBOOK.md`). It installs k3s and Flux, asks for the secrets (GitHub tokens, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging`, seeds the staging testers and checks outbound port 25.
-2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`.
+1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root (an operations agent can do all of this: see `deploy/hetzner/AGENT_RUNBOOK.md`). It installs k3s and Flux, asks for the secrets (GHCR token, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging` with an SSH deploy key (no GitHub PAT), generates the backup encryption keys and prints them once (store them offline: without them no backup can be restored), seeds the staging testers and checks outbound port 25.
+2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`. Protect the Primary IP and the server, turn on server backups, and create the Object Lock backup bucket with a write only key (runbook sections 1b, 2 and 4b).
 3. From then on, merging to `master` deploys: `release.yml` builds the image to GHCR and pins its tag in `deploy/k8s/staging`; Flux applies it.
 
 | Path | What |
 |------|------|
-| `deploy/k8s/base` | Postgres, mai, rspamd, clamd, Caddy, nightly backup to Object Storage, network policies |
+| `deploy/k8s/base` | Postgres, mai, rspamd, clamd, Caddy, network policies; `backup.yaml`: encrypted (rclone crypt), add only backup to Object Storage every 6 h; `restore-drill.yaml`: weekly restore of the newest dump into a scratch database with row count checks |
 | `deploy/k8s/staging` | staging config (sslip.io hostnames, `agents.localhost`, Brevo SPF) and image tag |
 | `deploy/flux/clusters/staging` | Flux Kustomization |
+| `deploy/hetzner` | `bootstrap.sh` and the operations agent runbook (least privilege tokens, protections, backup bucket) |
+| `deploy/dr` | `restore.sh` (full restore to a new server) and the default deny NetworkPolicy proposal; plan in `docs/agentmail-re/14-disaster-recovery-backup.md` |
 | `deploy/local` | Docker Compose for local development |
 
 When the brand domain is bought: `mai admin domain-add -name agents.<brand>`, set `MAI_SHARED_DOMAIN`, `MAI_HOSTNAME`, `MAI_API_HOST` in `deploy/k8s/staging/kustomization.yaml`, publish the DNS records it prints, update the PTR.

@@ -9,6 +9,7 @@ resources:
   - clamd.yaml
   - caddy.yaml
   - backup.yaml
+  - restore-drill.yaml
   - networkpolicy.yaml
 configMapGenerator:
   - name: postgres-init

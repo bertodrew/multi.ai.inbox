@@ -1,0 +1,199 @@
+# Weekly restore drill. Restores the newest encrypted dump from Object Storage
+# into a throwaway Postgres that lives only inside this pod (emptyDir, unix
+# socket, no network), then fails loudly unless:
+#   * the dump is younger than MAX_DUMP_AGE_HOURS and decrypts (rclone crypt)
+#   * pg_restore --exit-on-error succeeds (foreign keys are validated on load)
+#   * the restored row count of EVERY table equals the .counts file the backup
+#     job recorded from the same snapshot as the dump
+#   * schema_migrations has rows, at least MIN_ORGS organizations exist, and
+#     every table with an org_id column still has FORCE ROW LEVEL SECURITY
+#   * a sample of recent raw messages and attachments exists, decrypts and is
+#     non empty in the encrypted blob backup
+# Only a full pass pings HC_RESTORE_DRILL_URL (optional dead man's switch), so
+# a missing ping means a failed or skipped drill. The job itself fails
+# (backoffLimit 0) and stays visible in `kubectl -n mai get jobs`.
+# It never connects to the production database.
+#
+# Run by hand:
+#   kubectl -n mai create job --from=cronjob/restore-drill restore-drill-manual-$(date +%s)
+#   kubectl -n mai logs -f job/<name> --all-containers
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restore-drill
+spec:
+  # Mondays 04:43 UTC, after the 00:17 and before the 06:17 backup.
+  schedule: "43 4 * * 1"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels: { app: restore-drill }
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70        # postgres user in the alpine image
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile: { type: RuntimeDefault }
+          initContainers:
+            # 1. Fetch and decrypt the newest dump and its row counts.
+            - name: fetch
+              image: rclone/rclone:1.75.2
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  export RCLONE_CONFIG_DUMPS_PASSWORD="$(rclone obscure "$BACKUP_CRYPT_PASSWORD")"
+                  export RCLONE_CONFIG_DUMPS_PASSWORD2="$(rclone obscure "$BACKUP_CRYPT_SALT")"
+                  latest=$(rclone lsf -R --files-only --include "mai-*.dump" dumps: | sort | tail -n 1)
+                  [ -n "$latest" ] || { echo "FAIL: no dump found"; exit 1; }
+                  echo "latest dump: $latest"
+                  rclone copyto "dumps:$latest" /work/latest.dump
+                  rclone copyto "dumps:$latest.counts" /work/latest.counts
+                  size=$(stat -c %s /work/latest.dump)
+                  [ "$size" -gt 4096 ] || { echo "FAIL: dump is only $size bytes"; exit 1; }
+                  # Names are <day>/mai-YYYY-MM-DDTHHMMZ.dump: the age comes from the name.
+                  ts=$(echo "$latest" | sed -E 's/.*mai-([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2})([0-9]{2})Z\.dump$/\1 \2:\3/')
+                  age_h=$(( ( $(date -u +%s) - $(date -u -d "$ts" +%s) ) / 3600 ))
+                  [ "$age_h" -le "$MAX_DUMP_AGE_HOURS" ] || { echo "FAIL: newest dump is ${age_h}h old"; exit 1; }
+                  echo "$latest $size bytes ${age_h}h old" > /work/dump.meta
+                  echo "OK fetch: $(cat /work/dump.meta)"
+              env: &rclone-env
+                - { name: HOME, value: /work }
+                - { name: XDG_CACHE_HOME, value: /work/.cache }
+                - { name: RCLONE_CONFIG, value: /work/rclone.conf }
+                - { name: MAX_DUMP_AGE_HOURS, value: "30" }
+                - name: BACKUP_S3_BUCKET
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_BUCKET } }
+                - { name: RCLONE_CONFIG_STORE_TYPE, value: s3 }
+                - { name: RCLONE_CONFIG_STORE_PROVIDER, value: Hetzner }
+                - { name: RCLONE_CONFIG_STORE_NO_CHECK_BUCKET, value: "true" }
+                - name: RCLONE_CONFIG_STORE_ENDPOINT
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ENDPOINT } }
+                - name: RCLONE_CONFIG_STORE_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ACCESS_KEY } }
+                - name: RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_SECRET_KEY } }
+                - { name: RCLONE_CONFIG_DUMPS_TYPE, value: crypt }
+                - { name: RCLONE_CONFIG_DUMPS_REMOTE, value: "store:$(BACKUP_S3_BUCKET)/crypt/dumps" }
+                - { name: RCLONE_CONFIG_DUMPS_DIRECTORY_NAME_ENCRYPTION, value: "false" }
+                - { name: RCLONE_CONFIG_BLOBS_TYPE, value: crypt }
+                - { name: RCLONE_CONFIG_BLOBS_REMOTE, value: "store:$(BACKUP_S3_BUCKET)/crypt/blobs" }
+                - name: BACKUP_CRYPT_PASSWORD
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_CRYPT_PASSWORD } }
+                - name: BACKUP_CRYPT_SALT
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_CRYPT_SALT } }
+              securityContext: &restricted
+                allowPrivilegeEscalation: false
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { memory: 256Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+            # 2. Restore into a scratch Postgres in this pod and verify.
+            - name: verify-db
+              image: postgres:16-alpine
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  export PGDATA=/work/pgdata PGHOST=/work/sock PGUSER=postgres PGDATABASE=mai
+                  mkdir -p /work/sock
+                  initdb -U postgres --auth=trust -D "$PGDATA" >/dev/null
+                  pg_ctl -D "$PGDATA" -o "-c listen_addresses='' -c unix_socket_directories=/work/sock -c fsync=off -c shared_buffers=64MB" -w start >/dev/null
+                  q() { psql -X -v ON_ERROR_STOP=1 -AtXc "$1"; }
+                  fail() { echo "FAIL: $*"; exit 1; }
+                  psql -X -q -v ON_ERROR_STOP=1 -d postgres -c "create database mai"
+                  # Ownership and grants are left out: the drill checks data and
+                  # schema, and must not depend on which roles production uses.
+                  pg_restore --exit-on-error --no-owner --no-privileges -d mai /work/latest.dump || fail "pg_restore"
+                  printf '%s\n' "select format('select %L, count(*) from %I.%I', tablename, schemaname, tablename) from pg_tables where schemaname = 'public' order by tablename \\gexec" \
+                    | psql -X -q -At -v ON_ERROR_STOP=1 -o /work/restored.counts
+                  echo "row counts (table|backup|restored):"
+                  awk -F'|' 'FNR == NR { b[$1] = $2; next } { r[$1] = $2; if (!($1 in b)) b[$1] = "MISSING" }
+                    END { for (t in b) { x = (t in r) ? r[t] : "MISSING"; printf "  %s|%s|%s%s\n", t, b[t], x, (b[t] == x ? "" : "  <- differs") } }' \
+                    /work/latest.counts /work/restored.counts | sort
+                  cmp -s /work/latest.counts /work/restored.counts || fail "restored row counts differ from the counts recorded at backup time"
+                  [ "$(q 'select count(*) from schema_migrations')" -ge 1 ] || fail "schema_migrations is empty"
+                  [ "$(q 'select count(*) from organizations')" -ge "$MIN_ORGS" ] || fail "fewer than $MIN_ORGS organizations"
+                  unforced=$(q "select coalesce(string_agg(c.relname, ' '), '') from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                                where n.nspname = 'public' and c.relkind = 'r' and not c.relforcerowsecurity
+                                  and exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'org_id' and not a.attisdropped)")
+                  [ -z "$unforced" ] || fail "tables with org_id but without FORCE ROW LEVEL SECURITY: $unforced"
+                  echo "newest message: $(q 'select coalesce(max(created_at)::text, $$none$$) from messages')"
+                  q "(select raw_key from messages where raw_key is not null order by created_at desc limit $BLOB_SAMPLE)
+                     union all (select storage_key from attachments order by created_at desc limit $BLOB_SAMPLE)" > /work/blob-keys.txt
+                  echo "sampled $(wc -l < /work/blob-keys.txt) blob keys"
+                  pg_ctl -D "$PGDATA" -m fast -w stop >/dev/null
+                  rm -rf "$PGDATA" /work/latest.dump
+                  echo "OK verify-db"
+              env:
+                - { name: MIN_ORGS, value: "1" }
+                - { name: BLOB_SAMPLE, value: "20" }
+              securityContext: *restricted
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 1Gi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+            # 3. Every sampled blob must exist, decrypt and be non empty.
+            - name: verify-blobs
+              image: rclone/rclone:1.75.2
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  export RCLONE_CONFIG_BLOBS_PASSWORD="$(rclone obscure "$BACKUP_CRYPT_PASSWORD")"
+                  export RCLONE_CONFIG_BLOBS_PASSWORD2="$(rclone obscure "$BACKUP_CRYPT_SALT")"
+                  missing=0; n=0
+                  while IFS= read -r key; do
+                    [ -n "$key" ] || continue
+                    n=$((n+1))
+                    # cat decrypts the whole object, which also proves the key and the data are intact.
+                    size=$(rclone cat "blobs:$key" 2>/dev/null | wc -c)
+                    if [ "$size" -eq 0 ]; then echo "missing or empty blob: $key"; missing=$((missing+1)); fi
+                  done < /work/blob-keys.txt
+                  [ "$missing" -eq 0 ] || { echo "FAIL: $missing of $n sampled blobs missing"; exit 1; }
+                  echo "OK verify-blobs: $n sampled blobs present"
+              env: *rclone-env
+              securityContext: *restricted
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { memory: 256Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+          containers:
+            # 4. Only reached when every step above succeeded.
+            - name: report
+              image: rclone/rclone:1.75.2
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  echo "restore drill passed: $(cat /work/dump.meta)"
+                  if [ -n "${HC_RESTORE_DRILL_URL:-}" ]; then
+                    rclone copyurl "$HC_RESTORE_DRILL_URL" /work/hc.out >/dev/null
+                    echo "dead man's switch pinged"
+                  else
+                    echo "WARN: HC_RESTORE_DRILL_URL not set, nobody is alerted when this drill stops passing"
+                  fi
+              env:
+                - { name: HOME, value: /work }
+                - { name: XDG_CACHE_HOME, value: /work/.cache }
+                - { name: RCLONE_CONFIG, value: /work/rclone.conf }
+                - name: HC_RESTORE_DRILL_URL
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: HC_RESTORE_DRILL_URL, optional: true } }
+              securityContext: *restricted
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { memory: 64Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+          volumes:
+            - name: work
+              emptyDir: { sizeLimit: 20Gi }

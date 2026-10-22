@@ -12,15 +12,21 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * Screen before notify (doc 12 R08, migration `0005_screening.sql`): org setting on by default, `message.received` only after a clean verdict or a release, review messages hidden unless `include_review` with `message_review`, release endpoint and MCP tool with `message_release` and audit, fail closed on gatekeeper down or 15 minute timeout, `mai admin org-screening`.
 * Inbox deletion removes raw `.eml` and attachment blobs through a durable queue (`0006_deletion.sql`, triggers + scheduler) and quarantines the address for 90 days (`409 address_quarantined`); MCP `delete_inbox`.
 * Antivirus: clamd Deployment in `deploy/k8s/base/clamd.yaml`, INSTREAM scan at SMTP DATA (`554 5.7.1` on FOUND), fail open with `av-unscanned` by default, `MAI_CLAMD_FAIL_CLOSED=true` for `451 4.7.1`.
+* Encrypted add only backups (rclone crypt, `mai_backup` read only role, Object Lock ready), weekly restore drill in `deploy/k8s/base/restore-drill.yaml`, least privilege ops runbook (Flux deploy key, Primary IP and server protection, Hetzner backups).
 * Bounce breaker (`0007_sending_health.sql`): per inbox and per org, hard bounce rate above 5% over at least 20 sends in 24h pauses sending (`403 sending_paused`, events `inbox.sending.paused` / `organization.sending.paused`); DSNs with a null sender count as bounces (`message.bounced`); `mai admin inbox-resume` / `org-resume`.
 
 ## Next (in order)
 1. Release workflow green on master (fix: Docker build context was missing openapi/).
 2. Ops agent: runbook steps 1 to 7 on the CX33 (snapshot, rebuild, firewall, PTR, bootstrap, smoke test). Before that, protect the Primary IP and enable Hetzner backups.
-3. Security P0 from doc 12: encrypted append only backups with a restore drill (deploy/dr), least privilege token for the ops agent.
-4. Founder decisions: open questions in docs 11, 12, 13, 14 (pricing Growth plan, tools to approve, backup key custody, retention, legal counsel); should full access keys hold `message_release` (the reference excludes it), and a tenant API to change `screen_before_notify` (new `organization_write` permission).
-5. Branding, then buy the domain: `mai admin domain-add`, update `deploy/k8s/staging` config, DNS records, PTR.
-6. Console (Next.js) and Stripe billing; drafts, WebSocket events; S3 blob store; pods; metrics.
+3. Founder decisions still open: legal counsel; should full access keys hold `message_release` (the reference excludes it), and a tenant API to change `screen_before_notify` (new `organization_write` permission).
+4. Branding, then buy the domain: `mai admin domain-add`, update `deploy/k8s/staging` config, DNS records, PTR.
+5. Console (Next.js) and Stripe billing; drafts, WebSocket events; S3 blob store; pods; metrics.
+
+## Founder decisions (2026-10-22)
+* Growth plan at €59 per month (doc 11).
+* Backup crypt keys: Doppler plus one offline copy; a cofounder gets a custody copy later.
+* Mail retention: kept until the customer deletes it; backups expire on their own schedule.
+* ClamAV (GPL, separate network service) approved.
 
 ## Known gaps in the MVP
 * Plan limits cover inboxes, domains, day and month sends; the 5 minute burst limit is not implemented.
