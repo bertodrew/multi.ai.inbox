@@ -1,6 +1,6 @@
 // checkout.js — wire the tier Subscribe buttons on the pricing page:
 // POST api/checkout {plan} with the session cookie + CSRF, then redirect to
-// the Mollie hosted checkout. 401 → onboarding (sign in first); 503 → honest
+// the Mollie hosted checkout. 401 → onboarding (sign in first); 501 → honest
 // inline message (payments not configured on this server yet). No framework,
 // CSP-safe (script-src 'self').
 (function () {

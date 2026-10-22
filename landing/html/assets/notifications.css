@@ -251,3 +251,8 @@
   .notif-bell,
   .notif-item { transition: none; }
 }
+
+/* 390px pass: bell hit area ≥ 44px on phones (desktop keeps 38px) */
+@media (max-width: 560px) {
+  .notif-bell { width: 44px; height: 44px; }
+}

@@ -8,9 +8,13 @@ package main
 // Flusso: POST api/checkout crea il primo payment (sequenceType=first, che
 // fa da mandate SEPA/carta) con metadata {username, plan}; Mollie chiama il
 // webhook quando il payment è paid; il webhook verifica il payment
-// SERVER-SIDE (mai fidarsi del body), crea la subscription ricorrente e
-// persiste lo stato per-account. Fail-closed: senza MOLLIE_API_KEY tutto
-// risponde 503 — niente checkout finti.
+// SERVER-SIDE (mai fidarsi del body — Mollie non firma i webhook), attiva
+// la subscription ricorrente (IDEMPOTENTE: un retry di Mollie o il
+// pagamento ricorrente mensile non creano MAI una seconda subscription —
+// double billing) e persiste lo stato per-account. Fail-closed: senza
+// MOLLIE_API_KEY tutto risponde 501 (Not Implemented — la feature non è
+// cablata sul server, stessa convenzione onesta di auth.go per i provider
+// OAuth) — niente checkout finti.
 
 import (
 	"bytes"
@@ -225,7 +229,7 @@ func customerIDFor(username string) (string, error) {
 // handleCheckout serves POST api/checkout {plan}: requires a connected
 // session (you buy for the connected account) + CSRF. Creates the first
 // Mollie payment (sequenceType=first) and returns the hosted checkout URL.
-// Fail-closed: no key → 503 (honest — no fake checkout).
+// Fail-closed: no key → 501 (honest — no fake checkout).
 func handleCheckout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		jsonErr(w, "POST required", http.StatusMethodNotAllowed)
@@ -240,7 +244,7 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if os.Getenv("MOLLIE_API_KEY") == "" {
-		jsonErr(w, "Payments are not configured yet on this server", http.StatusServiceUnavailable)
+		jsonErr(w, "Payments are not configured yet on this server", http.StatusNotImplemented)
 		return
 	}
 	// Shared-pool capacity: scale up is the next node, provisioned on
@@ -265,7 +269,7 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 	cid, err := customerIDFor(sess.username)
 	if err != nil {
 		if err == errPaymentsNotConfigured {
-			jsonErr(w, "Payments are not configured yet on this server", http.StatusServiceUnavailable)
+			jsonErr(w, "Payments are not configured yet on this server", http.StatusNotImplemented)
 		} else {
 			jsonErr(w, fmt.Sprintf("could not resolve the payment customer: %v", err), http.StatusBadGateway)
 		}
@@ -284,7 +288,7 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 	code, out, err := mollieCall(http.MethodPost, "/payments", body)
 	if err != nil {
 		if err == errPaymentsNotConfigured {
-			jsonErr(w, "Payments are not configured yet on this server", http.StatusServiceUnavailable)
+			jsonErr(w, "Payments are not configured yet on this server", http.StatusNotImplemented)
 		} else {
 			jsonErr(w, fmt.Sprintf("payment provider did not answer: %v", err), http.StatusBadGateway)
 		}
@@ -319,7 +323,7 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if os.Getenv("MOLLIE_API_KEY") == "" {
-		jsonErr(w, "Payments are not configured yet on this server", http.StatusServiceUnavailable)
+		jsonErr(w, "Payments are not configured yet on this server", http.StatusNotImplemented)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -356,25 +360,69 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	customerID, _ := pay["customerId"].(string)
-	subID := ""
-	if customerID != "" {
+
+	// Existing billing state, read BEFORE the subscription step: the step is
+	// IDEMPOTENT — Mollie retries the webhook on transport failures and every
+	// monthly recurring payment arrives paid, and a naive POST /subscriptions
+	// per webhook would stack DUPLICATE subscriptions on the same customer
+	// (double billing). An active subscription is never re-created; a paid
+	// account WITHOUT a subscription id is the repair case (the previous
+	// attempt failed and Mollie got a 200, so nothing retries it): retry it
+	// here and report the outcome honestly.
+	saved := map[string]any{}
+	if data, err := os.ReadFile(checkoutPath(username)); err == nil {
+		_ = json.Unmarshal(data, &saved)
+	}
+	if fid, _ := saved["first_payment_id"].(string); fid == "" {
+		saved["first_payment_id"] = paymentID // mandate payment, kept for the account lifetime
+	}
+	saved["last_payment_id"] = paymentID
+	subID, _ := saved["subscription_id"].(string)
+	subStatus, _ := saved["subscription_status"].(string)
+	subOutcome := "created"
+	switch {
+	case subID != "":
+		subOutcome = "already_active" // never re-POST a live subscription
+	case customerID == "":
+		subOutcome = "no_customer" // payment without a mandate: nothing to attach the subscription to
+	default:
 		subBody := map[string]any{
 			"amount":      map[string]any{"currency": "EUR", "value": plan.Price},
 			"interval":    "1 month",
 			"description": fmt.Sprintf("AImulti.inbox %s — monthly", plan.Label),
 			"webhookUrl":  checkoutBaseURL() + "/landingpage/api/checkout/webhook",
 		}
-		scode, sub, _ := mollieCall(http.MethodPost, "/customers/"+url.PathEscape(customerID)+"/subscriptions", subBody)
+		scode, sub, serr := mollieCall(http.MethodPost, "/customers/"+url.PathEscape(customerID)+"/subscriptions", subBody)
 		if scode == http.StatusCreated && sub != nil {
 			subID, _ = sub["id"].(string)
+			subStatus, _ = sub["status"].(string)
+		} else {
+			// Honest failure: the state below stays WITHOUT subscription_id
+			// (repairable on the next paid webhook) and the response says
+			// creation_failed — never a fake active subscription.
+			subOutcome = "creation_failed"
+			fields := map[string]any{"username": username, "plan": planKey, "mollie_code": scode}
+			if serr != nil {
+				fields["error"] = serr.Error()
+			}
+			auditLog("checkout_subscription_failed", fields)
 		}
 	}
-	saved := map[string]any{}
-	if data, err := os.ReadFile(checkoutPath(username)); err == nil {
-		_ = json.Unmarshal(data, &saved)
+	// An ACTIVE subscription defines what the account is billed: a paid
+	// webhook for a different plan must not silently repoint the billing
+	// state (a plan change is a subscription swap — open hole, documented,
+	// not faked). Keep the live plan and say so in the response.
+	activePlan, _ := saved["plan"].(string)
+	planNote := ""
+	if subID != "" && activePlan != "" && activePlan != planKey {
+		if p, ok := checkoutPlans[activePlan]; ok {
+			plan, planKey = p, activePlan
+			planNote = "plan change ignored while a subscription is active — swapping subscriptions is a manual migration"
+		}
+	} else {
+		saved["plan"] = planKey
+		saved["label"] = plan.Label
 	}
-	saved["plan"] = planKey
-	saved["label"] = plan.Label
 	saved["status"] = "paid"
 	if customerID != "" {
 		saved["customer_id"] = customerID
@@ -382,7 +430,9 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 	if subID != "" {
 		saved["subscription_id"] = subID
 	}
-	saved["first_payment_id"] = paymentID
+	if subStatus != "" {
+		saved["subscription_status"] = subStatus
+	}
 	saved["ts"] = time.Now().UTC().Format(time.RFC3339)
 	b, _ := json.Marshal(saved)
 	if err := os.WriteFile(checkoutPath(username), b, 0600); err != nil {
@@ -412,7 +462,11 @@ func handleCheckoutWebhook(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	jsonOut(w, map[string]any{"ok": true, "status": "paid", "subscription_id": subID, "provisioning": provisioning})
+	resp := map[string]any{"ok": true, "status": "paid", "subscription": subOutcome, "subscription_id": subID, "subscription_status": subStatus, "provisioning": provisioning}
+	if planNote != "" {
+		resp["note"] = planNote
+	}
+	jsonOut(w, resp)
 }
 
 // handleCheckoutState serves GET api/checkout/state: the billing state for

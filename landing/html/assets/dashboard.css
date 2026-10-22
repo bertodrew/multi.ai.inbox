@@ -141,3 +141,6 @@
   .dash-hero h1 { font-size: 28px; }
   .gate-card { margin: 16px auto; padding: 22px; }
 }
+
+/* 390px pass: stat strip collapses to a single column on phones */
+@media (max-width: 480px) { .dash-stats { grid-template-columns: 1fr; } }

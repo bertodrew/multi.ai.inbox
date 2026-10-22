@@ -552,4 +552,13 @@ footer { border-top: 1px solid var(--border); margin-top: auto; }
   .btn.small-btn { min-height: 44px; padding: 10px 14px; }
   .tab { min-height: 44px; }
   .modal-close { width: 44px; height: 44px; }
+  .oauth-btn { min-height: 44px; }
+  .pass-toggle { width: 44px; height: 44px; right: 0; }
+  .field-glow:has(.pass-toggle) input { padding-right: 50px; }
 }
+
+/* modal dialogs must scroll when taller than the viewport (390px pass):
+   max-height + overflow-y only engage when content exceeds the viewport, so
+   desktop visuals are untouched; 100dvh fallback keeps the vh value first */
+.login-modal { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.modal { max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }

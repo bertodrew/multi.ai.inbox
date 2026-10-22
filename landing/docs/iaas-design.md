@@ -54,6 +54,40 @@ Mollie webhook (paid)
 - **DNS write path**: già costruito (api/gateway/domains/{domain}, 21/10)
 - **Osservabilità**: metriche nodo nel monitoring esistente (:8791) — mailbox count, storage %, queue depth, load → **trigger provisioning pre-cap** (allarme a 70% cap, provisioning a 85%)
 
+### Stato implementazione (22/10, Fase 1)
+
+**Wired** (in `landing/go/provisioning.go`, test `provisioning_test.go`):
+
+```
+Mollie webhook (paid, Dedicated/Dedicated XL)  [checkout.go, idempotente]
+  → queueProvisioning → job prov_*.json 0600 (state=queued)  [21/10]
+      con re-check spendGuard (whitelist + budget) — seconda porta
+  → runProvScan (una pass in-process, nel goroutine del webhook, SOLO se
+    il token esiste — fail-closed):
+       queued → creating (POST https://api.hetzner.cloud/v1/servers, 201)
+              → active  (GET /servers/{id}: status running → IP salvato)
+              → failed  (token mancante → 503 onesto; errore provider → 503;
+                         provider non implementato (exoscale) → 501)
+```
+
+- Token da env `HCLOUD_TOKEN` (viaggia solo nell'header `Authorization` — mai nel job file, mai nelle risposte); `PROVISIONING_PROVIDER` default `hetzner` (unico path implementato — la procedura mailcow è validata su Hetzner); Exoscale → job failed con errore "non implementato" (501) anche con `EXOSCALE_API_KEY` impostata.
+- Endpoint `GET /api/provisioning/state`: 200 per queued/creating/active/none; **503** per job failed (token mancante, errore provider, budget wall) e **501** per provider non implementato — il corpo porta comunque il job per la UI.
+- Poll bounded: `PROVISIONING_POLL_TIMEOUT` (default 120 s) / `PROVISIONING_POLL_INTERVAL` (default 2 s); un job ancora `initializing` al timeout resta onestamente `creating` (la pass successiva lo riprende) — mai fake success/fake failure.
+- Scan serializzato (`provScanMu`): nessuna doppia creazione per lo stesso job; ogni job è riletto sotto lock. Race detector pulito.
+- Idempotenza invariata: job queued/creating/active non viene mai resettato da un pagamento ricorrente; solo i failed vengono ri-accodati.
+
+**Nota budget (punto di aggancio documentato)**: `monthlyCommittedEUR()` in `spend.go` conta gli stati `queued`+`running`; lo stato `creating` non è incluso nel committed spend. Finestra minuta, mitigata dal re-check `spendGuard` alla creazione (sotto mutex), dal check nel webhook e dai Limits Console (§7). Patch di una riga a spend.go (aggiungere `creating` al conteggio) quando il file è sbloccato.
+
+**Resta manuale per il founder** (fuori dal web process):
+
+| Step | Cosa | Chi |
+|---|---|---|
+| Hetzner Console → progetto → **Limits** | "Servers" tenuto BASSO (2-3 pre-lancio) — l'hard cap reale (§7) | founder (2 min) |
+| Hetzner Console → **Security → SSH keys** | caricare la chiave; passare gli id via `PROVISIONING_SSH_KEY_IDS` | founder (una volta) |
+| Install mailcow sull'istanza creata | lo script validato (~15 min) — l'API crea l'istanza, l'install resta esterna; `PROVISIONING_IMAGE` (default ubuntu-24.04) | founder / worker |
+| DNS + rDNS/PTR | il write path DNS esiste (api/gateway/domains); rDNS/PTR via Console o API separata | founder |
+| Alerting spesa a 70% budget | monitoring :8791 (Fase 0 IaaS, §7 livello 3) | fase successiva |
+
 ## 5. Fasi
 
 | Fase | Cosa | Sforzo |

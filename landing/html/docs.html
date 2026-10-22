@@ -39,7 +39,6 @@
         <a class="btn ghost" href="webmail.html">Webmail</a>
         <a class="btn ghost" href="pricing.html">Pricing</a>
         <a class="btn ghost" href="docs.html" aria-current="page">Docs</a>
-        <a class="btn ghost" id="admin-link" href="/home" rel="noopener">Mail UI</a>
         <button class="btn ghost" type="button" data-open-login>Sign in</button>
       </nav>
     </div>
@@ -76,7 +75,7 @@
           created from the Mailboxes page.
         </p>
         <ol class="tools-list">
-          <li><code>Step 1</code><span><b>Origin</b> &mdash; open the <a href="onboarding.html">Setup</a> wizard and confirm the mail origin: the mail UI on this host, reached with your admin credentials.</span></li>
+          <li><code>Step 1</code><span><b>Origin</b> &mdash; open the <a href="onboarding.html">Setup</a> wizard and confirm the mail origin: the admin UI on this host, reached with your admin credentials.</span></li>
           <li><code>Step 2</code><span><b>DNS</b> &mdash; connect Namecheap with your API key (validated and stored server-side only) so the wizard can read DNS records for your domains. Skippable &mdash; you can connect later.</span></li>
           <li><code>Step 3</code><span><b>First domain</b> &mdash; pick the domain to inspect; MX on the apex, an SPF TXT and a DKIM selector are what inbox placement reads first.</span></li>
           <li><code>Step 4</code><span><b>Done</b> &mdash; create the mailbox from <a href="inbox.html">Mailboxes</a>: pick the domain, add the address, and the welcome mail goes out.</span></li>
@@ -94,15 +93,15 @@
         </div>
         <p>
           A mail domain can send and receive once five records exist at your DNS
-          provider (Namecheap). Add the domain in the mail UI first, then publish
+          provider (Namecheap). Add the domain in the admin UI first, then publish
           the records below.
         </p>
         <ol class="tools-list">
-          <li><code>Step 1</code><span><b>Add the domain</b> &mdash; add it from the mail UI (it cannot be renamed from these pages), then open <a href="settings.html">Settings</a> &rarr; DNS snippets to see the records as the registrar serves them.</span></li>
+          <li><code>Step 1</code><span><b>Add the domain</b> &mdash; add it from the admin UI (it cannot be renamed from these pages), then open <a href="settings.html">Settings</a> &rarr; DNS snippets to see the records as the registrar serves them.</span></li>
           <li><code>Step 2</code><span><b>A record</b> &mdash; at Namecheap &rarr; Advanced DNS, create host <code>mail</code> pointing to the IPv4 of your host.</span></li>
           <li><code>Step 3</code><span><b>MX</b> &mdash; on the apex (<code>@</code>), point to <code>mail.yourdomain.com</code> with priority 10.</span></li>
           <li><code>Step 4</code><span><b>SPF</b> &mdash; a single TXT on the apex: <code>v=spf1 mx ~all</code>.</span></li>
-          <li><code>Step 5</code><span><b>DKIM</b> &mdash; a TXT at <code>&lt;selector&gt;._domainkey</code>; the key is generated per domain &mdash; copy the exact selector and key from the mail UI.</span></li>
+          <li><code>Step 5</code><span><b>DKIM</b> &mdash; a TXT at <code>&lt;selector&gt;._domainkey</code>; the key is generated per domain &mdash; copy the exact selector and key from the admin UI.</span></li>
           <li><code>Step 6</code><span><b>DMARC</b> &mdash; a TXT at <code>_dmarc</code>: start with <code>v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code> and tighten the policy after monitoring.</span></li>
           <li><code>Step 7</code><span><b>Verify</b> &mdash; back on <a href="settings.html">Settings</a> &rarr; DNS snippets (or <a href="connectors.html">Connectors</a> &rarr; Browse domains), refresh and confirm each record resolves. Propagation takes minutes to hours.</span></li>
         </ol>
@@ -116,7 +115,7 @@
               <tr><td>Mail host</td><td>A</td><td><code>mail</code></td><td>the IPv4 of your host</td></tr>
               <tr><td>Delivery</td><td>MX</td><td><code>@</code></td><td><code id="dns-mx">mail.yourdomain.com</code> &middot; priority 10 <button class="btn ghost small-btn" data-copy="#dns-mx" type="button">Copy</button></td></tr>
               <tr><td>Sender policy</td><td>TXT (SPF)</td><td><code>@</code></td><td><code id="dns-spf">v=spf1 mx ~all</code> <button class="btn ghost small-btn" data-copy="#dns-spf" type="button">Copy</button></td></tr>
-              <tr><td>Signing</td><td>TXT (DKIM)</td><td><code>&lt;selector&gt;._domainkey</code></td><td>key from the mail UI</td></tr>
+              <tr><td>Signing</td><td>TXT (DKIM)</td><td><code>&lt;selector&gt;._domainkey</code></td><td>key from the admin UI</td></tr>
               <tr><td>Inbound policy</td><td>TXT (DMARC)</td><td><code>_dmarc</code></td><td><code id="dns-dmarc">v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code> <button class="btn ghost small-btn" data-copy="#dns-dmarc" type="button">Copy</button></td></tr>
             </tbody>
           </table>
@@ -135,7 +134,7 @@
         <p>
           The groupware client ships with the platform &mdash; mail, folders, compose,
           calendar, contacts and tasks in one interface. Sign-in is your mailbox
-          address + password, the same authentication as the mail UI.
+          address + password, the same authentication as the admin UI.
         </p>
         <ol class="tools-list">
           <li><code>Step 1</code><span><b>Sign in</b> &mdash; open <a href="webmail.html">Webmail</a> and click &ldquo;Open the webmail client&rdquo;; the client opens in its own tab, then sign in with your mailbox address + password.</span></li>
@@ -203,7 +202,7 @@
         </p>
         <ol class="tools-list">
           <li><code>Step 1</code><span><b>Pick the scope</b> &mdash; choose the tenant&rsquo;s domain from the selector at the top of <a href="settings.html">Settings</a> or <a href="admin.html">Admin</a>; everything below follows that scope.</span></li>
-          <li><code>Step 2</code><span><b>Tune the domain</b> &mdash; on Settings, set branding (description), PTR target and the default/max quota in MiB. The FQDN cannot be renamed here; add or remove domains from the mail UI.</span></li>
+          <li><code>Step 2</code><span><b>Tune the domain</b> &mdash; on Settings, set branding (description), PTR target and the default/max quota in MiB. The FQDN cannot be renamed here; add or remove domains from the admin UI.</span></li>
           <li><code>Step 3</code><span><b>Watch the domain</b> &mdash; on Admin, follow the DNS records in scope, the recent audit trail (connector changes, MCP writes, mailbox operations) and the session details.</span></li>
           <li><code>Step 4</code><span><b>Delegate</b> &mdash; access keys for agents and integrations are scoped per domain; creation and revocation ship with the API gateway. Use them with the MCP endpoint from <a href="#agents">Guide 4</a>.</span></li>
         </ol>
@@ -264,10 +263,10 @@
           <label for="pass_user">Password</label>
           <div class="field-glow"><input id="pass_user" name="pass_user" type="password"
                  placeholder="Password" autocomplete="current-password" required><button class="pass-toggle" type="button" data-toggle-pass aria-pressed="false" aria-label="Show password"><svg class="eye-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button></div>
-          <button class="btn primary w100" type="submit">Sign in to the Mail UI</button>
+          <button class="btn primary w100" type="submit">Sign in</button>
         </form>
         <p class="hint" id="mailcow-hint">
-          Same authentication as the UI on <code>/home</code> &mdash; you land straight in the Mail UI.
+          Same authentication as the AImulti.inbox webmail &mdash; you land straight in your inbox.
         </p>
       </div>
 

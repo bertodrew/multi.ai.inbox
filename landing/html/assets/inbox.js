@@ -128,7 +128,7 @@
     });
     const form = $('#new-mailbox-form');
     if (form) form.parentNode.insertBefore(
-      el('p', 'msg error', 'The Mail UI is temporarily unreachable — please try again later.'),
+      el('p', 'msg error', 'The webmail is temporarily unreachable — please try again later.'),
       form);
   }
 

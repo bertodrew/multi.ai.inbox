@@ -114,10 +114,6 @@
   }
   status = status.data;
 
-  /* topbar: mail UI link */
-  const adminLink = $('#admin-link');
-  if (status.mailcow_origin) adminLink.href = status.mailcow_origin + '/home';
-
   /* ---------------- environment choice (persisted per account) ---------------- */
 
   const envFieldset = $('#env-choice fieldset.env-pick');
