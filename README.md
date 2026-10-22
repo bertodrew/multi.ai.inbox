@@ -41,11 +41,18 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 ## Run locally
 
 ```bash
-# Postgres 16 with a non superuser role (RLS does not apply to superusers)
+# Postgres 16 with the production roles (RLS does not apply to superusers):
+# mai_owner runs migrations, mai_app serves tenants, mai_system the workers.
+psql -U postgres -d mai -c "select set_config('mai.mai_owner_password', 'mai_owner', false),
+  set_config('mai.mai_app_password', 'mai_app', false), set_config('mai.mai_system_password', 'mai_system', false)" \
+  -f deploy/k8s/base/postgres-roles.sql
+export MAI_MIGRATE_DATABASE_URL=postgres://mai_owner:mai_owner@localhost:5432/mai
 export DATABASE_URL=postgres://mai_app:mai_app@localhost:5432/mai
+export MAI_SYSTEM_DATABASE_URL=postgres://mai_system:mai_system@localhost:5432/mai
 export MAI_SHARED_DOMAIN=agents.localhost MAI_HOSTNAME=mx.localhost MAI_ALLOW_HTTP_WEBHOOKS=true
 (cd gatekeeper && cargo build --release) && export MAI_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper
 
+go run ./cmd/mai migrate        # as mai_owner; serve and admin also migrate first when MAI_MIGRATE_DATABASE_URL is set
 go run ./cmd/mai admin seed     # shared domain, "Staging" org, user.tester@ and admin.tester@, API keys (shown once)
 go run ./cmd/mai serve          # API :8080, SMTP :2525, all workers
 
@@ -67,7 +74,7 @@ MAI_TEST_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper \
 go test -race ./...
 ```
 
-The end to end test creates a fresh database owned by a non superuser role and covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP.
+The end to end test creates a fresh database with the production roles (`deploy/k8s/base/postgres-roles.sql`), migrates as the owner, runs as the runtime roles and proves they cannot disable row level security or use `app.system`; it also covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP.
 
 ## API surface
 

@@ -8,11 +8,12 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * k3s + Flux GitOps manifests, Hetzner bootstrap and operations agent runbook, public website in web/, landing kept at /legacy/.
 * PR 1 merged on 2026-10-22.
 * Outbound retry window 5 days per RFC 5321 (DR8), `MAI_SEND_MAX_AGE` (default `120h`).
+* Database role split (R11): `mai_owner` (migrations, init container), `mai_app` (tenant DML), `mai_system` (workers, the only role whose `app.system` is honoured); migration `0004_roles.sql`, e2e proves the runtime roles cannot disable RLS.
 
 ## Next (in order)
 1. Release workflow green on master (fix: Docker build context was missing openapi/).
 2. Ops agent: runbook steps 1 to 7 on the CX33 (snapshot, rebuild, firewall, PTR, bootstrap, smoke test). Before that, protect the Primary IP and enable Hetzner backups.
-3. Security P0 from doc 12: split database roles (owner, runtime, system), screen before notify option with review messages hidden by default, encrypted append only backups with a restore drill (deploy/dr), least privilege token for the ops agent.
+3. Security P0 from doc 12: screen before notify option with review messages hidden by default, encrypted append only backups with a restore drill (deploy/dr), least privilege token for the ops agent.
 4. Founder decisions: open questions in docs 11, 12, 13, 14 (pricing Growth plan, tools to approve, backup key custody, retention, legal counsel).
 5. Branding, then buy the domain: `mai admin domain-add`, update `deploy/k8s/staging` config, DNS records, PTR.
 6. Blob deletion on inbox delete and 90 day address quarantine (blocks deletion promises in DPA and Terms).

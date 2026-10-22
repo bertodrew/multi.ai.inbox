@@ -190,8 +190,9 @@ else
   rssh "kubectl -n $NS exec -i postgres-0 -- sh -ec '
     pg_restore --list /var/lib/postgresql/data/restore.dump >/dev/null
     psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"drop database if exists mai with (force)\"
-    psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"create database mai owner mai_app\"
+    psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"create database mai owner mai_owner\"
     pg_restore -U postgres -d mai --exit-on-error /var/lib/postgresql/data/restore.dump
+    /docker-entrypoint-initdb.d/10-mai.sh
     rm -f /var/lib/postgresql/data/restore.dump
     psql -U postgres -d mai -Atc \"select count(*) from organizations\"'"
   mark_step database

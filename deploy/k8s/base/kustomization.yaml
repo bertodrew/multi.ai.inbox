@@ -13,6 +13,7 @@ configMapGenerator:
   - name: postgres-init
     files:
       - 10-mai.sh=postgres-init.sh
+      - mai-roles.psql=postgres-roles.sql
 images:
   - name: mai
     newName: ghcr.io/bertodrew/multi-ai-inbox

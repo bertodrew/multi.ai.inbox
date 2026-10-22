@@ -93,6 +93,8 @@ ssh root@2.28.99.252 \
 
 The script installs k3s and Flux, creates the secrets, runs `flux bootstrap github` (this commits `deploy/flux/clusters/staging/flux-system` to `master`), waits for the rollout, runs `mai admin seed` and `mai admin check-port25`.
 
+Database passwords need no input: the script generates them into secret `mai-secrets` (`POSTGRES_PASSWORD`, `MAI_OWNER_PASSWORD` for migrations only, `MAI_APP_PASSWORD` for tenant requests, `MAI_SYSTEM_PASSWORD` for workers). Rerunning it on a cluster created before the role split adds the two missing passwords, creates the roles and hands table ownership from `mai_app` to `mai_owner`. Migrations run in the `migrate` init container of the `mai` pod (`kubectl -n mai logs deploy/mai -c migrate`).
+
 **Handle the seed output as a secret**: it contains the two tester API keys, printed once. Give them to the founder privately, never in a public channel, issue or commit.
 
 Checks:
@@ -146,6 +148,6 @@ One message with: snapshot id, firewall name, PTR result, Flux status, pod statu
 | New org / key | `kubectl -n mai exec deploy/mai -- mai admin org-create -name Acme` then `... key-create -org <id>` |
 | Change plan | `kubectl -n mai exec deploy/mai -- mai admin org-plan -org <id> -plan team` |
 | Run a backup now | `kubectl -n mai create job --from=cronjob/backup backup-manual-$(date +%s)` |
-| Rotate Brevo key | `kubectl -n mai create secret generic mai-secrets ... --dry-run=client -o yaml \| kubectl apply -f -` keeping the two database passwords, then `kubectl -n mai rollout restart deploy/mai` |
+| Rotate Brevo key | `kubectl -n mai create secret generic mai-secrets ... --dry-run=client -o yaml \| kubectl apply -f -` keeping the four database passwords, then `kubectl -n mai rollout restart deploy/mai` |
 
 Rules for the agent: never run `kubectl delete namespace mai`, never delete PVCs, never print secrets, never force push to `master`. Ask the founder before any destructive Hetzner action (rebuild, delete, firewall removal).

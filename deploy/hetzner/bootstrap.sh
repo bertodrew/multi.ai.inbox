@@ -67,15 +67,30 @@ if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
 fi
 
 kubectl create namespace mai --dry-run=client -o yaml | kubectl apply -f -
+# Database roles (deploy/k8s/base/postgres-roles.sql): mai_owner runs
+# migrations only, mai_app serves tenant requests, mai_system the workers.
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
+MAI_OWNER_PASSWORD=$(openssl rand -hex 24)
 MAI_APP_PASSWORD=$(openssl rand -hex 24)
+MAI_SYSTEM_PASSWORD=$(openssl rand -hex 24)
+ROLES_ADDED=""
 if ! kubectl -n mai get secret mai-secrets >/dev/null 2>&1; then
   kubectl -n mai create secret generic mai-secrets \
     --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+    --from-literal=MAI_OWNER_PASSWORD="$MAI_OWNER_PASSWORD" \
     --from-literal=MAI_APP_PASSWORD="$MAI_APP_PASSWORD" \
+    --from-literal=MAI_SYSTEM_PASSWORD="$MAI_SYSTEM_PASSWORD" \
     --from-literal=MAI_SMTP_RELAY="smtp://$(jq -rn --arg v "$BREVO_LOGIN" '$v|@uri'):$(jq -rn --arg v "$BREVO_KEY" '$v|@uri')@smtp-relay.brevo.com:587"
 else
   echo "mai-secrets exists, keeping the database passwords"
+  # Secrets created before the role split lack the owner and system passwords.
+  for k in MAI_OWNER_PASSWORD MAI_SYSTEM_PASSWORD; do
+    if [[ -z "$(kubectl -n mai get secret mai-secrets -o jsonpath="{.data.$k}")" ]]; then
+      kubectl -n mai patch secret mai-secrets --type merge -p "{\"stringData\":{\"$k\":\"${!k}\"}}" >/dev/null
+      ROLES_ADDED=yes
+      echo "added $k to mai-secrets"
+    fi
+  done
 fi
 kubectl -n mai create secret generic mai-backup \
   --from-literal=BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-unset}" \
@@ -94,6 +109,15 @@ GITHUB_TOKEN="$GITHUB_TOKEN" flux bootstrap github \
 
 echo "==> Waiting for the platform"
 flux reconcile kustomization mai --with-source || true
+if [[ -n "$ROLES_ADDED" ]]; then
+  # The Postgres volume predates the role split: postgres-init.sh only runs on
+  # an empty volume, so restart Postgres with the new passwords and run it now.
+  kubectl -n mai rollout restart statefulset/postgres
+  kubectl -n mai rollout status statefulset/postgres --timeout=300s
+  kubectl -n mai exec postgres-0 -- /docker-entrypoint-initdb.d/10-mai.sh
+  kubectl -n mai exec postgres-0 -- psql -v ON_ERROR_STOP=1 -U postgres -d mai -qc "reassign owned by mai_app to mai_owner"
+  kubectl -n mai rollout restart deploy/mai
+fi
 kubectl -n mai rollout status deploy/mai --timeout=300s
 
 echo "==> Staging seed (tester accounts; API keys are printed once, store them now)"

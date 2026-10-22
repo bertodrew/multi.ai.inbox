@@ -96,8 +96,8 @@ spec:
                   mkdir -p /work/sock
                   initdb -U postgres --auth=trust -D "$PGDATA" >/dev/null
                   pg_ctl -D "$PGDATA" -o "-c listen_addresses='' -c unix_socket_directories=/work/sock -c fsync=off" -w start >/dev/null
-                  psql -v ON_ERROR_STOP=1 -d postgres -qc "create role mai_app login nosuperuser nobypassrls"
-                  psql -v ON_ERROR_STOP=1 -d postgres -qc "create database mai owner mai_app"
+                  psql -v ON_ERROR_STOP=1 -d postgres -qc "create role mai_owner nologin; create role mai_app nologin; create role mai_system nologin"
+                  psql -v ON_ERROR_STOP=1 -d postgres -qc "create database mai owner mai_owner"
                   pg_restore --list /work/latest.dump > /dev/null
                   pg_restore --exit-on-error --no-privileges -d mai /work/latest.dump
                   q() { psql -v ON_ERROR_STOP=1 -AtXc "$1"; }

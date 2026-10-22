@@ -45,6 +45,8 @@ var version = "dev"
 
 type config struct {
 	DatabaseURL   string
+	SystemDBURL   string
+	MigrateDBURL  string
 	HTTPAddr      string
 	SMTPAddr      string
 	Hostname      string
@@ -87,6 +89,8 @@ func loadConfig() config {
 	}
 	return config{
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
+		SystemDBURL:   os.Getenv("MAI_SYSTEM_DATABASE_URL"),
+		MigrateDBURL:  os.Getenv("MAI_MIGRATE_DATABASE_URL"),
 		HTTPAddr:      env("MAI_HTTP_ADDR", ":8080"),
 		SMTPAddr:      env("MAI_SMTP_ADDR", ":2525"),
 		Hostname:      env("MAI_HOSTNAME", "localhost"),
@@ -119,7 +123,7 @@ func main() {
 	case "serve":
 		err = serve(ctx, cfg, log, os.Args[2:])
 	case "migrate":
-		err = withDB(ctx, cfg, func(d *db.DB) error { return d.Migrate(ctx) })
+		err = migrate(ctx, cfg)
 	case "admin":
 		err = admin(ctx, cfg, os.Args[2:])
 	case "version":
@@ -140,15 +144,55 @@ func usage() {
 	os.Exit(2)
 }
 
+// migrate applies pending migrations as the schema owner: the role in
+// MAI_MIGRATE_DATABASE_URL (mai_owner in production), or DATABASE_URL in
+// development when that role owns the schema.
+func migrate(ctx context.Context, cfg config) error {
+	url := cfg.MigrateDBURL
+	if url == "" {
+		url = cfg.DatabaseURL
+	}
+	if url == "" {
+		return errors.New("MAI_MIGRATE_DATABASE_URL or DATABASE_URL is required")
+	}
+	d, err := db.Open(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Migrate(ctx)
+}
+
+// withDB opens the runtime pools: DATABASE_URL for tenant transactions
+// (mai_app) and MAI_SYSTEM_DATABASE_URL for system ones (mai_system; falls
+// back to DATABASE_URL for development with a single privileged role).
+// Pending migrations are applied first; with only the runtime roles
+// configured, Migrate merely checks that the schema is current.
 func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 	if cfg.DatabaseURL == "" {
 		return errors.New("DATABASE_URL is required")
+	}
+	if cfg.MigrateDBURL != "" {
+		if err := migrate(ctx, cfg); err != nil {
+			return err
+		}
 	}
 	d, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer d.Close()
+	if err := d.Migrate(ctx); err != nil {
+		return err
+	}
+	if cfg.SystemDBURL != "" {
+		if err := d.OpenSystem(ctx, cfg.SystemDBURL); err != nil {
+			return err
+		}
+	}
+	if err := d.CheckSystem(ctx); err != nil {
+		return err
+	}
 	return fn(d)
 }
 
@@ -167,9 +211,6 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		enabled[strings.TrimSpace(r)] = true
 	}
 	return withDB(ctx, cfg, func(d *db.DB) error {
-		if err := d.Migrate(ctx); err != nil {
-			return err
-		}
 		svc := service(d, cfg)
 		var wg sync.WaitGroup
 		errs := make(chan error, 2)
@@ -264,9 +305,6 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	plan := fs.String("plan", "", "plan: free, builder, team")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
-		if err := d.Migrate(ctx); err != nil {
-			return err
-		}
 		svc := service(d, cfg)
 		var out any
 		var err error

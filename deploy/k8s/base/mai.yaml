@@ -31,6 +31,24 @@ spec:
         runAsUser: 65532
         fsGroup: 65532
         seccompProfile: { type: RuntimeDefault }
+      # Schema migrations run here with the owner role (mai_owner), so the
+      # serving container never holds credentials that can alter tables.
+      initContainers:
+        - name: migrate
+          image: mai
+          args: ["migrate"]
+          env:
+            - name: MAI_OWNER_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_OWNER_PASSWORD } }
+            - name: MAI_MIGRATE_DATABASE_URL
+              value: postgres://mai_owner:$(MAI_OWNER_PASSWORD)@postgres:5432/mai?sslmode=disable
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
       containers:
         - name: mai
           image: mai
@@ -38,10 +56,17 @@ spec:
           envFrom:
             - configMapRef: { name: mai-config }
           env:
+            # Runtime roles: DML only, no BYPASSRLS. mai_app serves tenant
+            # requests; mai_system (SMTP edge, workers, authentication) is the
+            # only role whose app.system setting row level security honours.
             - name: MAI_APP_PASSWORD
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_APP_PASSWORD } }
             - name: DATABASE_URL
               value: postgres://mai_app:$(MAI_APP_PASSWORD)@postgres:5432/mai?sslmode=disable
+            - name: MAI_SYSTEM_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SYSTEM_PASSWORD } }
+            - name: MAI_SYSTEM_DATABASE_URL
+              value: postgres://mai_system:$(MAI_SYSTEM_PASSWORD)@postgres:5432/mai?sslmode=disable
             - name: MAI_SMTP_RELAY
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SMTP_RELAY, optional: true } }
             - name: MAI_RSPAMD_URL
