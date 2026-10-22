@@ -78,4 +78,4 @@ See `deploy/`: copy `.env.example` to `.env`, set the server PTR to `MAI_HOSTNAM
 
 MVP of ADR 10, phase M1 to M2 scope: inboxes, threads, messages, send, reply, labels, webhooks, MCP, gatekeeper heuristics. Not yet: custom domain verification API, drafts, WebSocket, pods, scoped keys, S3 blob store, IMAP, web console, billing. See `.claude/context/TODO.md`.
 
-Licence: to be decided (ADR 10, decision D6). The previous mailcow code was GPL 3.0; none of it is used by this code.
+Licence: to be decided (ADR 10, decision D6). The mailcow fork this repository started from (GPL 3.0) was removed; its history stays in git, and none of its code is used here.
