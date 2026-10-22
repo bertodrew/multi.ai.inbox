@@ -1,57 +1,147 @@
-# Nightly backup: pg_dump plus the blob store, copied off the server to
-# Hetzner Object Storage (S3 compatible) with rclone. Configure the
-# BACKUP_S3_* keys in the mai-backup secret (see deploy/hetzner/bootstrap.sh).
+# Backup every 6 hours: a validated pg_dump, the blob store and caddy-data,
+# encrypted on this server (rclone crypt) before they reach Hetzner Object
+# Storage (S3 compatible). The job only ever adds objects: `rclone copy`
+# (never sync, never delete, `--immutable` for blobs), so its S3 key does not
+# need delete rights. Retention and immutability are bucket settings (Object
+# Lock with a default retention plus a lifecycle rule), see
+# docs/agentmail-re/14-disaster-recovery-backup.md section 4.1.
+#
+# Secret mai-backup (created by deploy/hetzner/bootstrap.sh):
+#   BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY, BACKUP_S3_SECRET_KEY
+#   BACKUP_CRYPT_PASSWORD, BACKUP_CRYPT_SALT  rclone crypt keys. Without them the
+#       backups cannot be decrypted: the founder keeps a copy offline.
+#   BACKUP_PG_USER, BACKUP_PG_PASSWORD        optional read only role for pg_dump
+#       (bootstrap.sh creates mai_backup: BYPASSRLS, pg_read_all_data, read only);
+#       when absent the dump falls back to the postgres superuser.
+#   HC_BACKUP_URL                             optional dead man's switch (healthchecks.io)
+#
+# Bucket layout (logical names, as seen through the crypt remotes):
+#   crypt/dumps/<YYYY-MM-DD>/mai-<stamp>.dump         custom format pg_dump
+#   crypt/dumps/<YYYY-MM-DD>/mai-<stamp>.dump.counts  exact row counts, same snapshot
+#   crypt/dumps/<YYYY-MM-DD>/caddy-data-<stamp>.tar   certificates and ACME account
+#   crypt/blobs/<blob key>                            raw .eml and attachments, write once
+# Dates stay readable in the bucket; file names and blob paths are encrypted.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: backup
 spec:
-  schedule: "17 2 * * *"
+  schedule: "17 */6 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 2
+      activeDeadlineSeconds: 10800
       template:
         metadata:
           labels: { app: backup }
         spec:
           restartPolicy: OnFailure
           initContainers:
+            # 1. Dump, validate, record exact row counts from the same snapshot.
             - name: dump
               image: postgres:16-alpine
-              command: ["/bin/sh", "-c", "pg_dump -h postgres -U postgres -d mai -Fc -f /work/mai-$(date +%F).dump"]
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  export PGUSER="${BACKUP_PG_USER:-postgres}" PGPASSWORD="${BACKUP_PG_PASSWORD:-$POSTGRES_PASSWORD}"
+                  stamp=$(date -u +%Y-%m-%dT%H%MZ)
+                  out=/work/out/${stamp%%T*}
+                  f=$out/mai-$stamp.dump
+                  mkdir -p "$out"
+                  # One repeatable read transaction exports its snapshot: pg_dump
+                  # and the row counts read exactly the same data.
+                  mkfifo /work/ctl
+                  psql -X -q -At -v ON_ERROR_STOP=1 < /work/ctl > /work/psql.log 2>&1 &
+                  exec 3> /work/ctl
+                  printf '%s\n' 'begin isolation level repeatable read read only;' \
+                    '\o /work/snapshot' 'select pg_export_snapshot();' '\o' >&3
+                  i=0; until [ -s /work/snapshot ]; do i=$((i+1)); [ "$i" -lt 60 ] || { cat /work/psql.log; exit 1; }; sleep 1; done
+                  pg_dump -Fc -Z 6 --snapshot="$(cat /work/snapshot)" -f "$f"
+                  printf '%s\n' "\\o $f.counts" \
+                    "select format('select %L, count(*) from %I.%I', tablename, schemaname, tablename) from pg_tables where schemaname = 'public' order by tablename \\gexec" \
+                    '\o' 'commit;' >&3
+                  exec 3>&-
+                  wait $!
+                  pg_restore --list "$f" > /dev/null
+                  size=$(stat -c %s "$f")
+                  [ "$size" -gt 4096 ] || { echo "FAIL: dump too small: $size bytes"; exit 1; }
+                  [ "$(wc -l < "$f.counts")" -gt 0 ] || { echo "FAIL: no row counts"; exit 1; }
+                  tar -C /caddy -cf "$out/caddy-data-$stamp.tar" .
+                  rm -f /work/ctl /work/snapshot /work/psql.log
+                  echo "dump $f $size bytes as $PGUSER"; cat "$f.counts"
               env:
-                - name: PGPASSWORD
+                - { name: PGHOST, value: postgres }
+                - { name: PGDATABASE, value: mai }
+                - name: POSTGRES_PASSWORD
                   valueFrom: { secretKeyRef: { name: mai-secrets, key: POSTGRES_PASSWORD } }
+                - name: BACKUP_PG_USER
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_PG_USER, optional: true } }
+                - name: BACKUP_PG_PASSWORD
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_PG_PASSWORD, optional: true } }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { memory: 512Mi }
               volumeMounts:
                 - { name: work, mountPath: /work }
+                - { name: caddy, mountPath: /caddy, readOnly: true }
           containers:
+            # 2. Encrypt and upload. Add only: no sync, no delete.
             - name: upload
               image: rclone/rclone:1.75.2
               command: ["/bin/sh", "-c"]
               args:
-                - >-
-                  rclone copy /work "store:$BACKUP_S3_BUCKET/postgres" &&
-                  rclone copy /blobs "store:$BACKUP_S3_BUCKET/blobs" &&
-                  rclone delete --min-age 30d "store:$BACKUP_S3_BUCKET/postgres"
+                - |
+                  # rclone copyurl does a plain GET, enough for a healthchecks.io ping.
+                  ping() { [ -n "${HC_BACKUP_URL:-}" ] && rclone copyurl "$HC_BACKUP_URL$1" /tmp/hc.out >/dev/null 2>&1 || true; }
+                  fail() { echo "FAIL: $*"; ping /fail; exit 1; }
+                  ping /start
+                  for v in "$BACKUP_S3_BUCKET" "$BACKUP_CRYPT_PASSWORD" "$BACKUP_CRYPT_SALT"; do
+                    case "$v" in ""|unset) fail "secret mai-backup is incomplete (bucket or crypt keys missing), refusing to upload";; esac
+                  done
+                  # rclone expects crypt passwords in its obscured form.
+                  pw=$(rclone obscure "$BACKUP_CRYPT_PASSWORD") && salt=$(rclone obscure "$BACKUP_CRYPT_SALT") || fail "rclone obscure"
+                  export RCLONE_CONFIG_DUMPS_PASSWORD="$pw" RCLONE_CONFIG_DUMPS_PASSWORD2="$salt"
+                  export RCLONE_CONFIG_BLOBS_PASSWORD="$pw" RCLONE_CONFIG_BLOBS_PASSWORD2="$salt"
+                  rclone copy --immutable /work/out dumps: || fail "dump upload"
+                  rclone copy --immutable --exclude "*.tmp" /blobs blobs: || fail "blob upload"
+                  echo "uploaded: $(cd /work/out && find . -type f | sort | tr '\n' ' ')"
+                  ping ""
               env:
+                - name: BACKUP_S3_BUCKET
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_BUCKET } }
                 - { name: RCLONE_CONFIG_STORE_TYPE, value: s3 }
-                - { name: RCLONE_CONFIG_STORE_PROVIDER, value: Other }
+                - { name: RCLONE_CONFIG_STORE_PROVIDER, value: Hetzner }
+                - { name: RCLONE_CONFIG_STORE_NO_CHECK_BUCKET, value: "true" }
                 - name: RCLONE_CONFIG_STORE_ENDPOINT
                   valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ENDPOINT } }
                 - name: RCLONE_CONFIG_STORE_ACCESS_KEY_ID
                   valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ACCESS_KEY } }
                 - name: RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY
                   valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_SECRET_KEY } }
-                - name: BACKUP_S3_BUCKET
-                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_BUCKET } }
+                - { name: RCLONE_CONFIG_DUMPS_TYPE, value: crypt }
+                - { name: RCLONE_CONFIG_DUMPS_REMOTE, value: "store:$(BACKUP_S3_BUCKET)/crypt/dumps" }
+                - { name: RCLONE_CONFIG_DUMPS_DIRECTORY_NAME_ENCRYPTION, value: "false" }
+                - { name: RCLONE_CONFIG_BLOBS_TYPE, value: crypt }
+                - { name: RCLONE_CONFIG_BLOBS_REMOTE, value: "store:$(BACKUP_S3_BUCKET)/crypt/blobs" }
+                - name: BACKUP_CRYPT_PASSWORD
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_CRYPT_PASSWORD, optional: true } }
+                - name: BACKUP_CRYPT_SALT
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_CRYPT_SALT, optional: true } }
+                - name: HC_BACKUP_URL
+                  valueFrom: { secretKeyRef: { name: mai-backup, key: HC_BACKUP_URL, optional: true } }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { memory: 512Mi }
               volumeMounts:
                 - { name: work, mountPath: /work }
                 - { name: blobs, mountPath: /blobs, readOnly: true }
           volumes:
             - name: work
-              emptyDir: {}
+              emptyDir: { sizeLimit: 20Gi }
             - name: blobs
               persistentVolumeClaim: { claimName: mai-blobs }
+            - name: caddy
+              persistentVolumeClaim: { claimName: caddy-data }

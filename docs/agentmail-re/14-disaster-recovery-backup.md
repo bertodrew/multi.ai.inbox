@@ -1,10 +1,28 @@
 # 14 · Disaster recovery, backup and resilience
 
-Status: proposal · Date: 2026-10-22 · Owner hat: CTO (network and Kubernetes) · Deciders: founder
+Status: T0 backup and restore drill **implemented in git** (2026-10-22), waiting for the founder's bucket setup and the first run on the server; the rest is a proposal · Date: 2026-10-22 · Owner hat: CTO (network and Kubernetes) · Deciders: founder
 
-Scope: the staging platform on one Hetzner CX33 (`2.28.99.252`, Germany) running single server k3s, Flux GitOps from `bertodrew/multi.ai.inbox`, Postgres 16 StatefulSet, the `mai` pod (api, mx, sender, dispatcher, enrich, scheduler), rspamd and Caddy. Companion files (proposals, not applied): [`deploy/dr/`](../../deploy/dr/README.md).
+Scope: the staging platform on one Hetzner CX33 (`2.28.99.252`, Germany) running single server k3s, Flux GitOps from `bertodrew/multi.ai.inbox`, Postgres 16 StatefulSet, the `mai` pod (api, mx, sender, dispatcher, enrich, scheduler), rspamd and Caddy. GitOps manifests: [`deploy/k8s/base/backup.yaml`](../../deploy/k8s/base/backup.yaml) and [`deploy/k8s/base/restore-drill.yaml`](../../deploy/k8s/base/restore-drill.yaml). Operator tools and the remaining proposal: [`deploy/dr/`](../../deploy/dr/README.md).
 
-Tags as in the rest of this pack: **[observed]** read in this repo or a cited page, **[estimate]** our calculation, **[decision]** our recommendation. Prices exclude VAT. Nothing in this document has been exercised on the real server yet: no restore has ever been tested.
+Tags as in the rest of this pack: **[observed]** read in this repo or a cited page, **[estimate]** our calculation, **[decision]** our recommendation. Prices exclude VAT.
+
+**Implementation status** (2026-10-22):
+
+| Item | Status |
+|------|--------|
+| Backup every 6 h: validated `pg_dump`, exact row counts from the same snapshot, blobs, `caddy-data` | done in `deploy/k8s/base/backup.yaml` |
+| Client side encryption (rclone `crypt`, keys `BACKUP_CRYPT_PASSWORD` and `BACKUP_CRYPT_SALT` in secret `mai-backup`, generated once by `bootstrap.sh`, founder keeps them offline) | done |
+| Add only uploads: `rclone copy` (never `sync` or `delete`), `--immutable` blobs, dated prefixes; the job needs no delete right | done |
+| Read only Postgres role `mai_backup` for `pg_dump` (BYPASSRLS, `pg_read_all_data`, read only by default), created by `bootstrap.sh`; falls back to `postgres` when absent | done |
+| Weekly restore drill into a scratch Postgres, row counts of every table compared with the backup, RLS and blob checks, dead man's switch | done in `deploy/k8s/base/restore-drill.yaml` |
+| Object Lock bucket (governance 30 days) in a separate Hetzner project, write only key by bucket policy, lifecycle expiry | documented (AGENT_RUNBOOK section 4b), **founder action** |
+| Primary IP auto delete off and delete protection, Hetzner server backups, server delete and rebuild protection | documented (AGENT_RUNBOOK sections 1b and 2), agent action at the next deploy |
+| Ops agent tokens: no GitHub PAT (deploy key), dedicated Hetzner project, token deleted after the deploy | documented (AGENT_RUNBOOK section 0a) |
+| `deploy/dr/restore.sh` updated for the encrypted layout | done, never run end to end |
+| Default deny NetworkPolicy | proposal (`deploy/dr/networkpolicy-default-deny.yaml`) |
+| Validation | `kustomize build deploy/k8s/staging \| kubeconform -strict` passes; the dump, upload, fetch, scratch restore, row count comparison and blob checks were run locally (Postgres 16, rclone 1.75.2 with a local remote under `crypt`); nothing has run on the real server or against Hetzner Object Storage yet |
+
+The rest of this document keeps the original analysis; "today" in section 1 describes the state before this change.
 
 ## 1. Executive summary
 
@@ -29,7 +47,7 @@ Tags as in the rest of this pack: **[observed]** read in this repo or a cited pa
 
 **Recommended path** [decision]:
 
-* **Staging now (this week, about €2/month extra):** fix the blob `sync` to `copy`, back up every 6 h, dead man's switch on backup and on a monthly restore drill, default deny NetworkPolicy, encrypt dumps with `age`, new bucket with Object Lock in another location, Hetzner automatic backups for the disk, delete protection on server and Primary IP. Run `deploy/dr/restore.sh` once on a throwaway server.
+* **Staging now (this week, about €2/month extra):** fix the blob `sync` to `copy`, back up every 6 h, dead man's switch on backup and on a weekly restore drill, default deny NetworkPolicy, encrypt backups client side (done with rclone `crypt`, section 4.1), new bucket with Object Lock in another location, Hetzner automatic backups for the disk, delete protection on server and Primary IP. Run `deploy/dr/restore.sh` once on a throwaway server. Status: see the table at the top; open are the bucket setup, the protections on the server, the default deny policy and the `restore.sh` dry run.
 * **First customers:** move blobs to Object Storage (the planned S3 store in `internal/blob`), Postgres on CloudNativePG with Barman Cloud WAL archiving (RPO 5 min, PITR), Storage Box as second target, Floating IP for MX and API, status page.
 * **Paid customers:** 3 node k3s with embedded etcd, CNPG primary plus replica on Hetzner volumes, stateless `mai` with PodDisruptionBudgets, etcd snapshots to S3, quarterly game day, optional backup MX.
 
@@ -43,7 +61,7 @@ Tags as in the rest of this pack: **[observed]** read in this repo or a cited pa
 | API key hashes (`api_keys.hash`), webhook secrets | same | critical | keys can be reissued but break every customer | nightly | same; hashes are not secrets but secrets are |
 | DKIM private keys (`domains.dkim_private_key`) | same, plaintext column | critical | regenerable, but customers must republish DNS | nightly, unencrypted | encrypt backups; later encrypt the column (KMS or age envelope) |
 | Blob store: `raw/<org>/<yyyy>/<mm>/<inbox>-<msgid>.eml`, `att/<org>/<msg>/<n>` | PVC `mai-blobs` 50Gi local-path, `internal/blob.FS` | **critical** | no | nightly `rclone sync` | S3 primary (versioning + lock) |
-| Secrets `mai-secrets`, `mai-backup`, `ghcr-pull` | cluster only, k3s `--secrets-encryption` | medium | yes: DB passwords are regenerated by `bootstrap.sh` (roles are not in `pg_dump`), Brevo, S3 and GHCR tokens are reissued in their consoles | no | DR kit in the password manager: where to reissue each one |
+| Secrets `mai-secrets`, `mai-backup`, `ghcr-pull` | cluster only, k3s `--secrets-encryption` | medium, except the backup crypt keys: **critical** | yes: DB passwords are regenerated by `bootstrap.sh` (roles are not in `pg_dump`), Brevo, S3 and GHCR tokens are reissued in their consoles. **Not** `BACKUP_CRYPT_PASSWORD` and `BACKUP_CRYPT_SALT`: lost keys mean every backup is lost | crypt keys: founder's offline copies | DR kit in the password manager: where to reissue each one, plus the two crypt keys (and on paper) |
 | TLS certificates (API, site, MX STARTTLS) | PVC `caddy-data` 1Gi | low | yes, ACME | no | copy in backup to avoid rate limits |
 | Cluster state (manifests, Flux) | GitHub `master` | high | yes from git | GitHub only | nightly `git clone --mirror` to Storage Box |
 | Container images | GHCR (private), Docker Hub (postgres, rspamd, rclone) | medium | yes, CI rebuilds from git | GHCR only | pin by digest, keep last 10 SHAs |
@@ -66,7 +84,7 @@ RPO/RTO "today" are for the current setup; "prevention" lists what this document
 | 7 | Bad migration (`mai serve` runs migrations at start [observed `cmd/mai/main.go`]) | rollout fails or errors after deploy | schema broken, app down | 24 h / 1 to 2 h | `flux suspend`, scale `mai` to 0, restore last dump (section 5.3 steps 4 to 7), pin previous image SHA | take a dump in CI or a pre deploy Job before any migration; migrations only additive |
 | 8 | Accidental deletion: namespace `mai` | Flux recreates objects, but PVCs and data are gone | total data loss on the node (local-path deletes the directory with the PV, reclaim policy Delete) | 24 h / hours | full restore onto the same server (restore.sh with `SERVER_NAME` of the existing server) | runbook rule already forbids it; set PV reclaim policy `Retain`; RBAC: the ops agent gets no delete on namespaces |
 | 9 | Accidental deletion: PVC or tenant data (API `inbox.delete`, operator SQL) | audit log, customer | one tenant's data gone | 24 h / 1 h | section 5.4 single tenant restore | soft delete with 30 day purge; audit log alerts on bulk deletes |
-| 10 | Ransomware or compromised operator token, including the Hermes ops agent (holds `HCLOUD_TOKEN`, `GITHUB_TOKEN` with Administration write, SSH) | unexpected Hetzner actions, Git force pushes, backups deleted | attacker can delete server, snapshots, automatic backups and, with in-cluster S3 keys, every backup object | total loss possible / days | revoke all tokens (Hetzner, GitHub, Brevo, S3), rotate SSH keys, restore from immutable copy into a new Hetzner project | Object Lock (compliance) bucket in a **separate Hetzner project** the agent cannot reach, Storage Box with snapshots, Git mirror, read only Hetzner token for the agent by default, Hetzner delete protection, approval gates (section 5.1) |
+| 10 | Ransomware or compromised operator token, including the Hermes ops agent (holds `HCLOUD_TOKEN`, `GITHUB_TOKEN` with Administration write, SSH) | unexpected Hetzner actions, Git force pushes, backups deleted | attacker can delete server, snapshots, automatic backups and, with in-cluster S3 keys, every backup object | total loss possible / days | revoke all tokens (Hetzner, GitHub, Brevo, S3), rotate SSH keys, restore from immutable copy into a new Hetzner project | Object Lock (compliance) bucket in a **separate Hetzner project** the agent cannot reach, Storage Box with snapshots, Git mirror, read only Hetzner token for the agent by default, Hetzner delete protection, approval gates (section 5.1). Now in place in git: the in cluster S3 key cannot delete (section 4.1) and Flux needs no GitHub PAT (AGENT_RUNBOOK section 0a) |
 | 11 | Hetzner region (location) outage | uptime monitor, Hetzner status page | total outage; Primary IP and automatic backups are stuck in that location | 24 h / hours, if the bucket is in another location | restore.sh with `LOCATION=hel1` (or nbg1), new IP, commit new sslip.io names | bucket in a different location than the server; DNS with low TTL once owned |
 | 12 | GitHub outage | Flux `Ready False`, CI red | no deploys; running cluster unaffected; restore.sh blocked (Flux bootstrap needs GitHub) | 0 / n/a | wait; emergency: `kubectl apply -k deploy/k8s/staging` from a local checkout or the mirror | nightly mirror; documented `flux bootstrap git` against the mirror |
 | 13 | GHCR image deleted or GHCR outage | `ImagePullBackOff` on new pods | running pods fine until rescheduled; a restore cannot pull | 0 / 30 min | re-run the `release` workflow for the SHA in `deploy/k8s/staging/kustomization.yaml`; or build locally and `k3s ctr images import` | GHCR retention keeps the last 10 SHAs; pin third party images by digest; optional mirror to a second registry |
@@ -98,9 +116,23 @@ Assumptions [estimate]: 20 GB database, `pg_dump -Fc` about 6 GB (mail text comp
 
 | Rule | T0 staging | T1 / T2 |
 |------|-----------|---------|
-| 3 copies | live PVC, Object Storage bucket (locked, other location), Hetzner automatic backup | live, Object Storage (WAL + base + blobs, versioned), Storage Box (nightly encrypted copy) |
+| 3 copies | live PVC, Object Storage bucket (locked, other location, encrypted), Hetzner automatic backup | live, Object Storage (WAL + base + blobs, versioned), Storage Box (nightly encrypted copy) |
 | 2 media / systems | disk + S3 | S3 + SFTP box with its own snapshots |
-| 1 off site and immutable | bucket in hel1 if the server is in fsn1/nbg1, Object Lock | bucket in a separate Hetzner project, compliance lock; Storage Box snapshots |
+| 1 off site and immutable | bucket in hel1 if the server is in fsn1/nbg1, in a separate Hetzner project, Object Lock | bucket in a separate Hetzner project, compliance lock; Storage Box snapshots |
+
+### 4.1 Implemented T0 design: encrypted, add only, locked [decision, implemented]
+
+**Encryption.** The upload container layers two rclone `crypt` remotes over the S3 remote (all configured through `RCLONE_CONFIG_*` environment variables, no config file): `dumps:` on `crypt/dumps` (file names encrypted, the date directories stay readable so a human can see what exists) and `blobs:` on `crypt/blobs` (file and directory names encrypted, so org ids and message ids do not leak). Content is encrypted with NaCl secretbox (XSalsa20 and Poly1305) keyed from `BACKUP_CRYPT_PASSWORD` and `BACKUP_CRYPT_SALT` [observed: rclone crypt documentation]. Hetzner never sees plaintext, DKIM private keys and webhook secrets included. The job refuses to upload when the keys are missing.
+
+**Key custody.** `bootstrap.sh` generates both values with `openssl rand -hex 32` on the first deploy, stores them in secret `mai-backup` and prints them once in a banner; the founder keeps two offline copies (password manager entry plus paper). Reruns keep the existing values. Without them no backup can be restored: `restore.sh` requires them. Trade off versus the earlier `age` idea: `crypt` is symmetric, so the cluster can also decrypt; that adds nothing for an attacker who already has the cluster (the live database is there), and it lets the in cluster drill verify the real backups. A public key only scheme (`age`) would need a new tool and an off cluster drill; revisit at T2.
+
+**Add only.** `rclone copy` everywhere, never `sync`, never `delete`; blobs with `--immutable` (an existing object that changed makes the job fail instead of overwriting it) and `--exclude *.tmp`; dumps under `crypt/dumps/<YYYY-MM-DD>/mai-<stamp>.dump` with `.counts` and `caddy-data-<stamp>.tar` beside them. Retention moved from the job to the bucket.
+
+**Bucket.** New bucket created with Object Lock (only possible at creation [source](https://docs.hetzner.com/storage/object-storage/howto-protect-objects/protect-object-lock-retention/), 2026-10), default retention `GOVERNANCE` 30 days at T0 (`COMPLIANCE` from first paying customer), in a separate Hetzner project and another location than the server. Lifecycle: `crypt/dumps/` expires after 45 days, blobs are kept (a later GDPR erasure process must delete them with the vault key). Commands in `deploy/hetzner/AGENT_RUNBOOK.md` section 4b.
+
+**Write only key.** Hetzner S3 keys reach every bucket of their own project and nothing else; a bucket policy can grant one key of another project specific actions [source](https://docs.hetzner.com/storage/object-storage/faq/s3-credentials/), 2026-10. The cluster's key lives in the staging project and is granted `ListBucket`, `GetBucketLocation`, `GetObject`, `GetObjectVersion`, `PutObject` and the multipart actions on the vault bucket only: no `DeleteObject`, no `DeleteObjectVersion`, no retention, lifecycle or policy changes. With versioning (implied by Object Lock) an overwrite only adds a version. `NotAction` is not supported by Hetzner, so the policy is an allow list. Open item: verify on the first run that Hetzner accepts rclone's uploads into a locked bucket (some S3 servers require `Content-MD5` there).
+
+**Read only dump role.** `pg_dump` runs as `mai_backup` (`BYPASSRLS` because every tenant table has `FORCE ROW LEVEL SECURITY`, `pg_read_all_data`, `default_transaction_read_only = on`), created idempotently by `bootstrap.sh` (roles are cluster wide, no migration needed). The job falls back to `postgres` when `BACKUP_PG_USER` is not in the secret. The dump and the row counts share one exported snapshot (`pg_export_snapshot` plus `pg_dump --snapshot`), so the drill can demand an exact match. The DB roles work (`mai_owner`, `mai_app`) does not affect this: the drill restores with `--no-owner --no-privileges`, and `restore.sh` takes the database owner from `DB_OWNER` (default `mai_app`).
 
 ## 5. Disaster recovery plan
 
@@ -124,7 +156,7 @@ Declare a disaster when any is true: data loss is confirmed or likely; the API o
 
 Automated in [`deploy/dr/restore.sh`](../../deploy/dr/restore.sh) (idempotent, no prompts when the variables are set, **untested**). The manual equivalent:
 
-1. **Preconditions.** Backups reachable: `rclone lsf store:$BACKUP_S3_BUCKET/postgres | tail`. Decide the IP: if the old server is dead but its location is healthy, keep the Primary IP (the holder must be powered off before it can be moved [source](https://docs.hetzner.com/cloud/servers/primary-ips/faq/), 2026-10), which keeps the sslip.io names; otherwise a new IP and a git commit of new names in `deploy/k8s/staging/kustomization.yaml`.
+1. **Preconditions.** The founder's offline `BACKUP_CRYPT_PASSWORD` and `BACKUP_CRYPT_SALT`. Backups reachable and decryptable: with the `store`, `dumps` and `blobs` remotes configured as in `deploy/k8s/base/backup.yaml`, `rclone lsf -R --include "mai-*.dump" dumps: | sort | tail`. Decide the IP: if the old server is dead but its location is healthy, keep the Primary IP (the holder must be powered off before it can be moved [source](https://docs.hetzner.com/cloud/servers/primary-ips/faq/), 2026-10), which keeps the sslip.io names; otherwise a new IP and a git commit of new names in `deploy/k8s/staging/kustomization.yaml`.
 2. **Create the server.**
    `hcloud server create --name mai-dr-1 --type cx33 --image ubuntu-24.04 --location fsn1 --ssh-key $SSH_KEY_NAME --firewall mai-staging [--primary-ipv4 <id>]`, then `hcloud server set-rdns mai-dr-1 --ip <ip> --hostname mx.<ip-dashed>.sslip.io`.
 3. **Bootstrap.** `scp deploy/hetzner/bootstrap.sh root@<ip>:` and run it non interactively as in AGENT_RUNBOOK section 4. It installs k3s and Flux, recreates `mai-secrets` (new DB passwords; roles are not part of `pg_dump`, the init script recreates `mai_app`), `mai-backup`, `ghcr-pull`, and seeds tester accounts that are discarded in step 5.
@@ -138,12 +170,12 @@ Automated in [`deploy/dr/restore.sh`](../../deploy/dr/restore.sh) (idempotent, n
      pg_restore -U postgres -d mai --exit-on-error /var/lib/postgresql/data/restore.dump
      rm /var/lib/postgresql/data/restore.dump'
    ```
-   With `age` encryption: `age -d -i key.txt mai-*.dump.age > restore.dump` on the operator machine first.
-6. **Restore blobs.** Job mounting `mai-blobs` as uid 65532: `rclone copy --transfers 16 store:$BACKUP_S3_BUCKET/blobs /blobs`. 50 GB inside Hetzner's network takes about 10 to 20 minutes [estimate]. Optional: `caddy-data` the same way to skip certificate issuance.
+   The download Job decrypts on the fly (`rclone copyto dumps:<day>/mai-<stamp>.dump`); `bootstrap.sh` must have been given the same crypt keys. restore.sh then compares the row count of every table with the `.counts` file stored next to the dump and stops on any difference.
+6. **Restore blobs.** Job mounting `mai-blobs` as uid 65532: `rclone copy --transfers 16 blobs: /blobs` (decrypts on the fly). 50 GB inside Hetzner's network takes about 10 to 20 minutes [estimate]. Optional: `caddy-data` the same way to skip certificate issuance.
 7. **Resume.** `flux resume kustomization mai && flux reconcile kustomization mai --with-source`, `kubectl -n mai rollout status deploy/mai`.
 8. **Verify.**
    * `/readyz` returns 204 in cluster and on `https://api.<ip-dashed>.sslip.io/readyz`.
-   * Row counts (`organizations`, `inboxes`, `messages`, `attachments`, `events`, `audit_log`, `schema_migrations`) match the `.counts` file written next to the dump (backup v2) within the expected delta.
+   * Row counts (`organizations`, `inboxes`, `messages`, `attachments`, `events`, `audit_log`, `schema_migrations`) match the `.counts` file written next to the dump exactly (same snapshot; restore.sh checks every table) until the platform is resumed.
    * Newest `messages.raw_key` exists in `/var/lib/mai/blobs`; `GET /v0/inboxes/{inbox}/messages/{id}/raw` with a customer approved or tester key returns the `.eml`.
    * Send and receive smoke test (AGENT_RUNBOOK section 5) with a tester key.
    * Port 25 banner from outside: `nc -v <ip> 25`, STARTTLS: `openssl s_client -starttls smtp -connect <ip>:25 -servername mx.<ip-dashed>.sslip.io`.
@@ -157,7 +189,7 @@ Expected RTO with practice [estimate]: 15 min server and bootstrap, 5 min Flux, 
 Never restore over production. Restore into a temporary database, then copy only the tenant's missing rows.
 
 ```bash
-ORG=<org uuid>; DUMP=mai-2026-10-21T0217Z.dump
+ORG=<org uuid>; DUMP=mai-2026-10-21T0217Z.dump   # decrypted copy: rclone copyto dumps:2026-10-21/$DUMP $DUMP
 # 1. temporary database in the same Postgres (or use the restore-drill pod)
 kubectl -n mai exec postgres-0 -- psql -U postgres -c "create database mai_restore owner mai_app"
 kubectl -n mai cp $DUMP postgres-0:/var/lib/postgresql/data/$DUMP
@@ -175,7 +207,7 @@ for t in organizations domains api_keys inboxes threads messages attachments web
   kubectl -n mai exec postgres-0 -- psql -U postgres -d mai -c "insert into public.$t select * from dr_import.$t on conflict do nothing"
 done
 # 4. blobs of this tenant only (keys are org prefixed)
-rclone copy --include "raw/$ORG/**" --include "att/$ORG/**" store:$BACKUP_S3_BUCKET/blobs <job mounting mai-blobs>
+rclone copy --include "raw/$ORG/**" --include "att/$ORG/**" blobs: <job mounting mai-blobs>   # filters see decrypted names
 # 5. clean up
 kubectl -n mai exec postgres-0 -- psql -U postgres -c "drop database mai_restore" -c "\c mai" -c "drop schema dr_import cascade"
 ```
@@ -207,7 +239,7 @@ Notes: the current `Recreate` strategy and `ReadWriteOnce` blob volume are what 
 
 ## 8. Testing
 
-**Monthly restore drill** (automated): [`deploy/dr/restore-drill-cronjob.yaml`](../../deploy/dr/restore-drill-cronjob.yaml). Downloads the newest dump, fails if older than 48 h or smaller than 10 KB, restores it into a scratch Postgres inside the pod, checks schema migrations, organizations, FK orphans, RLS policies and `FORCE ROW LEVEL SECURITY`, verified domains with DKIM keys, then checks 20 recent raw and attachment blobs exist in the blob backup. Only a full pass pings the dead man's switch, so silence alerts. Weekly once customers exist.
+**Weekly restore drill** (automated, in GitOps): [`deploy/k8s/base/restore-drill.yaml`](../../deploy/k8s/base/restore-drill.yaml), Mondays 04:43 UTC. Downloads and decrypts the newest dump and its `.counts`, fails if the dump is older than 30 h or smaller than 4 KB, restores it with `--exit-on-error --no-owner --no-privileges` into a scratch Postgres inside the pod (unix socket only, never the production database; foreign keys are validated during the load), then fails unless the row count of every table equals the count recorded at backup time from the same snapshot, `schema_migrations` and `organizations` are not empty, and every table with an `org_id` column still has `FORCE ROW LEVEL SECURITY`. Finally it decrypts 20 recent raw messages and 20 attachments from the blob backup and fails on any missing or empty one. Requests stay small for the CX33 (largest step 100m CPU, 256Mi, limit 1Gi). Only a full pass pings the dead man's switch, so silence alerts; the failed Job also stays visible for 7 days.
 
 **Quarterly game day checklist** (founder + ops agent, 2 hours, staging):
 
@@ -225,31 +257,31 @@ Notes: the current `Recreate` strategy and `ReadWriteOnce` blob volume are what 
 |--------|-----|-------|
 | Backup success and age | healthchecks.io ping from the backup CronJob (`/start`, success, `/fail`), period 6 h, grace 1 h; Hobbyist plan free for 20 checks [source](https://healthchecks.io/pricing/) (2026-10) | email + push when a ping is missing or `/fail` |
 | Backup size anomaly | `.counts` and dump size in the success ping body; healthchecks keeps the last 100 bodies; later a Prometheus rule `abs(delta) > 50 %` | weekly manual glance at T0 |
-| Restore drill result | its own healthchecks.io check, period 31 days | missing ping |
+| Restore drill result | its own healthchecks.io check, period 7 days, grace 1 day | missing ping |
 | API and SMTP up | Upptime (GitHub Actions, free) or Uptime Kuma (MIT, self hosted on a different machine: monitoring on the same node dies with it) checking `https://api.../readyz` and TCP 25 every 5 minutes | 2 failures in a row |
 | Disk usage | node exporter later; at T0 a one line cron on the host posting `df` to a healthchecks.io check that fails above 80 % | `/fail` ping |
 | Outbound failures | count of `message.failed` per hour (SQL in the drill or a metric later) | > 10 per hour |
 
-## 9. Proposed files in `deploy/dr/`
+## 9. Files (GitOps manifests and `deploy/dr/`)
 
 | File | Purpose | Validated |
 |------|---------|-----------|
-| [`restore-drill-cronjob.yaml`](../../deploy/dr/restore-drill-cronjob.yaml) | monthly restore drill, integrity queries, dead man's switch | YAML parses; embedded scripts pass `bash -n`; not run on a cluster |
-| [`networkpolicy-default-deny.yaml`](../../deploy/dr/networkpolicy-default-deny.yaml) | default deny + allow list for caddy, mai, postgres, rspamd, backup, restore drill, DNS, SMTP and HTTPS egress | YAML parses; not applied |
-| [`backup-cronjob-v2.yaml`](../../deploy/dr/backup-cronjob-v2.yaml) | 6 hourly validated dumps, `copy` for blobs, caddy-data, dead man's switch, 14 day retention | YAML parses; scripts pass `bash -n`; not applied |
-| [`restore.sh`](../../deploy/dr/restore.sh) | full restore to a new server, idempotent, non interactive with env vars | `bash -n`; generated Job manifests parse as YAML; never run end to end |
-| [`README.md`](../../deploy/dr/README.md) | how to try and adopt each file | n/a |
+| [`deploy/k8s/base/restore-drill.yaml`](../../deploy/k8s/base/restore-drill.yaml) (adopted from the former `deploy/dr/restore-drill-cronjob.yaml`) | weekly restore drill, exact row counts, RLS and blob checks, dead man's switch | kustomize + kubeconform strict; steps run locally against Postgres 16 and rclone 1.75.2; not yet run on the cluster |
+| [`deploy/k8s/base/backup.yaml`](../../deploy/k8s/base/backup.yaml) (adopted from the former `deploy/dr/backup-cronjob-v2.yaml`) | 6 hourly validated dumps, encrypted, add only, caddy-data, dead man's switch; retention by bucket lifecycle | kustomize + kubeconform strict; dump and encrypted upload run locally; not yet run against Hetzner Object Storage |
+| [`networkpolicy-default-deny.yaml`](../../deploy/dr/networkpolicy-default-deny.yaml) | proposal: default deny + allow list for caddy, mai, postgres, rspamd, backup, restore drill, DNS, SMTP and HTTPS egress | YAML parses; not applied |
+| [`restore.sh`](../../deploy/dr/restore.sh) | full restore to a new server, idempotent, non interactive with env vars, encrypted layout, exact row count check, protections at the end | `bash -n`; generated Job manifest passes kubeconform; never run end to end |
+| [`README.md`](../../deploy/dr/README.md) | what is in GitOps, what stays in `deploy/dr` | n/a |
 
 ## 10. Decisions for the founder
 
 | # | Decision | Options | Recommendation |
 |---|----------|---------|----------------|
-| DR1 | Backup encryption and key custody | none; `age` with one key; `age` with two recipients (founder key + offline paper key) | two recipients; private keys never in the cluster |
+| DR1 | Backup encryption and key custody | none; `age` with one key; `age` with two recipients (founder key + offline paper key); rclone `crypt` | **done (2026-10-22): rclone `crypt`** (no new tool, lets the in cluster drill verify); keys generated by `bootstrap.sh`, two offline copies with the founder (section 4.1); revisit `age` at T2 |
 | DR2 | Where immutable backups live | same Hetzner project; separate Hetzner project; separate provider | separate Hetzner project now (free), second provider at T2 |
-| DR3 | Object Lock mode and duration | governance 14 d; compliance 30 d | governance 14 d at T0, compliance 30 d at T2 |
+| DR3 | Object Lock mode and duration | governance 14 d; governance 30 d; compliance 30 d | governance 30 d at T0 (the job no longer deletes, so the lock no longer has to be shorter than a job retention), compliance 30 d from the first paying customer; dumps expire by lifecycle after 45 d |
 | DR4 | Postgres engine path | stay on StatefulSet + dumps; CNPG at T1; managed (Supabase, D9) | CNPG at T1 (keeps self hosting decision D9) |
-| DR5 | Floating IP now or at T1 | now (€3); T1 | T1, but disable Primary IP auto delete and enable delete protection today |
-| DR6 | Ops agent permissions | as today (read/write Hetzner, GitHub admin); read only by default with incident tokens | read only by default |
+| DR5 | Floating IP now or at T1 | now (€3); T1 | T1, but disable Primary IP auto delete and enable delete protection today (commands in AGENT_RUNBOOK section 1b) |
+| DR6 | Ops agent permissions | as today (read/write Hetzner, GitHub admin); read only by default with incident tokens | read only by default; documented in AGENT_RUNBOOK section 0a: no GitHub PAT (deploy key), dedicated Hetzner project, read/write token deleted after each deploy, no token for the backup vault project |
 | DR7 | Backup MX | none (rely on sender retries); relay mode in Go at T2 | none until T2 |
 | DR8 | Outbound give up time | keep about 8.6 h; extend to 4 to 5 days per RFC 5321 | **done (2026-10-22):** 5 days from `created_at`, configurable with `MAI_SEND_MAX_AGE` (default `120h`); retries at 1m, 5m, 30m, 1h, 2h, then every 3 h, the last one at the end of the window; 5xx still fails at once; see section 3 #14 |
 | DR9 | Retention | 14 days of 6 hourly; plus monthly dumps for 12 months | add monthly for 12 months once customers exist (GDPR: document it in doc 08) |

@@ -1,5 +1,5 @@
 # Self hosted Postgres 16 (decision D9). Single replica on the node's disk;
-# nightly logical backups go to object storage (backup.yaml).
+# encrypted logical backups every 6 hours go to object storage (backup.yaml).
 apiVersion: v1
 kind: Service
 metadata:
