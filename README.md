@@ -22,7 +22,7 @@ flowchart LR
     DSP --> Hooks["customer webhooks"]
 ```
 
-One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`, `enrich`. Events use a Postgres outbox (no extra queue until it is needed).
+One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`, `enrich`, `scheduler`. Events use a Postgres outbox (no extra queue until it is needed).
 
 | Path | What |
 |------|------|
@@ -34,7 +34,7 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 | `internal/db/migrations` | schema with row level security |
 | `gatekeeper/` | Rust crate and JSON lines worker |
 | `openapi/openapi.yaml` | API contract |
-| `deploy/` | Docker Compose for a Hetzner server (Postgres, mai, rspamd, Caddy) |
+| `deploy/` | k3s manifests, Flux GitOps, Hetzner bootstrap, local Docker Compose |
 
 ## Run locally
 
@@ -44,11 +44,8 @@ export DATABASE_URL=postgres://mai_app:mai_app@localhost:5432/mai
 export MAI_SHARED_DOMAIN=agents.localhost MAI_HOSTNAME=mx.localhost MAI_ALLOW_HTTP_WEBHOOKS=true
 (cd gatekeeper && cargo build --release) && export MAI_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper
 
-go run ./cmd/mai migrate
-go run ./cmd/mai admin domain-add -name agents.localhost -mx mx.localhost
-go run ./cmd/mai admin org-create -name "Acme"             # prints organization_id
-go run ./cmd/mai admin key-create -org <organization_id>   # prints api_key once
-go run ./cmd/mai serve                                      # API :8080, SMTP :2525
+go run ./cmd/mai admin seed     # shared domain, "Staging" org, user.tester@ and admin.tester@, API keys (shown once)
+go run ./cmd/mai serve          # API :8080, SMTP :2525, all workers
 
 curl -s -X POST localhost:8080/v0/inboxes -H "Authorization: Bearer $KEY" -d '{"username":"sales"}'
 ```
@@ -70,12 +67,43 @@ go test -race ./...
 
 The end to end test creates a fresh database owned by a non superuser role and covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP.
 
-## Deploy on Hetzner
+## API surface
 
-See `deploy/`: copy `.env.example` to `.env`, set the server PTR to `MAI_HOSTNAME`, open only ports 25 and 443 in the Hetzner firewall, then `docker compose -f deploy/docker-compose.yml up -d`. Until Hetzner unblocks outbound port 25, set `MAI_SMTP_RELAY` to an EU relay.
+REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP tools at `/mcp`:
+
+| Area | Endpoints |
+|------|-----------|
+| Identity | `GET /v0/auth/me` |
+| Inboxes | `POST/GET /v0/inboxes`, `GET/PATCH/DELETE /v0/inboxes/{inbox}` |
+| Threads | `GET /v0/inboxes/{inbox}/threads`, `GET /v0/threads`, `GET /v0/threads/{id}` |
+| Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply`, `{message}/attachments/{id}` |
+| Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
+| Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
+| Ops | `GET /healthz`, `GET /readyz` |
+
+Events: `message.received`, `message.received.spam`, `message.sent`, `message.failed`, `message.security.completed`, `message.security.review`, `domain.verified`.
+
+Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; builder 10 inboxes, 1,000/day, 10,000/month; team 150 inboxes, 15,000/day, 150,000/month.
+
+## Deploy (Hetzner, k3s, GitOps)
+
+Production runs on the Hetzner CX33 with k3s and Flux; this repository is the source of truth.
+
+1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root. It installs k3s and Flux, asks for the secrets (GitHub tokens, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging`, seeds the staging testers and checks outbound port 25.
+2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`.
+3. From then on, merging to `master` deploys: `release.yml` builds the image to GHCR and pins its tag in `deploy/k8s/staging`; Flux applies it.
+
+| Path | What |
+|------|------|
+| `deploy/k8s/base` | Postgres, mai, rspamd, Caddy, nightly backup to Object Storage, network policies |
+| `deploy/k8s/staging` | staging config (sslip.io hostnames, `agents.localhost`, Brevo SPF) and image tag |
+| `deploy/flux/clusters/staging` | Flux Kustomization |
+| `deploy/local` | Docker Compose for local development |
+
+When the brand domain is bought: `mai admin domain-add -name agents.<brand>`, set `MAI_SHARED_DOMAIN`, `MAI_HOSTNAME`, `MAI_API_HOST` in `deploy/k8s/staging/kustomization.yaml`, publish the DNS records it prints, update the PTR.
 
 ## Status
 
-MVP of ADR 10, phase M1 to M2 scope: inboxes, threads, messages, send, reply, labels, webhooks, MCP, gatekeeper heuristics. Not yet: custom domain verification API, drafts, WebSocket, pods, scoped keys, S3 blob store, IMAP, web console, billing. See `.claude/context/TODO.md`.
+Production MVP: inboxes, threads, messages, send, reply, labels, attachments, custom domains with DNS verification, plan limits, rate limits, signed webhooks, MCP, gatekeeper, staging seed, GitOps deploy. Next: drafts, WebSocket, pods, scoped keys, S3 blob store, IMAP, web console, billing. See `.claude/context/TODO.md`.
 
-Licence: to be decided (ADR 10, decision D6). The mailcow fork this repository started from (GPL 3.0) was removed; its history stays in git, and none of its code is used here.
+Proprietary software, all rights reserved (see `LICENSE`). Approved dependencies: `.clauderules/stack-rules.md`.

@@ -111,3 +111,16 @@ gantt
 3. Draft `packages/openapi/openapi.yaml` v0 from [05](05-features-and-api.md).
 4. Create the Supabase EU project and the first RLS migration.
 5. Open the Hetzner ticket for port 25 if not done.
+
+## 8. Decisions taken (2026-10-22)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| D1 | Shared domain | Local only for now (`agents.localhost`); brand domain bought after branding. Staging API uses `api.2-28-99-252.sslip.io` for real TLS |
+| D2 | Outbound relay | Brevo (EU) until outbound port 25 is confirmed; no AWS |
+| D3 | Event bus | Postgres outbox polled by workers |
+| D6 | Licence | Proprietary, all rights reserved |
+| D8 | Libraries | Approved, see `.clauderules/stack-rules.md` |
+| D9 | Postgres | Self hosted on Hetzner (k3s StatefulSet, nightly backups to Object Storage) |
+| D10 | Human mailboxes | None to migrate: no customers, staging only; testers created by `mai admin seed` |
+| Deploy | Infrastructure | Existing CX33 reinstalled with k3s + Flux GitOps (`deploy/hetzner/bootstrap.sh`) |
