@@ -68,11 +68,34 @@
     btn.addEventListener('click', () => {
       const target = $(btn.dataset.copy);
       if (!target) return;
-      navigator.clipboard.writeText(target.textContent).then(() => {
-        const prev = btn.textContent;
-        btn.textContent = 'Copied';
+      const prev = btn.textContent;
+      const flash = (label) => {
+        btn.textContent = label;
         setTimeout(() => { btn.textContent = prev; }, 1200);
-      });
+      };
+      const text = target.textContent;
+      const fallback = () => {
+        // clipboard API unavailable or denied: transient textarea + execCommand, as in app.js
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand('copy');
+          ta.remove();
+          flash(ok ? 'Copied' : 'Copy failed');
+        } catch (e) {
+          flash('Copy failed');
+        }
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => flash('Copied')).catch(fallback);
+      } else {
+        fallback();
+      }
     });
   });
 

@@ -246,5 +246,9 @@
   });
 
   await load();
-  setInterval(load, POLL_MS);
+  // Poll only while the tab is visible (same rule as dashboard.js); the
+  // visibilitychange handler above refreshes on return.
+  setInterval(() => {
+    if (document.visibilityState === 'visible') load();
+  }, POLL_MS);
 })();
