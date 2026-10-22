@@ -2,6 +2,8 @@
 # One time bootstrap of the Hetzner CX33 (reinstalled with Ubuntu 24.04):
 # k3s, Flux (GitOps) and the secrets that must never live in git.
 # Run as root on the server:  curl -fsSLO <raw url>/deploy/hetzner/bootstrap.sh && bash bootstrap.sh
+# Non interactive (an agent over SSH): export the variables below first; the
+# script then never prompts and fails fast if a required one is missing.
 #
 # You need:
 #   GITHUB_TOKEN  fine grained PAT on bertodrew/multi.ai.inbox: Contents read/write, Administration read/write
@@ -20,9 +22,13 @@ FLUX_VERSION=2.9.6
 
 [[ $EUID -eq 0 ]] || { echo "run as root"; exit 1; }
 
-ask() { # ask VAR "prompt" [secret]
+ask() { # ask VAR "prompt" [secret|optional]
   local __v
   if [[ -n "${!1:-}" ]]; then return; fi
+  if [[ ! -t 0 ]]; then # non interactive (automation, agents): values must come from the environment
+    if [[ "${3:-}" == optional ]]; then printf -v "$1" '%s' ""; return; fi
+    echo "missing required environment variable $1 ($2)" >&2; exit 1
+  fi
   if [[ "${3:-}" == secret ]]; then read -rsp "$2: " __v; echo; else read -rp "$2: " __v; fi
   printf -v "$1" '%s' "$__v"
 }
@@ -53,7 +59,7 @@ ask GITHUB_TOKEN "GitHub PAT for Flux" secret
 ask GHCR_TOKEN "GitHub PAT with read:packages for GHCR" secret
 ask BREVO_LOGIN "Brevo SMTP login (email)"
 ask BREVO_KEY "Brevo SMTP key" secret
-ask BACKUP_S3_ENDPOINT "Object Storage endpoint (e.g. fsn1.your-objectstorage.com, empty to skip)"
+ask BACKUP_S3_ENDPOINT "Object Storage endpoint (e.g. fsn1.your-objectstorage.com, empty to skip)" optional
 if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
   ask BACKUP_S3_BUCKET "Bucket name"
   ask BACKUP_S3_ACCESS_KEY "S3 access key"

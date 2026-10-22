@@ -89,7 +89,7 @@ Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; buil
 
 Production runs on the Hetzner CX33 with k3s and Flux; this repository is the source of truth.
 
-1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root. It installs k3s and Flux, asks for the secrets (GitHub tokens, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging`, seeds the staging testers and checks outbound port 25.
+1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root (an operations agent can do all of this: see `deploy/hetzner/AGENT_RUNBOOK.md`). It installs k3s and Flux, asks for the secrets (GitHub tokens, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging`, seeds the staging testers and checks outbound port 25.
 2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`.
 3. From then on, merging to `master` deploys: `release.yml` builds the image to GHCR and pins its tag in `deploy/k8s/staging`; Flux applies it.
 
