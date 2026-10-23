@@ -252,8 +252,8 @@ cat <<EOF
 
 Done. Next steps:
   * Hetzner Cloud firewall: allow inbound 22 (your IP only), 25, 80, 443; nothing else.
-  * Reverse DNS (PTR) of the server IP: mx.2-28-99-252.sslip.io (Hetzner console > server > Networking).
-  * API: https://api.2-28-99-252.sslip.io/healthz
+  * Reverse DNS (PTR) of the server IP: mx.162-55-213-24.sslip.io (set via hcloud set-rdns; Hetzner console > server > Networking).
+  * API: https://api.162-55-213-24.sslip.io/healthz
   * From now on, merging to ${BRANCH} deploys: CI builds the image and updates deploy/k8s/staging; Flux applies it.
 EOF
 if [[ "$FLUX_AUTH" == deploy-key ]]; then
