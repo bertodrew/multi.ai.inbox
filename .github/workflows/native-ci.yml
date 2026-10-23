@@ -55,6 +55,13 @@ jobs:
           MAI_TEST_GATEKEEPER_BIN: ${{ github.workspace }}/bin/gatekeeper
         run: go test -race -count=1 ./...
       - run: CGO_ENABLED=0 go build -o /tmp/mai ./cmd/mai
+      # The Go SDK is its own module: build it so it cannot rot.
+      - name: gofmt sdk
+        run: test -z "$(gofmt -l sdk)"
+      - run: go build ./...
+        working-directory: sdk/go
+      - run: go test ./...
+        working-directory: sdk/go
 
   manifests:
     runs-on: ubuntu-latest
