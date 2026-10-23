@@ -145,10 +145,11 @@ spec:
                 - { name: work, mountPath: /work }
                 - { name: blobs, mountPath: /blobs, readOnly: true }
           volumes:
+            # Staging on the dedicated backup volume, via a local-path PVC: the
+            # namespace enforces PodSecurity baseline, which forbids hostPath.
             - name: work
-              hostPath:
-                path: /mnt/volume-nbg1-2-backup/work
-                type: DirectoryOrCreate
+              persistentVolumeClaim:
+                claimName: backup-work
             - name: blobs
               persistentVolumeClaim: { claimName: mai-blobs }
             - name: caddy

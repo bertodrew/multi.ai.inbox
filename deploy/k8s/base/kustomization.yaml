@@ -9,6 +9,7 @@ resources:
   - clamd.yaml
   - caddy.yaml
   - backup.yaml
+  - backup-work-pvc.yaml
   - restore-drill.yaml
   - networkpolicy.yaml
 configMapGenerator:
