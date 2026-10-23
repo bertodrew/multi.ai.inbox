@@ -24,6 +24,6 @@ configMapGenerator:
       - MAI_CORS_ORIGINS=https://2-28-99-252.sslip.io
 images:
   - name: ghcr.io/bertodrew/multi-ai-inbox
-    newTag: 0143995f88f1ce71dfa920f49d015804186e3dd6
+    newTag: 8af95f60fa7389ed30c7d0ad18ed88cf5167d904
   - name: ghcr.io/bertodrew/multi-ai-inbox-landing
-    newTag: 0143995f88f1ce71dfa920f49d015804186e3dd6
+    newTag: 8af95f60fa7389ed30c7d0ad18ed88cf5167d904
