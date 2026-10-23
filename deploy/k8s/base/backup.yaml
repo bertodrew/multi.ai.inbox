@@ -6,6 +6,11 @@
 # Lock with a default retention plus a lifecycle rule), see
 # docs/agentmail-re/14-disaster-recovery-backup.md section 4.1.
 #
+# Staging (/work) lives on the dedicated backup volume (hostPath): dump I/O
+# stays off the root disk. It is cleaned after a successful upload; on failure
+# the dump is kept so the next run retries it (a 10 GB volume fills eventually
+# and fails loudly, which is the desired signal).
+#
 # Secret mai-backup (created by deploy/hetzner/bootstrap.sh):
 #   BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY, BACKUP_S3_SECRET_KEY
 #   BACKUP_CRYPT_PASSWORD, BACKUP_CRYPT_SALT  rclone crypt keys. Without them the
@@ -108,6 +113,7 @@ spec:
                   rclone copy --immutable /work/out dumps: || fail "dump upload"
                   rclone copy --immutable --exclude "*.tmp" /blobs blobs: || fail "blob upload"
                   echo "uploaded: $(cd /work/out && find . -type f | sort | tr '\n' ' ')"
+                  rm -rf /work/out
                   ping ""
               env:
                 - name: BACKUP_S3_BUCKET
@@ -140,7 +146,9 @@ spec:
                 - { name: blobs, mountPath: /blobs, readOnly: true }
           volumes:
             - name: work
-              emptyDir: { sizeLimit: 20Gi }
+              hostPath:
+                path: /mnt/volume-nbg1-2-backup/work
+                type: DirectoryOrCreate
             - name: blobs
               persistentVolumeClaim: { claimName: mai-blobs }
             - name: caddy
