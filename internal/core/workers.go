@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 )
 
 // OutboundJob is a queued message leased to the sender worker.
@@ -111,11 +113,23 @@ func outboundRetry(j OutboundJob, sendErr error, now time.Time, maxAge time.Dura
 // FinishOutbound records the outcome of a delivery attempt and emits an event.
 // Permanent (5xx) errors fail at once; temporary ones are retried until the
 // message is older than the max age (MAI_SEND_MAX_AGE, default 5 days).
-func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr error) error {
+func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr error) (err error) {
 	retry, delay := false, time.Duration(0)
 	if sendErr != nil {
 		retry, delay = outboundRetry(j, sendErr, s.now(), s.sendMaxAge())
 	}
+	result := "sent"
+	switch {
+	case sendErr != nil && retry:
+		result = "deferred"
+	case sendErr != nil:
+		result = "failed"
+	}
+	defer func() {
+		if err == nil {
+			metrics.Outbound.With(result).Inc()
+		}
+	}()
 	return s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
 		switch {
 		case sendErr == nil:

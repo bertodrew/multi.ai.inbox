@@ -7,10 +7,12 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 )
 
 // Gateway holds the edge concerns of the API: who the client is, which
@@ -123,6 +125,11 @@ func (s *Server) gateway(next http.Handler) http.Handler {
 						Code: "internal_error", Message: "internal error, request " + ri.id})
 				}
 			}
+			status := sw.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+			metrics.HTTPRequests.With(metrics.RouteClass(r.URL.Path), strconv.Itoa(status)).Inc()
 			if r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
 				s.Log.Info("request", "request_id", ri.id, "method", r.Method, "path", r.URL.Path, "status", sw.status,
 					"bytes", sw.bytes, "ms", time.Since(start).Milliseconds(), "ip", ri.ip, "org", ri.orgID)

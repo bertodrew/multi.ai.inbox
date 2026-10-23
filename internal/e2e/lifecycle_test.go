@@ -20,6 +20,7 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/internal/db"
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
 )
@@ -119,6 +120,7 @@ func TestInboxDeletionAndQuarantine(t *testing.T) {
 		}
 	}
 	mxAddr := listen(t, mx.NewServer(&mx.Backend{Svc: p.svc, Log: p.log, MaxBytes: 10 << 20}, "", "mx."+shared, nil))
+	accepted, unknown := metrics.SMTPAccepted.Value(), metrics.SMTPRejected.With("unknown_recipient").Value()
 	for _, to := range []string{"gone@" + shared, "keep@" + shared} {
 		if err := deliver(t, mxAddr, "vendor@ext.test", to, "From: vendor@ext.test\r\nTo: "+to+"\r\nSubject: Invoice\r\n"+
 			"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=b1\r\n\r\n--b1\r\nContent-Type: text/plain\r\n\r\nSee attached.\r\n"+
@@ -174,6 +176,12 @@ func TestInboxDeletionAndQuarantine(t *testing.T) {
 	if queued != 3 {
 		t.Fatalf("queued blob deletions = %d, want 3", queued)
 	}
+	// The /metrics backlog gauges read the same queues (no dispatcher runs
+	// here, so the message events are still in the outbox).
+	st, err := p.svc.QueueStats(ctx)
+	if err != nil || st.BlobDeletions != 3 || st.OutboxPending == 0 || st.OutboxLagSeconds < 0 || st.ScreeningPending != 0 {
+		t.Fatalf("queue stats: %+v %v", st, err)
+	}
 	if n, err := p.svc.ProcessBlobDeletions(ctx, 100); err != nil || n != 3 {
 		t.Fatalf("process deletions: %d %v", n, err)
 	}
@@ -203,6 +211,10 @@ func TestInboxDeletionAndQuarantine(t *testing.T) {
 	// Mail to the deleted address is refused at RCPT.
 	if err := deliver(t, mxAddr, "vendor@ext.test", "gone@"+shared, "Subject: x\r\n\r\nx\r\n"); err == nil || !strings.Contains(err.Error(), "550") {
 		t.Fatalf("mail to deleted inbox: %v", err)
+	}
+	if metrics.SMTPAccepted.Value() < accepted+2 || metrics.SMTPRejected.With("unknown_recipient").Value() < unknown+1 {
+		t.Fatalf("smtp counters: accepted %d (was %d), unknown recipient %d (was %d)", metrics.SMTPAccepted.Value(), accepted,
+			metrics.SMTPRejected.With("unknown_recipient").Value(), unknown)
 	}
 	// Quarantine: no organization can take the address for 90 days.
 	for name, c := range map[string]client{"other org": b, "same org": a} {

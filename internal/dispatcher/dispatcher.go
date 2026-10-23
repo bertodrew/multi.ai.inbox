@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 )
 
 type Dispatcher struct {
@@ -81,6 +82,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (int, error) {
 		code, sendErr := d.send(ctx, dl)
 		if sendErr != nil {
 			d.Log.Warn("webhook attempt failed", "delivery", dl.ID, "attempt", dl.Attempt, "err", sendErr)
+			metrics.WebhookDeliveries.With("failed").Inc()
+		} else {
+			metrics.WebhookDeliveries.With("ok").Inc()
 		}
 		if err := d.Svc.FinishDelivery(ctx, dl, code, sendErr); err != nil {
 			return fanned + len(deliveries), err

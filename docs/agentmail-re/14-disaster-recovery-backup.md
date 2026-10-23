@@ -260,7 +260,8 @@ Notes: the current `Recreate` strategy and `ReadWriteOnce` blob volume are what 
 | Restore drill result | its own healthchecks.io check, period 7 days, grace 1 day | missing ping |
 | API and SMTP up | Upptime (GitHub Actions, free) or Uptime Kuma (MIT, self hosted on a different machine: monitoring on the same node dies with it) checking `https://api.../readyz` and TCP 25 every 5 minutes | 2 failures in a row |
 | Disk usage | node exporter later; at T0 a one line cron on the host posting `df` to a healthchecks.io check that fails above 80 % | `/fail` ping |
-| Outbound failures | count of `message.failed` per hour (SQL in the drill or a metric later) | > 10 per hour |
+| Outbound failures | `mai_outbound_attempts_total{result="failed"}` on the in cluster `/metrics` endpoint (port 9090, namespace only); without a scraper, count `message.failed` per hour in SQL | > 10 per hour |
+| Queues stuck | `mai_outbox_lag_seconds`, `mai_screening_messages{state="pending"}`, `mai_blob_deletion_queue` on `/metrics` once a scraper runs (T1) | outbox lag > 300 s for 5 min; pending screening above 0 for 20 min |
 
 ## 9. Files (GitOps manifests and `deploy/dr/`)
 

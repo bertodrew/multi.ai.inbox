@@ -19,6 +19,7 @@ import (
 
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/internal/mailx"
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 )
 
 type Backend struct {
@@ -49,6 +50,7 @@ func NewServer(b *Backend, addr, domain string, tlsConfig *tls.Config) *smtp.Ser
 }
 
 func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	metrics.SMTPSessions.Inc()
 	return &session{b: b, remote: c.Conn().RemoteAddr().String(), helo: c.Hostname()}, nil
 }
 
@@ -74,9 +76,11 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 	rc, err := s.b.Svc.ResolveRecipient(ctx, to)
 	if err != nil {
 		s.b.Log.Error("recipient lookup failed", "rcpt", to, "err", err)
+		metrics.SMTPRejected.With("recipient_lookup_error").Inc()
 		return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: "Temporary lookup failure"}
 	}
 	if rc == nil {
+		metrics.SMTPRejected.With("unknown_recipient").Inc()
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "No such inbox"}
 	}
 	s.rcpts = append(s.rcpts, rc)
@@ -89,6 +93,7 @@ func (s *session) Data(r io.Reader) error {
 		return err
 	}
 	if int64(len(raw)) > s.b.MaxBytes {
+		metrics.SMTPRejected.With("too_large").Inc()
 		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message too large"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -101,6 +106,7 @@ func (s *session) Data(r io.Reader) error {
 		switch {
 		case err != nil && s.b.ClamdFailClosed:
 			s.b.Log.Error("clamd unavailable, deferring message", "err", err, "remote", s.remote)
+			metrics.SMTPRejected.With("antivirus_unavailable").Inc()
 			return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "Virus scanner unavailable, try again later"}
 		case err != nil:
 			s.b.Log.Warn("clamd unavailable, accepting without virus scan", "err", err, "remote", s.remote)
@@ -108,6 +114,7 @@ func (s *session) Data(r io.Reader) error {
 			antivirus = "unscanned"
 		case res.Infected:
 			s.b.Log.Warn("virus rejected", "signature", res.Signature, "remote", s.remote, "from", s.from)
+			metrics.SMTPRejected.With("virus").Inc()
 			return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Message rejected: virus detected (" + res.Signature + ")"}
 		default:
 			antivirus = "clean"
@@ -126,6 +133,7 @@ func (s *session) Data(r io.Reader) error {
 			auth["spam_action"] = verdict.Action
 			switch verdict.Action {
 			case "reject":
+				metrics.SMTPRejected.With("spam").Inc()
 				return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Message rejected as spam"}
 			case "add header", "rewrite subject", "soft reject":
 				labels = append(labels, "spam")
@@ -134,8 +142,10 @@ func (s *session) Data(r io.Reader) error {
 	}
 	if err := s.b.Svc.Ingest(ctx, raw, s.rcpts, core.InboundMeta{MailFrom: s.from, AuthResults: auth, Labels: labels}); err != nil {
 		s.b.Log.Error("ingest failed", "err", err, "remote", s.remote)
+		metrics.SMTPRejected.With("ingest_error").Inc()
 		return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: "Temporary failure, try again"}
 	}
+	metrics.SMTPAccepted.Inc()
 	return nil
 }
 

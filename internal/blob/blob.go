@@ -1,6 +1,6 @@
 // Package blob stores raw messages and attachments. The filesystem store is
-// for single node deployments; an S3 compatible store (Hetzner Object Storage)
-// implements the same interface later.
+// for single node deployments; S3 (s3.go) implements the same interface on
+// an S3 compatible bucket (Hetzner Object Storage).
 package blob
 
 import (

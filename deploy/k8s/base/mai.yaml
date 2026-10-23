@@ -81,9 +81,28 @@ spec:
               value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).crt
             - name: MAI_SMTP_TLS_KEY
               value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).key
+            # Blobs live on the mai-blobs volume (MAI_BLOB_BACKEND=fs, default).
+            # For Hetzner Object Storage, uncomment and add both keys to
+            # mai-secrets; use its own bucket, not the Object Lock backup one.
+            # Existing blobs are not copied over by the switch.
+            # - name: MAI_BLOB_BACKEND
+            #   value: s3
+            # - name: MAI_S3_ENDPOINT
+            #   value: https://fsn1.your-objectstorage.com
+            # - name: MAI_S3_REGION
+            #   value: fsn1
+            # - name: MAI_S3_BUCKET
+            #   value: mai-blobs-staging
+            # - name: MAI_S3_ACCESS_KEY
+            #   valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_S3_ACCESS_KEY } }
+            # - name: MAI_S3_SECRET_KEY
+            #   valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_S3_SECRET_KEY } }
           ports:
             - { name: http, containerPort: 8080 }
             - { name: smtp, containerPort: 2525 }
+            # GET /metrics (MAI_METRICS_ADDR, default :9090): not in any
+            # Service Caddy proxies; NetworkPolicy mai admits the namespace only.
+            - { name: metrics, containerPort: 9090 }
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 5

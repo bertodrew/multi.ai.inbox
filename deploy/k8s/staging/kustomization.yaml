@@ -18,6 +18,8 @@ configMapGenerator:
       - MAI_SHARED_DOMAIN=agents.localhost
       - MAI_SPF_INCLUDE=spf.brevo.com
       - MAI_RATE_LIMIT_PER_SECOND=20
+      # Blobs stay on the mai-blobs volume (MAI_BLOB_BACKEND=fs); the
+      # commented MAI_S3_* env in base/mai.yaml switches to Object Storage.
       # Browser origins allowed to call the API (the future console).
       - MAI_CORS_ORIGINS=https://2-28-99-252.sslip.io
 images:

@@ -40,6 +40,7 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/dispatcher"
 	"github.com/bertodrew/multi.ai.inbox/internal/enrich"
 	"github.com/bertodrew/multi.ai.inbox/internal/mcpserver"
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/scheduler"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
@@ -57,6 +58,8 @@ type config struct {
 	Hostname       string
 	SharedDomain   string
 	BlobDir        string
+	Blob           blob.Store
+	MetricsAddr    string
 	Relay          string
 	RspamdURL      string
 	ClamdAddr      string
@@ -94,6 +97,12 @@ func loadConfig() config {
 		fmt.Fprintln(os.Stderr, "invalid MAI_SEND_MAX_AGE: want a positive duration such as 120h")
 		os.Exit(2)
 	}
+	blobDir := env("MAI_BLOB_DIR", "./var/blobs")
+	store, err := blobStore(blobDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	return config{
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		SystemDBURL:    os.Getenv("MAI_SYSTEM_DATABASE_URL"),
@@ -102,7 +111,9 @@ func loadConfig() config {
 		SMTPAddr:       env("MAI_SMTP_ADDR", ":2525"),
 		Hostname:       env("MAI_HOSTNAME", "localhost"),
 		SharedDomain:   os.Getenv("MAI_SHARED_DOMAIN"),
-		BlobDir:        env("MAI_BLOB_DIR", "./var/blobs"),
+		BlobDir:        blobDir,
+		Blob:           store,
+		MetricsAddr:    env("MAI_METRICS_ADDR", ":9090"),
 		Relay:          os.Getenv("MAI_SMTP_RELAY"),
 		RspamdURL:      os.Getenv("MAI_RSPAMD_URL"),
 		ClamdAddr:      os.Getenv("MAI_CLAMD_ADDR"),
@@ -116,6 +127,24 @@ func loadConfig() config {
 		TLSCert:        os.Getenv("MAI_SMTP_TLS_CERT"),
 		TLSKey:         os.Getenv("MAI_SMTP_TLS_KEY"),
 		SendMaxAge:     sendMaxAge,
+	}
+}
+
+// blobStore picks the blob backend: fs (default, MAI_BLOB_DIR) or s3
+// (Hetzner Object Storage, path style, Signature Version 4).
+func blobStore(dir string) (blob.Store, error) {
+	switch backend := env("MAI_BLOB_BACKEND", "fs"); backend {
+	case "fs":
+		return blob.FS{Root: dir}, nil
+	case "s3":
+		s, err := blob.NewS3(os.Getenv("MAI_S3_ENDPOINT"), os.Getenv("MAI_S3_REGION"), os.Getenv("MAI_S3_BUCKET"),
+			os.Getenv("MAI_S3_ACCESS_KEY"), os.Getenv("MAI_S3_SECRET_KEY"))
+		if err != nil {
+			return nil, fmt.Errorf("MAI_BLOB_BACKEND=s3: %w (set MAI_S3_ENDPOINT, MAI_S3_REGION, MAI_S3_BUCKET, MAI_S3_ACCESS_KEY, MAI_S3_SECRET_KEY)", err)
+		}
+		return s, nil
+	default:
+		return nil, fmt.Errorf("invalid MAI_BLOB_BACKEND %q: want fs or s3", backend)
 	}
 }
 
@@ -206,7 +235,7 @@ func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 }
 
 func service(d *db.DB, cfg config) *core.Service {
-	return &core.Service{DB: d, Blob: blob.FS{Root: cfg.BlobDir}, SharedDomain: cfg.SharedDomain,
+	return &core.Service{DB: d, Blob: cfg.Blob, SharedDomain: cfg.SharedDomain,
 		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
 		SendMaxAge: cfg.SendMaxAge}
 }
@@ -222,7 +251,25 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 	return withDB(ctx, cfg, func(d *db.DB) error {
 		svc := service(d, cfg)
 		var wg sync.WaitGroup
-		errs := make(chan error, 2)
+		errs := make(chan error, 3)
+
+		if cfg.MetricsAddr != "off" {
+			metricsSrv := metricsServer(svc, cfg.MetricsAddr, log)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				log.Info("metrics listening", "addr", cfg.MetricsAddr)
+				if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					errs <- err
+				}
+			}()
+			go func() {
+				<-ctx.Done()
+				shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = metricsSrv.Shutdown(shutdown)
+			}()
+		}
 
 		if enabled["api"] {
 			srv := &api.Server{Svc: svc, Log: log}
@@ -304,6 +351,29 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			return nil
 		}
 	})
+}
+
+// metricsServer serves GET /metrics (Prometheus text format) on its own
+// address, which Caddy does not proxy; the NetworkPolicy admits scrapes from
+// the namespace only. Backlog gauges are read from the database per scrape.
+func metricsServer(svc *core.Service, addr string, log *slog.Logger) *http.Server {
+	metrics.Default.Log = log
+	metrics.Default.Collect("mai_queue", func(ctx context.Context) ([]metrics.Sample, error) {
+		st, err := svc.QueueStats(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return []metrics.Sample{
+			{Name: "mai_outbox_pending_events", Help: "Events not yet fanned out to webhooks.", Value: float64(st.OutboxPending)},
+			{Name: "mai_outbox_lag_seconds", Help: "Age of the oldest event not yet fanned out (0 when none).", Value: st.OutboxLagSeconds},
+			{Name: "mai_screening_messages", Help: "Inbound messages held by screening, by state.", Labels: map[string]string{"state": "pending"}, Value: float64(st.ScreeningPending)},
+			{Name: "mai_screening_messages", Help: "Inbound messages held by screening, by state.", Labels: map[string]string{"state": "review"}, Value: float64(st.ScreeningReview)},
+			{Name: "mai_blob_deletion_queue", Help: "Blobs queued for deletion.", Value: float64(st.BlobDeletions)},
+		}, nil
+	})
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Default.Handler())
+	return &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 }
 
 func admin(ctx context.Context, cfg config, args []string) error {
