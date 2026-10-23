@@ -92,8 +92,10 @@ else
   fi
   chmod 600 "$FLUX_DEPLOY_KEY_FILE"
   # GitHub answers "successfully authenticated" (exit status 1) once the deploy key is registered.
-  if ! ssh -T -i "$FLUX_DEPLOY_KEY_FILE" -o IdentitiesOnly=yes -o BatchMode=yes \
-       -o StrictHostKeyChecking=accept-new git@github.com 2>&1 | grep -q "successfully authenticated"; then
+  # ssh -T to github.com ALWAYS exits 1; under `set -o pipefail` the bare pipeline would fail
+  # even when grep matches. Neutralize ssh's exit status in a subshell.
+  if ! ( ssh -T -i "$FLUX_DEPLOY_KEY_FILE" -o IdentitiesOnly=yes -o BatchMode=yes \
+       -o StrictHostKeyChecking=accept-new git@github.com 2>&1; exit 0 ) | grep -q "successfully authenticated"; then
     cat <<EOF
 
 ACTION NEEDED: add this public key in GitHub > ${REPO_OWNER}/${REPO_NAME} > Settings > Deploy keys,
