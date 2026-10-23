@@ -89,6 +89,7 @@ REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP 
 | Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
 | Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
 | Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
+| Billing | `GET /v0/billing` (`billing_read`), `POST /v0/billing/checkout`, `POST /v0/billing/portal` (`billing_write`, audited), `POST /stripe/webhook` (public, Stripe-Signature verified); all `501 billing_disabled` without Stripe settings |
 | Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml` |
 
 Security at the edge: request IDs, security headers, CORS allowlist, per organization rate limit, per IP limit on failed keys, X-Forwarded-For only from trusted proxies, SMTP STARTTLS (certificate from Caddy, self signed fallback). The MCP gateway applies the same permissions per tool and writes agent actions to the audit log. `mai mcp-config -url <api>` prints the setup for Claude Code, Cursor and Codex.
@@ -109,7 +110,9 @@ Screen before notify (organization setting `screen_before_notify`, on by default
 | `message.security.completed` | after screening | after a `clear` verdict, before `message.received` |
 | `message.security.review` | after screening, full payload | when held for review, no bodies |
 
-Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; builder 10 inboxes, 1,000/day, 10,000/month; team 150 inboxes, 15,000/day, 150,000/month.
+Plans (`mai admin org-plan`, or Stripe): free 3 inboxes, 100/day, 3,000/month, footer; builder (€15) 10 inboxes, 1,000/day, 10,000/month; growth (€59) 50 inboxes, 20 domains, 2,500/day, 40,000/month; team (€149) 150 inboxes, 15,000/day, 150,000/month. Yearly prices are 10 × monthly.
+
+Billing (Stripe REST API over `net/http`, no SDK) is on when `MAI_STRIPE_SECRET_KEY` and `MAI_STRIPE_WEBHOOK_SECRET` are set; prices come from `MAI_STRIPE_PRICE_<BUILDER|GROWTH|TEAM>_<MONTHLY|YEARLY>` and `MAI_BILLING_RETURN_URL` is the default return page. In Stripe: create the six prices in EUR (tax behaviour exclusive), register `https://<api host>/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` and `invoice.payment_failed`, enable the customer portal, and **set up Stripe Tax** (origin address, EU OSS registration): Checkout runs with `automatic_tax` and VAT ID collection and fails until Stripe Tax is configured. A `past_due` or `unpaid` subscription keeps its plan for 7 days, then the scheduler moves the organization to free; payment restores it.
 
 ## Deploy (Hetzner, k3s, GitOps)
 

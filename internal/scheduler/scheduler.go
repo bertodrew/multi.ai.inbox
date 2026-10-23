@@ -1,6 +1,6 @@
 // Package scheduler runs periodic platform jobs: domain verification, the
-// screening timeout, blob deletion for deleted inboxes and the address
-// quarantine purge (retention and warm up later).
+// screening timeout, blob deletion for deleted inboxes, the address
+// quarantine purge and the billing grace period (retention and warm up later).
 package scheduler
 
 import (
@@ -41,6 +41,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.Log.Error("quarantine purge failed", "err", err)
 		} else if n > 0 {
 			s.Log.Info("expired address quarantines purged", "count", n)
+		}
+		if n, err := s.Svc.DowngradeLapsedSubscriptions(ctx); err != nil {
+			s.Log.Error("billing grace period sweep failed", "err", err)
+		} else if n > 0 {
+			s.Log.Warn("organizations moved to free after the billing grace period", "count", n)
 		}
 		select {
 		case <-ctx.Done():

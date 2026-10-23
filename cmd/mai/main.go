@@ -4,7 +4,7 @@
 //	mai migrate
 //	mai admin seed                              staging org, user and admin testers
 //	mai admin org-create -name "Acme"
-//	mai admin org-plan -org <uuid> -plan team
+//	mai admin org-plan -org <uuid> -plan team   free, builder, growth, team (Stripe sets it when billing is on)
 //	mai admin org-screening -org <uuid> [-on|-off]  screen before notify (no flag prints it)
 //	mai admin key-create -org <uuid> [-name agent]
 //	mai admin domain-add -name agents.example.eu [-org <uuid>]
@@ -43,6 +43,7 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/scheduler"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
+	"github.com/bertodrew/multi.ai.inbox/internal/stripe"
 	"github.com/bertodrew/multi.ai.inbox/internal/tlsx"
 )
 
@@ -70,6 +71,7 @@ type config struct {
 	TLSCert        string
 	TLSKey         string
 	SendMaxAge     time.Duration
+	Billing        *core.Billing
 }
 
 func env(key, def string) string {
@@ -116,7 +118,32 @@ func loadConfig() config {
 		TLSCert:        os.Getenv("MAI_SMTP_TLS_CERT"),
 		TLSKey:         os.Getenv("MAI_SMTP_TLS_KEY"),
 		SendMaxAge:     sendMaxAge,
+		Billing:        loadBilling(),
 	}
+}
+
+// loadBilling reads the Stripe settings. Billing stays off (501
+// billing_disabled) unless both the secret key and the webhook secret are
+// set. Prices come from MAI_STRIPE_PRICE_<PLAN>_<MONTHLY|YEARLY>; a plan
+// without a price simply cannot be bought. Secrets are never printed.
+func loadBilling() *core.Billing {
+	key, secret := os.Getenv("MAI_STRIPE_SECRET_KEY"), os.Getenv("MAI_STRIPE_WEBHOOK_SECRET")
+	if key == "" || secret == "" {
+		if key != "" || secret != "" {
+			fmt.Fprintln(os.Stderr, "billing disabled: set both MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET")
+		}
+		return nil
+	}
+	b := &core.Billing{Stripe: &stripe.Client{SecretKey: key}, WebhookSecret: secret,
+		Prices: map[string]core.Price{}, ReturnURL: os.Getenv("MAI_BILLING_RETURN_URL")}
+	for _, plan := range core.PaidPlans {
+		for _, interval := range core.BillingIntervals {
+			if id := os.Getenv("MAI_STRIPE_PRICE_" + strings.ToUpper(plan) + "_" + strings.ToUpper(interval)); id != "" {
+				b.Prices[id] = core.Price{Plan: plan, Interval: interval}
+			}
+		}
+	}
+	return b
 }
 
 func main() {
@@ -208,7 +235,7 @@ func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 func service(d *db.DB, cfg config) *core.Service {
 	return &core.Service{DB: d, Blob: blob.FS{Root: cfg.BlobDir}, SharedDomain: cfg.SharedDomain,
 		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
-		SendMaxAge: cfg.SendMaxAge}
+		SendMaxAge: cfg.SendMaxAge, Billing: cfg.Billing}
 }
 
 func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) error {
@@ -232,6 +259,11 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			srv.MCP = mcpserver.Handler(svc, mcpCaller, log, version)
 			srv.AuthFailures = api.NewLimiter(10.0/60, 10) // 10 failed keys per IP, refilling 10 per minute
 			srv.Gateway = cfg.Gateway
+			if cfg.Billing == nil {
+				log.Info("billing disabled: MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET are not set")
+			} else {
+				log.Info("billing enabled", "prices", len(cfg.Billing.Prices))
+			}
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			wg.Add(1)
 			go func() {
@@ -316,7 +348,7 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	name := fs.String("name", "", "name")
 	org := fs.String("org", "", "organization id")
-	plan := fs.String("plan", "", "plan: free, builder, team")
+	plan := fs.String("plan", "", "plan: free, builder, growth, team")
 	on := fs.Bool("on", false, "org-screening: hold inbound mail until the gatekeeper verdict exists")
 	off := fs.Bool("off", false, "org-screening: notify message.received at ingest (not recommended)")
 	inbox := fs.String("inbox", "", "inbox address")

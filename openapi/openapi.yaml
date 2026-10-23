@@ -257,6 +257,69 @@ paths:
       parameters: [{ name: webhook, in: path, required: true, schema: { type: string, format: uuid } }]
       summary: Delete a webhook
       responses: { "204": { description: Deleted } }
+  /v0/billing:
+    get:
+      summary: Plan and Stripe subscription state (requires billing_read)
+      description: |
+        `status` is `none` until a Checkout completes, then the Stripe
+        subscription status. A `past_due` or `unpaid` subscription keeps its
+        plan until `grace_period_ends_at` (7 days), then the organization
+        moves to free; paying restores the plan. 501 billing_disabled when
+        the deployment has no Stripe configuration.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Billing" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /v0/billing/checkout:
+    post:
+      summary: Start a Stripe Checkout for a paid plan (requires billing_write, audited)
+      description: |
+        Creates a Checkout Session in subscription mode and returns its `url`;
+        send the user there. Stripe Tax adds EU VAT and the customer can enter
+        a VAT ID. The plan changes when Stripe confirms the payment through
+        the webhook, not when this call returns. 409 already_subscribed when
+        a subscription is live: change plans in the portal instead.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Checkout" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/BillingSession" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /v0/billing/portal:
+    post:
+      summary: Open the Stripe customer portal (requires billing_write, audited)
+      description: Plan and interval changes, payment method, invoices and cancellation. 409 no_billing_account before the first Checkout.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { return_url: { type: string, format: uri } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/BillingSession" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /stripe/webhook:
+    post:
+      summary: Stripe webhook endpoint (public, Stripe-Signature verified)
+      description: |
+        Not for API clients: register this URL in the Stripe dashboard. The
+        raw body must carry a valid `Stripe-Signature` (HMAC SHA256, at most
+        5 minutes old). Handles checkout.session.completed,
+        customer.subscription.created, customer.subscription.updated,
+        customer.subscription.deleted and invoice.payment_failed; other types
+        are acknowledged. Each event id is applied once.
+      security: []
+      parameters: [{ name: Stripe-Signature, in: header, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Received; outcome is applied, duplicate, stale or ignored" }
+        "400": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, description: "API key, prefix mai_live_" }
@@ -284,7 +347,8 @@ components:
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
                        address_quarantined, sending_paused,
                        missing_permission, permission_escalation, api_key_expired, not_held,
-                       payload_too_large, internal_error]
+                       billing_disabled, billing_provider_error, already_subscribed, no_billing_account,
+                       invalid_signature, payload_too_large, internal_error]
               message: { type: string }
   schemas:
     Org:
@@ -292,7 +356,7 @@ components:
       properties:
         organization_id: { type: string, format: uuid }
         name: { type: string }
-        plan: { type: string }
+        plan: { type: string, enum: [free, builder, growth, team] }
         screen_before_notify: { type: boolean, description: "Hold inbound mail until screened (operator setting: mai admin org-screening)" }
     CreateInbox:
       type: object
@@ -436,4 +500,27 @@ components:
     Permission:
       type: string
       enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
-             webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release]
+             webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release,
+             billing_read, billing_write]
+    Checkout:
+      type: object
+      additionalProperties: false
+      required: [plan]
+      properties:
+        plan: { type: string, enum: [builder, growth, team] }
+        interval: { type: string, enum: [monthly, yearly], default: monthly }
+        success_url: { type: string, format: uri, description: "Defaults to the deployment's MAI_BILLING_RETURN_URL" }
+        cancel_url: { type: string, format: uri, description: "Defaults to the deployment's MAI_BILLING_RETURN_URL" }
+    BillingSession:
+      type: object
+      properties: { session_id: { type: string }, url: { type: string, format: uri } }
+    Billing:
+      type: object
+      properties:
+        plan: { type: string, enum: [free, builder, growth, team] }
+        status: { type: string, enum: [none, incomplete, incomplete_expired, trialing, active, past_due, unpaid, canceled, paused] }
+        interval: { type: string, enum: [monthly, yearly] }
+        current_period_end: { type: string, format: date-time }
+        cancel_at_period_end: { type: boolean }
+        past_due_since: { type: string, format: date-time }
+        grace_period_ends_at: { type: string, format: date-time, description: "Set while past_due or unpaid; the plan drops to free after it" }
