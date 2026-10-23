@@ -36,6 +36,6 @@ configMapGenerator:
   #     - MAI_STRIPE_PRICE_TEAM_YEARLY=price_...
 images:
   - name: ghcr.io/bertodrew/multi-ai-inbox
-    newTag: 343c9fc3cf3ffd36d30654ebb6e5a96df4609f43
+    newTag: 1c2aa1e909524b41f53e608ed5e2c82b06d186b1
   - name: ghcr.io/bertodrew/multi-ai-inbox-landing
-    newTag: 343c9fc3cf3ffd36d30654ebb6e5a96df4609f43
+    newTag: 1c2aa1e909524b41f53e608ed5e2c82b06d186b1
