@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -119,6 +120,25 @@ type replyIn struct {
 	ReplyAll       bool     `json:"reply_all,omitempty"`
 	Labels         []string `json:"labels,omitempty"`
 	IdempotencyKey string   `json:"idempotency_key,omitempty"`
+}
+
+type createDraftIn struct {
+	Inbox     string     `json:"inbox"`
+	To        []string   `json:"to,omitempty" jsonschema:"defaults to the sender when in_reply_to is set"`
+	Cc        []string   `json:"cc,omitempty"`
+	Subject   string     `json:"subject,omitempty"`
+	Text      string     `json:"text,omitempty"`
+	HTML      string     `json:"html,omitempty"`
+	Labels    []string   `json:"labels,omitempty"`
+	InReplyTo string     `json:"in_reply_to,omitempty" jsonschema:"message id to reply to; keeps the thread"`
+	ReplyAll  bool       `json:"reply_all,omitempty"`
+	SendAt    *time.Time `json:"send_at,omitempty" jsonschema:"RFC 3339 time to send automatically"`
+}
+
+type draftIn struct {
+	Inbox          string `json:"inbox"`
+	DraftID        string `json:"draft_id"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 type labelsIn struct {
@@ -260,6 +280,37 @@ func newServer(g *gate, version string) *mcp.Server {
 				ReplyAll: in.ReplyAll, Labels: in.Labels}, in.IdempotencyKey)
 			if err == nil {
 				g.audit(ctx, "reply_to_message", res.MessageID)
+			}
+			return nil, res, err
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "create_draft", Description: "Save an email as a draft for review or later sending; set send_at to schedule it."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in createDraftIn) (*mcp.CallToolResult, any, error) {
+			if err := g.need(core.PermMessageSend); err != nil {
+				return nil, nil, err
+			}
+			d, err := svc.CreateDraft(ctx, org, in.Inbox, core.CreateDraftRequest{To: in.To, Cc: in.Cc, Subject: in.Subject,
+				Text: in.Text, HTML: in.HTML, Labels: in.Labels, InReplyTo: in.InReplyTo, ReplyAll: in.ReplyAll, SendAt: in.SendAt})
+			if err == nil {
+				g.audit(ctx, "create_draft", d.ID)
+			}
+			return nil, d, err
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "list_drafts", Description: "List drafts of an inbox, newest first."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in pageIn) (*mcp.CallToolResult, any, error) {
+			if err := g.need(core.PermMessageRead); err != nil {
+				return nil, nil, err
+			}
+			items, next, err := svc.ListDrafts(ctx, org, in.Inbox, core.Page{Limit: in.Limit, Token: in.PageToken})
+			return nil, listOut("drafts", items, next), err
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "send_draft", Description: "Send a draft now; the draft is deleted once queued."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in draftIn) (*mcp.CallToolResult, any, error) {
+			if err := g.need(core.PermMessageSend); err != nil {
+				return nil, nil, err
+			}
+			res, err := svc.SendDraft(ctx, org, in.Inbox, in.DraftID, in.IdempotencyKey)
+			if err == nil {
+				g.audit(ctx, "send_draft", res.MessageID)
 			}
 			return nil, res, err
 		})

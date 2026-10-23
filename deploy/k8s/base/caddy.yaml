@@ -12,8 +12,18 @@ data:
       https_port 8443
     }
     {$MAI_API_HOST} {
-      encode zstd gzip
-      reverse_proxy mai-http:8080
+      # Server Sent Events: no compression and no buffering, every event is
+      # flushed to the client as soon as the platform writes it.
+      @events path /v0/events/stream
+      handle @events {
+        reverse_proxy mai-http:8080 {
+          flush_interval -1
+        }
+      }
+      handle {
+        encode zstd gzip
+        reverse_proxy mai-http:8080
+      }
     }
     (static_site) {
       encode zstd gzip

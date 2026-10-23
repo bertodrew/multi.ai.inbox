@@ -232,6 +232,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			srv.MCP = mcpserver.Handler(svc, mcpCaller, log, version)
 			srv.AuthFailures = api.NewLimiter(10.0/60, 10) // 10 failed keys per IP, refilling 10 per minute
 			srv.Gateway = cfg.Gateway
+			srv.Done = ctx.Done() // open event streams end so shutdown does not wait for them
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			wg.Add(1)
 			go func() {

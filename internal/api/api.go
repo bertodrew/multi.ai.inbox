@@ -43,6 +43,12 @@ type Server struct {
 	AuthFailures *Limiter
 	// Gateway holds the edge settings (CORS, trusted proxies).
 	Gateway Gateway
+	// Streams caps the open event streams per API key; zero values use the defaults.
+	Streams StreamSettings
+	// Done ends open event streams (server shutdown); nil means never.
+	Done <-chan struct{}
+
+	streams streamCounter
 }
 
 const maxBody = 8 << 20
@@ -82,6 +88,13 @@ func (s *Server) Handler() http.Handler {
 	route("POST /v0/inboxes/{inbox}/messages/{message}/reply", core.PermMessageSend, s.reply)
 	route("POST /v0/inboxes/{inbox}/messages/{message}/release", core.PermMessageRelease, s.releaseMessage)
 	route("GET /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}", core.PermMessageRead, s.attachment)
+	route("POST /v0/inboxes/{inbox}/drafts", core.PermMessageSend, s.createDraft)
+	route("GET /v0/inboxes/{inbox}/drafts", core.PermMessageRead, s.listDrafts)
+	route("GET /v0/inboxes/{inbox}/drafts/{draft}", core.PermMessageRead, s.getDraft)
+	route("PATCH /v0/inboxes/{inbox}/drafts/{draft}", core.PermMessageSend, s.updateDraft)
+	route("DELETE /v0/inboxes/{inbox}/drafts/{draft}", core.PermMessageSend, s.deleteDraft)
+	route("POST /v0/inboxes/{inbox}/drafts/{draft}/send", core.PermMessageSend, s.sendDraft)
+	route("GET /v0/events/stream", core.PermMessageRead, s.streamEvents)
 	route("POST /v0/domains", core.PermDomainWrite, s.createDomain)
 	route("GET /v0/domains", core.PermDomainRead, s.listDomains)
 	route("GET /v0/domains/{domain}", core.PermDomainRead, s.getDomain)
@@ -117,12 +130,7 @@ func (s *Server) require(perm string, h http.HandlerFunc) http.Handler {
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := ""
-		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			key = strings.TrimPrefix(h, "Bearer ")
-		} else if h := r.Header.Get("X-Api-Key"); h != "" {
-			key = h
-		}
+		key := apiKey(r)
 		if key == "" {
 			s.fail(w, &core.Error{Status: http.StatusUnauthorized, Name: "Unauthorized", Code: "missing_authorization",
 				Message: "send Authorization: Bearer <api key>"})
@@ -151,6 +159,14 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		setLogOrg(r.Context(), org.ID)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, principal)))
 	})
+}
+
+// apiKey reads the API key from Authorization: Bearer, or else X-Api-Key.
+func apiKey(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimPrefix(h, "Bearer ")
+	}
+	return r.Header.Get("X-Api-Key")
 }
 
 func (s *Server) ok(w http.ResponseWriter, status int, v any) {

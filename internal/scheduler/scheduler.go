@@ -1,6 +1,6 @@
 // Package scheduler runs periodic platform jobs: domain verification, the
-// screening timeout, blob deletion for deleted inboxes and the address
-// quarantine purge (retention and warm up later).
+// screening timeout, scheduled drafts, blob deletion for deleted inboxes and
+// the address quarantine purge (retention and warm up later).
 package scheduler
 
 import (
@@ -36,6 +36,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 		} else if n > 0 {
 			s.Log.Warn("screening timed out, messages held for review", "count", n)
 		}
+		s.sendDrafts(ctx)
 		s.purgeBlobs(ctx)
 		if n, err := s.Svc.PurgeExpiredQuarantine(ctx); err != nil {
 			s.Log.Error("quarantine purge failed", "err", err)
@@ -65,5 +66,21 @@ func (s *Scheduler) purgeBlobs(ctx context.Context) {
 	}
 	if total > 0 {
 		s.Log.Info("blobs deleted", "count", total)
+	}
+}
+
+// sendDrafts sends the scheduled drafts that are due, in batches.
+func (s *Scheduler) sendDrafts(ctx context.Context) {
+	for ctx.Err() == nil {
+		sent, failed, err := s.Svc.SendDueDrafts(ctx, 100)
+		if err != nil {
+			s.Log.Error("scheduled draft send failed", "err", err)
+		}
+		if sent > 0 || failed > 0 {
+			s.Log.Info("scheduled drafts processed", "sent", sent, "refused", failed)
+		}
+		if sent+failed < 100 || err != nil {
+			return
+		}
 	}
 }

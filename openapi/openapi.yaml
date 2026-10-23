@@ -177,6 +177,92 @@ paths:
       summary: Download an attachment
       parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses: { "200": { description: Attachment bytes with its content type } }
+  /v0/inboxes/{inbox}/drafts:
+    parameters: [{ $ref: "#/components/parameters/inbox" }]
+    post:
+      summary: Create a draft (needs message_send)
+      description: |
+        Recipients and a body are only required to send. With `in_reply_to`
+        the draft is a reply: `to`, `subject` and threading default to those
+        of the message replied to, and the sent message stays in its thread.
+        Messages held by screening cannot be replied to. With `send_at` the
+        scheduler sends the draft at that time (checked every minute). Fires
+        `draft.created`.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDraft" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List drafts, newest first (needs message_read)
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/DraftList" } } } }
+  /v0/inboxes/{inbox}/drafts/{draft}:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/draft" }]
+    get:
+      summary: Get a draft (needs message_read)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Update a draft (needs message_send)
+      description: |
+        Replaces the fields present in the body. `send_at` schedules the
+        draft, `send_at: null` cancels a scheduled send. Editing a draft whose
+        scheduled send failed makes it a plain draft again.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDraft" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete a draft (needs message_send)
+      responses: { "204": { description: Deleted } }
+  /v0/inboxes/{inbox}/drafts/{draft}/send:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/draft" }, { $ref: "#/components/parameters/idempotency_key" }]
+    post:
+      summary: Send a draft now and delete it (needs message_send)
+      description: |
+        Same rules as a send: plan limits (429 limit_exceeded), 403
+        sending_paused, the free plan footer and Idempotency-Key. A repeated
+        key returns the first result although the draft is gone.
+      responses:
+        "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v0/events/stream:
+    get:
+      summary: Live events as Server Sent Events (needs message_read)
+      description: |
+        Streams the organization's events as `text/event-stream`. Each event
+        has `id` (its position, for resuming), `event` (the event type) and
+        `data` (the webhook envelope: type, event_type, event_id, created_at,
+        data). Payloads are the webhook payloads: events about messages held
+        by screening carry no body. Without `Last-Event-ID` the stream starts
+        with new events; with it, it continues after that id (EventSource
+        sends it on reconnect). A `: ping` comment is sent every 15 seconds
+        when idle. Up to 5 open streams per API key (429 too_many_streams);
+        a revoked or expired key loses its streams within a minute.
+      parameters:
+        - { name: types, in: query, description: "Comma separated event types; all when absent", schema: { type: string } }
+        - { name: inbox, in: query, description: "Only events of this inbox", schema: { type: string, format: email } }
+        - { name: Last-Event-ID, in: header, description: "Resume after this event id", schema: { type: integer, minimum: 0 } }
+        - { name: last_event_id, in: query, description: "Same as Last-Event-ID, for clients that cannot set headers", schema: { type: integer, minimum: 0 } }
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /v0/domains:
     post:
       summary: Add a custom domain; returns the DNS records to publish
@@ -263,6 +349,7 @@ components:
   parameters:
     inbox: { name: inbox, in: path, required: true, schema: { type: string, format: email } }
     message: { name: message, in: path, required: true, description: "Message UUID or RFC Message-ID (URL encoded)", schema: { type: string } }
+    draft: { name: draft, in: path, required: true, schema: { type: string, format: uuid } }
     limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
     page_token: { name: page_token, in: query, schema: { type: string } }
     label: { name: label, in: query, schema: { type: string } }
@@ -284,7 +371,7 @@ components:
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
                        address_quarantined, sending_paused,
                        missing_permission, permission_escalation, api_key_expired, not_held,
-                       payload_too_large, internal_error]
+                       too_many_streams, payload_too_large, internal_error]
               message: { type: string }
   schemas:
     Org:
@@ -401,10 +488,62 @@ components:
     SendResult:
       type: object
       properties: { message_id: { type: string }, thread_id: { type: string, format: uuid } }
+    CreateDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        to: { type: array, items: { type: string, format: email } }
+        cc: { type: array, items: { type: string, format: email } }
+        bcc: { type: array, items: { type: string, format: email } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+        in_reply_to: { type: string, description: "Message UUID or RFC Message-ID to reply to" }
+        reply_all: { type: boolean, description: "With in_reply_to: copy the other recipients" }
+        send_at: { type: string, format: date-time, description: "Send automatically at this time (future, within 365 days)" }
+    UpdateDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        to: { type: array, items: { type: string, format: email } }
+        cc: { type: array, items: { type: string, format: email } }
+        bcc: { type: array, items: { type: string, format: email } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+        send_at: { type: [string, "null"], format: date-time, description: "null cancels a scheduled send" }
+    Draft:
+      type: object
+      properties:
+        draft_id: { type: string, format: uuid }
+        inbox_id: { type: string, format: email }
+        thread_id: { type: string, format: uuid, description: Set for a reply draft }
+        in_reply_to: { type: string, description: RFC Message-ID of the message replied to }
+        references: { type: array, items: { type: string } }
+        to: { type: array, items: { type: string } }
+        cc: { type: array, items: { type: string } }
+        bcc: { type: array, items: { type: string } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { type: object, properties: { filename: { type: string }, content_type: { type: string }, size: { type: integer } } } }
+        send_at: { type: string, format: date-time }
+        status: { type: string, enum: [draft, scheduled, failed] }
+        last_error: { type: string, description: Why a scheduled send was refused }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DraftList:
+      type: object
+      properties: { count: { type: integer }, next_page_token: { type: string }, drafts: { type: array, items: { $ref: "#/components/schemas/Draft" } } }
     EventType:
       type: string
       enum: [message.received, message.received.spam, message.sent, message.failed, message.bounced, message.security.completed,
-             message.security.review, domain.verified, inbox.sending.paused, inbox.sending.resumed,
+             message.security.review, domain.verified, draft.created, inbox.sending.paused, inbox.sending.resumed,
              organization.sending.paused, organization.sending.resumed]
     Webhook:
       type: object

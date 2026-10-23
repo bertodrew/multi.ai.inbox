@@ -242,9 +242,34 @@ export const sendingAndReplying: DocPage = {
         "On the free plan a short footer is appended: \"Sent via multi.ai.inbox\".",
       ],
     },
+    { type: "h2", text: "Drafts" },
+    {
+      type: "p",
+      text: "A draft is a message saved for later: for a human to review, or to send at `send_at`. Create it with the same fields as a send; recipients and a body are only needed when it is sent. With `in_reply_to` (a message id) the draft is a reply: `to`, `subject` and the threading headers default to those of that message, and the sent message joins its thread. `POST .../drafts/{draft}/send` sends it now through the normal send path (plan limits, `403 sending_paused`, `Idempotency-Key`) and deletes the draft.",
+    },
+    {
+      type: "list",
+      items: [
+        "`send_at` schedules the draft; the scheduler checks every minute. `PATCH` with `send_at: null` cancels it.",
+        "If a scheduled send is refused (for example a plan limit), the draft gets `status: failed` and `last_error`. Edit it or send it by hand to retry.",
+        "Creating a draft needs `message_send`; reading drafts needs `message_read`. `draft.created` fires for every new draft.",
+      ],
+    },
     { type: "h2", text: "Endpoints" },
-    { type: "endpoints", keys: ["POST /v0/inboxes/{inbox}/messages/send", "POST /v0/inboxes/{inbox}/messages/{message}/reply"] },
-    { type: "schemas", names: ["Send", "Reply", "SendResult"] },
+    {
+      type: "endpoints",
+      keys: [
+        "POST /v0/inboxes/{inbox}/messages/send",
+        "POST /v0/inboxes/{inbox}/messages/{message}/reply",
+        "POST /v0/inboxes/{inbox}/drafts",
+        "GET /v0/inboxes/{inbox}/drafts",
+        "GET /v0/inboxes/{inbox}/drafts/{draft}",
+        "PATCH /v0/inboxes/{inbox}/drafts/{draft}",
+        "DELETE /v0/inboxes/{inbox}/drafts/{draft}",
+        "POST /v0/inboxes/{inbox}/drafts/{draft}/send",
+      ],
+    },
+    { type: "schemas", names: ["Send", "Reply", "SendResult", "Draft"] },
   ],
 };
 

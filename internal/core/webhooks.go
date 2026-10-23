@@ -20,6 +20,7 @@ var EventTypes = map[string]bool{
 	"message.security.completed":   true,
 	"message.security.review":      true,
 	"domain.verified":              true,
+	"draft.created":                true,
 	"inbox.sending.paused":         true,
 	"inbox.sending.resumed":        true,
 	"organization.sending.paused":  true,

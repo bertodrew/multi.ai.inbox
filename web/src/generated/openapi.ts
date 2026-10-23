@@ -877,6 +877,477 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "id": "get-v0-inboxes-inbox-drafts",
+      "method": "GET",
+      "path": "/v0/inboxes/{inbox}/drafts",
+      "summary": "List drafts, newest first (needs message_read)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "integer",
+          "description": "",
+          "constraints": [
+            "min 1",
+            "max 100",
+            "default 20"
+          ]
+        },
+        {
+          "name": "page_token",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "DraftList"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-inboxes-inbox-drafts",
+      "method": "POST",
+      "path": "/v0/inboxes/{inbox}/drafts",
+      "summary": "Create a draft (needs message_send)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": {
+        "schema": "CreateDraft",
+        "fields": [
+          {
+            "name": "to",
+            "type": "string (email)[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "cc",
+            "type": "string (email)[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "bcc",
+            "type": "string (email)[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "subject",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "text",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "html",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "labels",
+            "type": "string[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "attachments",
+            "type": "Attachment[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "in_reply_to",
+            "type": "string",
+            "required": false,
+            "description": "Message UUID or RFC Message-ID to reply to",
+            "constraints": []
+          },
+          {
+            "name": "reply_all",
+            "type": "boolean",
+            "required": false,
+            "description": "With in_reply_to: copy the other recipients",
+            "constraints": []
+          },
+          {
+            "name": "send_at",
+            "type": "string (date-time)",
+            "required": false,
+            "description": "Send automatically at this time (future, within 365 days)",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "201",
+          "description": "Created",
+          "schema": "Draft"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-inboxes-inbox-drafts-draft",
+      "method": "GET",
+      "path": "/v0/inboxes/{inbox}/drafts/{draft}",
+      "summary": "Get a draft (needs message_read)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "draft",
+          "in": "path",
+          "required": true,
+          "type": "string (uuid)",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "Draft"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "patch-v0-inboxes-inbox-drafts-draft",
+      "method": "PATCH",
+      "path": "/v0/inboxes/{inbox}/drafts/{draft}",
+      "summary": "Update a draft (needs message_send)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "draft",
+          "in": "path",
+          "required": true,
+          "type": "string (uuid)",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": {
+        "schema": "UpdateDraft",
+        "fields": [
+          {
+            "name": "to",
+            "type": "string (email)[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "cc",
+            "type": "string (email)[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "bcc",
+            "type": "string (email)[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "subject",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "text",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "html",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "labels",
+            "type": "string[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "attachments",
+            "type": "Attachment[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "send_at",
+            "type": "string,null (date-time)",
+            "required": false,
+            "description": "null cancels a scheduled send",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "Draft"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "delete-v0-inboxes-inbox-drafts-draft",
+      "method": "DELETE",
+      "path": "/v0/inboxes/{inbox}/drafts/{draft}",
+      "summary": "Delete a draft (needs message_send)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "draft",
+          "in": "path",
+          "required": true,
+          "type": "string (uuid)",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "204",
+          "description": "Deleted",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "id": "post-v0-inboxes-inbox-drafts-draft-send",
+      "method": "POST",
+      "path": "/v0/inboxes/{inbox}/drafts/{draft}/send",
+      "summary": "Send a draft now and delete it (needs message_send)",
+      "params": [
+        {
+          "name": "inbox",
+          "in": "path",
+          "required": true,
+          "type": "string (email)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "draft",
+          "in": "path",
+          "required": true,
+          "type": "string (uuid)",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": false,
+          "type": "string",
+          "description": "",
+          "constraints": [
+            "max length 256"
+          ]
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "Queued",
+          "schema": "SendResult"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-events-stream",
+      "method": "GET",
+      "path": "/v0/events/stream",
+      "summary": "Live events as Server Sent Events (needs message_read)",
+      "params": [
+        {
+          "name": "types",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "Comma separated event types; all when absent",
+          "constraints": []
+        },
+        {
+          "name": "inbox",
+          "in": "query",
+          "required": false,
+          "type": "string (email)",
+          "description": "Only events of this inbox",
+          "constraints": []
+        },
+        {
+          "name": "Last-Event-ID",
+          "in": "header",
+          "required": false,
+          "type": "integer",
+          "description": "Resume after this event id",
+          "constraints": [
+            "min 0"
+          ]
+        },
+        {
+          "name": "last_event_id",
+          "in": "query",
+          "required": false,
+          "type": "integer",
+          "description": "Same as Last-Event-ID, for clients that cannot set headers",
+          "constraints": [
+            "min 0"
+          ]
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "Event stream",
+          "schema": "string"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
       "id": "get-v0-domains",
       "method": "GET",
       "path": "/v0/domains",
@@ -1790,6 +2261,313 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "name": "CreateDraft",
+      "fields": [
+        {
+          "name": "to",
+          "type": "string (email)[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "cc",
+          "type": "string (email)[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "bcc",
+          "type": "string (email)[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "html",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "labels",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "attachments",
+          "type": "Attachment[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "in_reply_to",
+          "type": "string",
+          "required": false,
+          "description": "Message UUID or RFC Message-ID to reply to",
+          "constraints": []
+        },
+        {
+          "name": "reply_all",
+          "type": "boolean",
+          "required": false,
+          "description": "With in_reply_to: copy the other recipients",
+          "constraints": []
+        },
+        {
+          "name": "send_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "Send automatically at this time (future, within 365 days)",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "UpdateDraft",
+      "fields": [
+        {
+          "name": "to",
+          "type": "string (email)[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "cc",
+          "type": "string (email)[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "bcc",
+          "type": "string (email)[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "html",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "labels",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "attachments",
+          "type": "Attachment[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "send_at",
+          "type": "string,null (date-time)",
+          "required": false,
+          "description": "null cancels a scheduled send",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "Draft",
+      "fields": [
+        {
+          "name": "draft_id",
+          "type": "string (uuid)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "inbox_id",
+          "type": "string (email)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "thread_id",
+          "type": "string (uuid)",
+          "required": false,
+          "description": "Set for a reply draft",
+          "constraints": []
+        },
+        {
+          "name": "in_reply_to",
+          "type": "string",
+          "required": false,
+          "description": "RFC Message-ID of the message replied to",
+          "constraints": []
+        },
+        {
+          "name": "references",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "to",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "cc",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "bcc",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "html",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "labels",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "attachments",
+          "type": "object[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "send_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "status",
+          "type": "draft | scheduled | failed",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "last_error",
+          "type": "string",
+          "required": false,
+          "description": "Why a scheduled send was refused",
+          "constraints": []
+        },
+        {
+          "name": "created_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "updated_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "DraftList",
+      "fields": [
+        {
+          "name": "count",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "next_page_token",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "drafts",
+          "type": "Draft[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
       "name": "Webhook",
       "fields": [
         {
@@ -1902,7 +2680,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | payload_too_large | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | too_many_streams | payload_too_large | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -1934,6 +2712,7 @@ export const apiReference: ApiReference = {
     "permission_escalation",
     "api_key_expired",
     "not_held",
+    "too_many_streams",
     "payload_too_large",
     "internal_error"
   ],
@@ -1946,6 +2725,7 @@ export const apiReference: ApiReference = {
     "message.security.completed",
     "message.security.review",
     "domain.verified",
+    "draft.created",
     "inbox.sending.paused",
     "inbox.sending.resumed",
     "organization.sending.paused",
