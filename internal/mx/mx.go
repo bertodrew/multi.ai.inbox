@@ -12,11 +12,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-msgauth/dkim"
 	"github.com/emersion/go-smtp"
 
+	"github.com/bertodrew/multi.ai.inbox/internal/clamav"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/internal/mailx"
 	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
@@ -32,8 +34,13 @@ type Backend struct {
 	// rejected at DATA. When clamd cannot scan, mail is accepted with the
 	// av-unscanned label, or refused with a temporary failure when
 	// ClamdFailClosed is set (MAI_CLAMD_FAIL_CLOSED=true).
-	Clamd           *Clamd
+	Clamd           *clamav.Clamd
 	ClamdFailClosed bool
+	// FBLAddress is an optional shared address for feedback loop reports
+	// (MAI_FBL_ADDRESS, e.g. fbl@agents.example.eu), registered with mailbox
+	// providers. Complaints sent there are recorded against the original
+	// message in whatever organization sent it; the reports are not stored.
+	FBLAddress string
 }
 
 // NewServer builds the SMTP edge. With tlsConfig set, STARTTLS is offered.
@@ -60,9 +67,10 @@ type session struct {
 	helo   string
 	from   string
 	rcpts  []*core.LocalRecipient
+	fbl    bool // the shared feedback loop address is a recipient
 }
 
-func (s *session) Reset()        { s.from, s.rcpts = "", nil }
+func (s *session) Reset()        { s.from, s.rcpts, s.fbl = "", nil, false }
 func (s *session) Logout() error { return nil }
 
 func (s *session) Mail(from string, _ *smtp.MailOptions) error {
@@ -71,6 +79,10 @@ func (s *session) Mail(from string, _ *smtp.MailOptions) error {
 }
 
 func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
+	if s.b.FBLAddress != "" && strings.EqualFold(strings.TrimSpace(to), s.b.FBLAddress) {
+		s.fbl = true
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	rc, err := s.b.Svc.ResolveRecipient(ctx, to)
@@ -109,7 +121,7 @@ func (s *session) Data(r io.Reader) error {
 			metrics.SMTPRejected.With("antivirus_unavailable").Inc()
 			return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "Virus scanner unavailable, try again later"}
 		case err != nil:
-			s.b.Log.Warn("clamd unavailable, accepting without virus scan", "err", err, "remote", s.remote)
+			s.b.Svc.NoteAVUnscanned("mx", err)
 			labels = append(labels, "av-unscanned")
 			antivirus = "unscanned"
 		case res.Infected:
@@ -118,6 +130,17 @@ func (s *session) Data(r io.Reader) error {
 			return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Message rejected: virus detected (" + res.Signature + ")"}
 		default:
 			antivirus = "clean"
+		}
+	}
+	if s.fbl {
+		if ok, err := s.b.Svc.RecordFeedbackReport(ctx, raw); err != nil {
+			s.b.Log.Error("feedback report failed", "err", err, "remote", s.remote)
+			return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: "Temporary failure, try again"}
+		} else if ok {
+			s.b.Log.Info("complaint recorded from feedback loop", "remote", s.remote)
+		}
+		if len(s.rcpts) == 0 {
+			return nil
 		}
 	}
 	auth := map[string]any{"dkim": verifyDKIM(raw, mailx.DomainOf(headerFrom(raw)))}

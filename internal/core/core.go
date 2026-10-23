@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -24,7 +25,13 @@ type Service struct {
 	DNS               Resolver
 	SendMaxAge        time.Duration // retry window for temporary send failures; 0 = DefaultSendMaxAge
 	Now               func() time.Time
-	Billing           *Billing // Stripe; nil disables billing (501 billing_disabled)
+	Billing           *Billing     // Stripe; nil disables billing (501 billing_disabled)
+	Log               *slog.Logger // nil = slog.Default()
+	// Antivirus scans API uploaded attachments and agent to agent mail
+	// (MAI_CLAMD_ADDR). When it cannot scan, content is accepted with the
+	// av-unscanned label, or refused when AntivirusFailClosed is set.
+	Antivirus           Scanner
+	AntivirusFailClosed bool
 }
 
 // Plan holds the limits of a pricing plan (doc 01 section 7, doc 11 section 5.2).
@@ -133,7 +140,7 @@ func nextToken(at time.Time, id string) string {
 }
 
 // System labels are set by the platform and cannot be changed through the API.
-var systemLabels = map[string]bool{"received": true, "sent": true, "queued": true, "failed": true, "bounced": true}
+var systemLabels = map[string]bool{"received": true, "sent": true, "queued": true, "failed": true, "bounced": true, "complained": true}
 
 func uniqueLabels(in []string) []string {
 	seen := map[string]bool{}

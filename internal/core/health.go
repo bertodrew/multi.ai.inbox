@@ -19,24 +19,52 @@ import (
 // and the same rule over all the organization's sends pauses the
 // organization. Hard bounces are permanent 5xx failures at send time plus
 // failed delivery status notifications received later.
+//
+// Complaints (feedback loop reports) trip the same breaker: above
+// HealthMaxComplaintRate once at least HealthMinComplaintSends messages were
+// sent, or HealthSmallSenderComplaints complaints in the window for senders
+// below that volume, where a rate means little.
 const (
 	HealthWindow        = 24 * time.Hour
 	HealthMinSends      = 20
 	HealthMaxBounceRate = 0.05
+
+	HealthMinComplaintSends     = 1000
+	HealthMaxComplaintRate      = 0.001
+	HealthSmallSenderComplaints = 3
 )
 
 type healthStats struct {
-	sends int // final outcomes: sent + rejected
-	hard  int // rejected + bounced
+	sends      int // final outcomes: sent + rejected
+	hard       int // rejected + bounced
+	complaints int // complained
 }
 
-func (h healthStats) tripped() bool {
+func (h healthStats) bounceTripped() bool {
 	return h.sends >= HealthMinSends && float64(h.hard) > HealthMaxBounceRate*float64(h.sends)
 }
 
+func (h healthStats) complaintTripped() bool {
+	if h.sends >= HealthMinComplaintSends {
+		return float64(h.complaints) > HealthMaxComplaintRate*float64(h.sends)
+	}
+	return h.complaints >= HealthSmallSenderComplaints
+}
+
+func (h healthStats) tripped() bool { return h.bounceTripped() || h.complaintTripped() }
+
 func (h healthStats) reason() string {
-	return fmt.Sprintf("hard bounce rate %.1f%% (%d of %d sends in the last %s) is above %.0f%%",
-		100*float64(h.hard)/float64(h.sends), h.hard, h.sends, strings.TrimSuffix(HealthWindow.String(), "0m0s"), 100*HealthMaxBounceRate)
+	window := strings.TrimSuffix(HealthWindow.String(), "0m0s")
+	switch {
+	case h.bounceTripped():
+		return fmt.Sprintf("hard bounce rate %.1f%% (%d of %d sends in the last %s) is above %.0f%%",
+			100*float64(h.hard)/float64(h.sends), h.hard, h.sends, window, 100*HealthMaxBounceRate)
+	case h.sends >= HealthMinComplaintSends:
+		return fmt.Sprintf("complaint rate %.2f%% (%d of %d sends in the last %s) is above %.1f%%",
+			100*float64(h.complaints)/float64(h.sends), h.complaints, h.sends, window, 100*HealthMaxComplaintRate)
+	}
+	return fmt.Sprintf("%d spam complaints in the last %s (%d sends; below %d sends the limit is %d complaints)",
+		h.complaints, window, h.sends, HealthMinComplaintSends, HealthSmallSenderComplaints)
 }
 
 // recordOutcome stores the final outcome of an outbound message once.
@@ -47,7 +75,8 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, orgID, inboxID, messageID, ou
 }
 
 const statsQuery = `select count(*) filter (where outcome in ('sent', 'rejected')),
-		count(*) filter (where outcome in ('rejected', 'bounced'))
+		count(*) filter (where outcome in ('rejected', 'bounced')),
+		count(*) filter (where outcome = 'complained')
 	from send_outcomes where %s = $1 and created_at > greatest(now() - $2::interval, coalesce($3, '-infinity'::timestamptz))`
 
 // checkSendingHealth evaluates the breaker for an inbox and its organization
@@ -65,7 +94,7 @@ func (s *Service) checkSendingHealth(ctx context.Context, tx pgx.Tx, orgID, inbo
 	}
 	if err == nil && !inboxPaused {
 		var st healthStats
-		if err := tx.QueryRow(ctx, fmt.Sprintf(statsQuery, "inbox_id"), inboxID, HealthWindow.String(), inboxResumed).Scan(&st.sends, &st.hard); err != nil {
+		if err := tx.QueryRow(ctx, fmt.Sprintf(statsQuery, "inbox_id"), inboxID, HealthWindow.String(), inboxResumed).Scan(&st.sends, &st.hard, &st.complaints); err != nil {
 			return err
 		}
 		if st.tripped() {
@@ -76,7 +105,7 @@ func (s *Service) checkSendingHealth(ctx context.Context, tx pgx.Tx, orgID, inbo
 			}
 			if tag.RowsAffected() == 1 {
 				if err := insertEvent(ctx, tx, orgID, inboxID, "inbox.sending.paused", map[string]any{
-					"inbox_id": address, "reason": st.reason(), "sends": st.sends, "hard_bounces": st.hard}); err != nil {
+					"inbox_id": address, "reason": st.reason(), "sends": st.sends, "hard_bounces": st.hard, "complaints": st.complaints}); err != nil {
 					return err
 				}
 			}
@@ -92,7 +121,7 @@ func (s *Service) checkSendingHealth(ctx context.Context, tx pgx.Tx, orgID, inbo
 		return nil
 	}
 	var st healthStats
-	if err := tx.QueryRow(ctx, fmt.Sprintf(statsQuery, "org_id"), orgID, HealthWindow.String(), orgResumed).Scan(&st.sends, &st.hard); err != nil {
+	if err := tx.QueryRow(ctx, fmt.Sprintf(statsQuery, "org_id"), orgID, HealthWindow.String(), orgResumed).Scan(&st.sends, &st.hard, &st.complaints); err != nil {
 		return err
 	}
 	if !st.tripped() {
@@ -104,7 +133,7 @@ func (s *Service) checkSendingHealth(ctx context.Context, tx pgx.Tx, orgID, inbo
 		return err
 	}
 	return insertEvent(ctx, tx, orgID, "", "organization.sending.paused", map[string]any{
-		"organization_id": orgID, "reason": st.reason(), "sends": st.sends, "hard_bounces": st.hard})
+		"organization_id": orgID, "reason": st.reason(), "sends": st.sends, "hard_bounces": st.hard, "complaints": st.complaints})
 }
 
 // sendingPaused refuses a send when the inbox or its organization is paused.

@@ -9,13 +9,15 @@ const eventDescriptions: Record<string, string> = {
   "message.sent": "An outbound message was accepted by the next hop.",
   "message.failed": "An outbound message failed after all retries.",
   "message.bounced": "A delivery status notification reported that an outbound message could not be delivered (it gets the `bounced` label).",
+  "message.complained": "A recipient reported an outbound message as spam through a feedback loop (it gets the `complained` label).",
   "message.security.completed": "Gatekeeper screening finished; `extracted_text` and the verdict are set.",
   "message.security.review": "Gatekeeper screening finished with verdict `review` (or could not run). With screen before notify the message is held and the payload carries no body.",
   "domain.verified": "All DNS records of a custom domain were found.",
-  "inbox.sending.paused": "The bounce breaker paused sending from an inbox: hard bounce rate above 5% over at least 20 sends in 24 hours.",
+  "inbox.sending.paused": "The bounce breaker paused sending from an inbox: hard bounce rate above 5% over at least 20 sends in 24 hours, spam complaints above 0.1% over at least 1000 sends, or 3 complaints in 24 hours below that volume.",
   "inbox.sending.resumed": "Support resumed sending from an inbox.",
   "organization.sending.paused": "The bounce breaker paused sending for the whole organization.",
   "organization.sending.resumed": "Support resumed sending for the organization.",
+  "security.av_unavailable": "The virus scanner was unavailable and content was accepted with the `av-unscanned` label. Sent at most once per 10 minutes.",
 };
 
 export const customDomains: DocPage = {

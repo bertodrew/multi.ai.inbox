@@ -18,6 +18,7 @@ import (
 
 	"github.com/bertodrew/multi.ai.inbox/internal/api"
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
+	"github.com/bertodrew/multi.ai.inbox/internal/clamav"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/internal/db"
 	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
@@ -254,7 +255,7 @@ func TestAntivirusFailOpen(t *testing.T) {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	down := l.Addr().String()
 	l.Close()
-	mxAddr := listen(t, mx.NewServer(&mx.Backend{Svc: p.svc, Log: p.log, MaxBytes: 1 << 20, Clamd: &mx.Clamd{Addr: down}}, "", "mx."+shared, nil))
+	mxAddr := listen(t, mx.NewServer(&mx.Backend{Svc: p.svc, Log: p.log, MaxBytes: 1 << 20, Clamd: &clamav.Clamd{Addr: down}}, "", "mx."+shared, nil))
 	if err := deliver(t, mxAddr, "v@ext.test", "scan@"+shared, "From: v@ext.test\r\nSubject: hi\r\nMessage-ID: <av1@ext.test>\r\n\r\nhello\r\n"); err != nil {
 		t.Fatalf("fail open must accept: %v", err)
 	}

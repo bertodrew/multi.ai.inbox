@@ -149,8 +149,9 @@ func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr err
 				return err
 			}
 			// Only a permanent (5xx) refusal is a hard bounce; giving up after
-			// the retry window says nothing about the recipient address.
-			if errors.Is(sendErr, ErrPermanent) {
+			// the retry window, or refusing infected content, says nothing
+			// about the recipient address.
+			if errors.Is(sendErr, ErrPermanent) && !errors.Is(sendErr, ErrInfected) {
 				return s.finalOutcome(ctx, tx, j, "rejected")
 			}
 			return nil

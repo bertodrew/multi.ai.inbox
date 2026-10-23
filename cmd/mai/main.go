@@ -10,6 +10,7 @@
 //	mai admin domain-add -name agents.example.eu [-org <uuid>]
 //	mai admin inbox-resume -inbox a@b.eu        resume sending paused by the bounce breaker
 //	mai admin org-resume -org <uuid>            resume sending for a paused organization
+//	mai admin org-delete -org <uuid> -confirm <org name>  revoke keys, print a final summary, delete with cascade
 //	mai admin check-port25                      can this host deliver directly?
 //	mai mcp-config -url https://api.example.eu  MCP setup for Claude Code, Cursor, Codex
 package main
@@ -35,6 +36,7 @@ import (
 
 	"github.com/bertodrew/multi.ai.inbox/internal/api"
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
+	"github.com/bertodrew/multi.ai.inbox/internal/clamav"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/internal/db"
 	"github.com/bertodrew/multi.ai.inbox/internal/dispatcher"
@@ -65,6 +67,7 @@ type config struct {
 	RspamdURL      string
 	ClamdAddr      string
 	ClamdFailClose bool
+	FBLAddress     string
 	GatekeeperBin  string
 	MaxMessage     int64
 	AllowHTTPHook  bool
@@ -120,6 +123,7 @@ func loadConfig() config {
 		RspamdURL:      os.Getenv("MAI_RSPAMD_URL"),
 		ClamdAddr:      os.Getenv("MAI_CLAMD_ADDR"),
 		ClamdFailClose: os.Getenv("MAI_CLAMD_FAIL_CLOSED") == "true",
+		FBLAddress:     strings.ToLower(strings.TrimSpace(os.Getenv("MAI_FBL_ADDRESS"))),
 		GatekeeperBin:  os.Getenv("MAI_GATEKEEPER_BIN"),
 		MaxMessage:     maxMsg,
 		AllowHTTPHook:  os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
@@ -262,9 +266,14 @@ func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 }
 
 func service(d *db.DB, cfg config) *core.Service {
-	return &core.Service{DB: d, Blob: cfg.Blob, SharedDomain: cfg.SharedDomain,
+	svc := &core.Service{DB: d, Blob: cfg.Blob, SharedDomain: cfg.SharedDomain,
 		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
-		SendMaxAge: cfg.SendMaxAge, Billing: cfg.Billing}
+		SendMaxAge: cfg.SendMaxAge, AntivirusFailClosed: cfg.ClamdFailClose, Billing: cfg.Billing}
+	if cfg.ClamdAddr != "" {
+		// API uploaded attachments and agent to agent mail; the SMTP edge has its own client.
+		svc.Antivirus = &clamav.Clamd{Addr: cfg.ClamdAddr}
+	}
+	return svc
 }
 
 func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) error {
@@ -277,6 +286,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 	}
 	return withDB(ctx, cfg, func(d *db.DB) error {
 		svc := service(d, cfg)
+		svc.Log = log
 		var wg sync.WaitGroup
 		errs := make(chan error, 3)
 
@@ -329,9 +339,10 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		}
 		if enabled["mx"] {
 			certs := &tlsx.Loader{CertGlob: cfg.TLSCert, KeyGlob: cfg.TLSKey, Hostname: cfg.Hostname}
-			backend := &mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL, ClamdFailClosed: cfg.ClamdFailClose}
+			backend := &mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL,
+				ClamdFailClosed: cfg.ClamdFailClose, FBLAddress: cfg.FBLAddress}
 			if cfg.ClamdAddr != "" {
-				backend.Clamd = &mx.Clamd{Addr: cfg.ClamdAddr}
+				backend.Clamd = &clamav.Clamd{Addr: cfg.ClamdAddr}
 			} else {
 				log.Warn("antivirus disabled: MAI_CLAMD_ADDR is not set")
 			}
@@ -410,7 +421,7 @@ func metricsServer(svc *core.Service, addr string, log *slog.Logger) *http.Serve
 
 func admin(ctx context.Context, cfg config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mai admin seed|org-create|org-plan|org-screening|key-create|domain-add|inbox-resume|org-resume|check-port25")
+		return errors.New("usage: mai admin seed|org-create|org-plan|org-screening|key-create|domain-add|inbox-resume|org-resume|org-delete|check-port25")
 	}
 	if args[0] == "check-port25" {
 		return checkPort25(ctx)
@@ -422,6 +433,7 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	on := fs.Bool("on", false, "org-screening: hold inbound mail until the gatekeeper verdict exists")
 	off := fs.Bool("off", false, "org-screening: notify message.received at ingest (not recommended)")
 	inbox := fs.String("inbox", "", "inbox address")
+	confirm := fs.String("confirm", "", "org-delete: the organization's exact name")
 	perms := fs.String("permissions", "", "key-create: comma separated permissions (empty: full access, which never includes message_release)")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
@@ -460,6 +472,17 @@ func admin(ctx context.Context, cfg config, args []string) error {
 			}
 			err = svc.ResumeOrgSending(ctx, *org)
 			out = map[string]string{"organization_id": *org, "sending": "resumed"}
+		case "org-delete":
+			if *org == "" || *confirm == "" {
+				return errors.New("-org and -confirm (the organization's exact name) are required")
+			}
+			// The summary goes to stdout before anything is deleted; keep it,
+			// it holds the organization's audit log.
+			out, err = svc.DeleteOrg(ctx, *org, *confirm, func(sum *core.OrgDeletionSummary) error {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(sum)
+			})
 		default:
 			return fmt.Errorf("unknown admin command %q", args[0])
 		}

@@ -543,7 +543,17 @@ export const apiReference: ApiReference = {
           "schema": "Error"
         },
         {
+          "code": "422",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
           "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "503",
           "description": "Error envelope",
           "schema": "Error"
         }
@@ -774,6 +784,16 @@ export const apiReference: ApiReference = {
         },
         {
           "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "422",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "503",
           "description": "Error envelope",
           "schema": "Error"
         }
@@ -1761,7 +1781,7 @@ export const apiReference: ApiReference = {
           "name": "authentication_results",
           "type": "object",
           "required": false,
-          "description": "dkim, spam_score, spam_action",
+          "description": "dkim, spam_score, spam_action, antivirus (clean or unscanned)",
           "constraints": []
         },
         {
@@ -2189,7 +2209,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | payload_too_large | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | payload_too_large | attachment_infected | antivirus_unavailable | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -2227,6 +2247,8 @@ export const apiReference: ApiReference = {
     "no_billing_account",
     "invalid_signature",
     "payload_too_large",
+    "attachment_infected",
+    "antivirus_unavailable",
     "internal_error"
   ],
   "eventTypes": [
@@ -2235,13 +2257,15 @@ export const apiReference: ApiReference = {
     "message.sent",
     "message.failed",
     "message.bounced",
+    "message.complained",
     "message.security.completed",
     "message.security.review",
     "domain.verified",
     "inbox.sending.paused",
     "inbox.sending.resumed",
     "organization.sending.paused",
-    "organization.sending.resumed"
+    "organization.sending.resumed",
+    "security.av_unavailable"
   ],
   "permissions": [
     "inbox_read",
