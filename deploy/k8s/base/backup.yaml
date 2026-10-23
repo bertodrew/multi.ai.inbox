@@ -58,6 +58,9 @@ spec:
                   mkdir -p "$out"
                   # One repeatable read transaction exports its snapshot: pg_dump
                   # and the row counts read exactly the same data.
+                  # Stale control files survive on the persistent staging volume
+                  # (emptyDir used to start fresh): clear them before reuse.
+                  rm -f /work/ctl /work/snapshot /work/psql.log
                   mkfifo /work/ctl
                   psql -X -q -At -v ON_ERROR_STOP=1 < /work/ctl > /work/psql.log 2>&1 &
                   exec 3> /work/ctl
