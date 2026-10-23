@@ -32,6 +32,8 @@ export const PERMISSIONS = [
   "message_release",
   "billing_read",
   "billing_write",
+  "data_export",
+  "data_delete",
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;

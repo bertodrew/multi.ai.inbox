@@ -25,6 +25,8 @@ const meaning: Record<Permission, string> = {
   message_release: "Release mail held for review; only a key that lists it can grant it",
   billing_read: "See the plan, billing status and renewal date",
   billing_write: "Open Stripe checkout and the billing portal",
+  data_export: "Export all organization data (GDPR Art. 15/20)",
+  data_delete: "Delete the organization and its data (GDPR Art. 17)",
 };
 
 export function KeysView() {

@@ -3,8 +3,11 @@
 // skipped for the spaced hyphen; em and en dashes are refused everywhere.
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("../out/", import.meta.url).pathname;
+// fileURLToPath decodes %20: the repo path contains a space ("4TB SSD") and
+// URL.pathname leaves it percent-encoded, failing existsSync.
+const root = fileURLToPath(new URL("../out/", import.meta.url));
 if (!existsSync(join(root, "index.html"))) {
   console.error("check-copy: out/index.html is missing");
   process.exit(1);

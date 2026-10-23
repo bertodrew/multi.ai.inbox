@@ -15,6 +15,7 @@ export function Wordmark() {
   return (
     <span className="font-display text-lg font-semibold tracking-tight">
       multi<span className="text-accent">.</span>ai<span className="text-accent">.</span>inbox
+      <sup className="ml-0.5 align-super text-[0.55em] font-normal">™</sup>
     </span>
   );
 }

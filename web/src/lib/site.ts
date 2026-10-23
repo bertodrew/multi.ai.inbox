@@ -5,7 +5,7 @@
 export const SITE_NAME = "multi.ai.inbox";
 
 /** Public URL of this website. Change when the brand domain is live. */
-export const SITE_URL = "https://www.example.eu";
+export const SITE_URL = "https://aimulti.inbox";
 
 /** Base URL of the REST API and MCP endpoint (staging until launch). */
 export const API_URL = "https://api.162-55-213-24.sslip.io";
@@ -13,10 +13,10 @@ export const API_URL = "https://api.162-55-213-24.sslip.io";
 /** MCP endpoint, same API key as REST. */
 export const MCP_URL = `${API_URL}/mcp`;
 
-export const CONTACT_EMAIL = "hello@example.eu";
-export const SECURITY_EMAIL = "security@example.eu";
-export const PRIVACY_EMAIL = "privacy@example.eu";
-export const CAREERS_EMAIL = "jobs@example.eu";
+export const CONTACT_EMAIL = "hello@aimulti.inbox";
+export const SECURITY_EMAIL = "security@aimulti.inbox";
+export const PRIVACY_EMAIL = "privacy@aimulti.inbox";
+export const CAREERS_EMAIL = "jobs@aimulti.inbox";
 
 /** Environment label shown in the footer. */
 export const STATUS_NOTE = "Staging";
