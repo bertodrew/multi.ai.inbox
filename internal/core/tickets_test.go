@@ -138,7 +138,6 @@ func TestTicketPermissionsAreSeparate(t *testing.T) {
 	}
 }
 
-
 func hasPerm(list []string, v string) bool {
 	for _, x := range list {
 		if x == v {

@@ -20,12 +20,12 @@ type createTicketIn struct {
 }
 
 type listTicketsIn struct {
-	State    string `json:"state,omitempty" jsonschema:"new, open, pending, resolved or closed"`
-	Priority string `json:"priority,omitempty"`
-	Assignee string `json:"assignee,omitempty" jsonschema:"user id, API key id, or none for unassigned"`
-	Inbox    string `json:"inbox,omitempty" jsonschema:"inbox address"`
-	Query    string `json:"q,omitempty" jsonschema:"case insensitive text over subject and requester"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"1 to 100, default 20"`
+	State     string `json:"state,omitempty" jsonschema:"new, open, pending, resolved or closed"`
+	Priority  string `json:"priority,omitempty"`
+	Assignee  string `json:"assignee,omitempty" jsonschema:"user id, API key id, or none for unassigned"`
+	Inbox     string `json:"inbox,omitempty" jsonschema:"inbox address"`
+	Query     string `json:"q,omitempty" jsonschema:"case insensitive text over subject and requester"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"1 to 100, default 20"`
 	PageToken string `json:"page_token,omitempty"`
 }
 
@@ -54,11 +54,11 @@ type noteIn struct {
 }
 
 type replyTicketIn struct {
-	Ticket string   `json:"ticket" jsonschema:"ticket id"`
-	Text   string   `json:"text,omitempty"`
-	HTML   string   `json:"html,omitempty"`
-	ReplyAll bool   `json:"reply_all,omitempty"`
-	Labels []string `json:"labels,omitempty"`
+	Ticket   string   `json:"ticket" jsonschema:"ticket id"`
+	Text     string   `json:"text,omitempty"`
+	HTML     string   `json:"html,omitempty"`
+	ReplyAll bool     `json:"reply_all,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
 }
 
 func addTicketTools(s *mcp.Server, g *gate) {
