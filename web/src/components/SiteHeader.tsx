@@ -46,8 +46,14 @@ export function SiteHeader() {
             </Link>
           ))}
           <Link
+            href="/console/"
+            className="ml-2 inline-flex min-h-10 items-center rounded-lg border border-border px-4 text-sm font-medium hover:border-fg/40"
+          >
+            Console
+          </Link>
+          <Link
             href="/docs/quickstart/"
-            className="ml-2 inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg hover:opacity-90"
+            className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg hover:opacity-90"
           >
             Quickstart
           </Link>
@@ -86,8 +92,14 @@ export function SiteHeader() {
               ))}
             </ul>
             <Link
+              href="/console/"
+              className="mt-4 flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium"
+            >
+              Console
+            </Link>
+            <Link
               href="/docs/quickstart/"
-              className="mt-4 flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg"
+              className="mt-2 flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg"
             >
               Quickstart
             </Link>
