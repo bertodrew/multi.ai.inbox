@@ -12,6 +12,18 @@ data:
       https_port 8443
     }
     {$MAI_API_HOST} {
+      # API responses are JSON only: no framing, no sniffing, and HSTS belongs
+      # here rather than in the Go gateway, which also answers plain HTTP
+      # in-cluster where the header would be meaningless.
+      header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+        Cross-Origin-Opener-Policy "same-origin"
+        -Server
+      }
       # Server Sent Events: no compression and no buffering, every event is
       # flushed to the client as soon as the platform writes it.
       @events path /v0/events/stream
@@ -25,7 +37,24 @@ data:
         reverse_proxy mai-http:8080
       }
     }
+    # The static export (web/, Next.js) sends no third party requests: styles,
+    # fonts and images are all same-origin. 'unsafe-inline' is granted to
+    # script-src only because the export inlines its own hydration payload
+    # (self.__next_f / TURBOPACK bootstrap), whose hashes change on every
+    # build; a hash or nonce needs a header-injecting server, not a file
+    # server. Everything else stays 'self'.
+    (site_headers) {
+      header {
+        Content-Security-Policy "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+        -Server
+      }
+    }
     (static_site) {
+      import site_headers
       encode zstd gzip
       root * /srv
       @markdown path *.md /llms.txt
@@ -39,6 +68,8 @@ data:
     }
     {$MAI_SITE_HOST} {
       import static_site
+      # TLS only; the plain HTTP :8080 site at the bottom must not send this.
+      header Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
     # Certificate for the MX host name only: the SMTP edge reads it for STARTTLS.
     {$MAI_HOSTNAME} {
@@ -74,6 +105,8 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull
+      # Nothing here talks to the API server: no token to steal.
+      automountServiceAccountToken: false
       # Same user as the platform, so the SMTP edge can read the certificates.
       securityContext:
         runAsNonRoot: true

@@ -37,6 +37,9 @@ spec:
     metadata:
       labels: { app: clamd }
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: clamd
           image: clamav/clamav:1.4.6
@@ -58,6 +61,9 @@ spec:
           resources:
             requests: { cpu: 50m, memory: 1536Mi }
             limits: { memory: 3Gi }
+          securityContext:
+            # freshclam re-owns /var/lib/clamav at start, so capabilities stay.
+            allowPrivilegeEscalation: false
           volumeMounts:
             - name: signatures
               mountPath: /var/lib/clamav

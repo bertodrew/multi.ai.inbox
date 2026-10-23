@@ -22,6 +22,14 @@ spec:
     metadata:
       labels: { app: postgres }
     spec:
+      # The database never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        # The entrypoint starts as root to chown PGDATA and re-exec as the
+        # postgres user, so runAsNonRoot/runAsUser cannot be added without
+        # re-owning the existing volume. seccomp is safe and is what the
+        # baseline profile expects to see explicit.
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: postgres
           image: postgres:16-alpine
@@ -49,6 +57,11 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { memory: 1Gi }
+          securityContext:
+            # No setuid binary, no capability gain on exec. Capabilities are
+            # left alone: the entrypoint needs DAC_OVERRIDE/CHOWN to own and
+            # fix the data directory on first start.
+            allowPrivilegeEscalation: false
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

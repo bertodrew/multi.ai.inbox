@@ -37,6 +37,7 @@ spec:
           labels: { app: restore-drill }
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
             runAsUser: 70        # postgres user in the alpine image

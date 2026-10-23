@@ -1,5 +1,11 @@
 # PROPOSAL (not wired into deploy/k8s). Default deny NetworkPolicy set for the
 # mai namespace. Replaces deploy/k8s/base/networkpolicy.yaml when adopted.
+#
+# Update: base/networkpolicy.yaml already implements part of this — postgres
+# egress deny, egress allow-lists for backup, restore-drill and rspamd, and the
+# DNS allowance. What is still missing there is the namespace-wide default deny
+# and the ingress tightening for caddy, mai 8080 and the metrics port; adopt
+# this file for those, and drop the now duplicated per-pod egress blocks.
 # Enforced by the k3s embedded network policy controller (kube-router), which
 # is on by default unless k3s runs with --disable-network-policy.
 #

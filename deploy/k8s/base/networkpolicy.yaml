@@ -8,7 +8,11 @@ metadata:
 spec:
   podSelector:
     matchLabels: { app: postgres }
-  policyTypes: ["Ingress"]
+  # Postgres dials nothing: no DNS, no internet, no other service. Adding
+  # Egress with an empty rule closes exfiltration from a compromised database
+  # while replies to the allowed ingress stays (policies are stateful).
+  policyTypes: ["Ingress", "Egress"]
+  egress: []
   ingress:
     - from:
         - podSelector: { matchLabels: { app: mai } }
@@ -79,3 +83,88 @@ spec:
         - podSelector: {}
       ports:
         - { port: 9090, protocol: TCP }
+---
+# --- Egress allow-lists for the components whose outbound traffic is fully
+# known from their own scripts. Policies are additive inside a namespace, so
+# these extend the ingress rules above instead of replacing them. Everything
+# not listed here is dropped; public egress excludes the private, link local
+# (Hetzner metadata 169.254.169.254) and CGNAT ranges, so a compromised job
+# cannot reach cluster internals or the node metadata service.
+#
+# Rollback, one component at a time:
+#   kubectl -n mai delete netpol backup-egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-egress
+spec:
+  podSelector:
+    matchLabels: { app: backup }
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: postgres } }
+      ports:
+        - { port: 5432, protocol: TCP }
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    # Hetzner Object Storage and healthchecks.io.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8"]
+      ports:
+        - { port: 443, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restore-drill-egress
+spec:
+  podSelector:
+    matchLabels: { app: restore-drill }
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    # Object Storage and the dead man's switch. Its scratch Postgres is a unix
+    # socket inside the pod, so no cluster flow is needed.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8"]
+      ports:
+        - { port: 443, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rspamd-egress
+spec:
+  podSelector:
+    matchLabels: { app: rspamd }
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    # DNSBL lookups go through kube-dns; maps, redirector and rule updates are
+    # plain HTTP/HTTPS on public addresses.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8"]
+      ports:
+        - { port: 80, protocol: TCP }
+        - { port: 443, protocol: TCP }

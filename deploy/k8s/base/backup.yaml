@@ -44,6 +44,9 @@ spec:
           labels: { app: backup }
         spec:
           restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile: { type: RuntimeDefault }
           initContainers:
             # 1. Dump, validate, record exact row counts from the same snapshot.
             - name: dump
@@ -92,6 +95,10 @@ spec:
               resources:
                 requests: { cpu: 50m, memory: 64Mi }
                 limits: { memory: 512Mi }
+              securityContext:
+                # Runs as root on purpose: it must read caddy-data and the blob
+                # volume, both owned by uid 65532, so DAC_OVERRIDE stays.
+                allowPrivilegeEscalation: false
               volumeMounts:
                 - { name: work, mountPath: /work }
                 - { name: caddy, mountPath: /caddy, readOnly: true }
@@ -144,6 +151,8 @@ spec:
               resources:
                 requests: { cpu: 50m, memory: 64Mi }
                 limits: { memory: 512Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
               volumeMounts:
                 - { name: work, mountPath: /work }
                 - { name: blobs, mountPath: /blobs, readOnly: true }

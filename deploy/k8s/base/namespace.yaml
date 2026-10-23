@@ -3,4 +3,9 @@ kind: Namespace
 metadata:
   name: mai
   labels:
+    # Enforcement stays baseline: restricted would reject Postgres, rspamd,
+    # clamd and the backup job, which legitimately start as root. Audit at
+    # restricted records exactly what still has to change, without blocking
+    # an apply.
     pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
