@@ -36,6 +36,7 @@ export function MessageBody({ message }: { message: Message }) {
   // shows the plain text body, which keeps server and client markup equal.
   useEffect(() => {
     if (!message.html) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- DOMParser is browser only
       setBody(null);
       return;
     }

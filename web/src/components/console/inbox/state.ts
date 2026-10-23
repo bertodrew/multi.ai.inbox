@@ -68,6 +68,7 @@ export function useMailView(address: string): MailView {
 
   useEffect(() => {
     addressRef.current = address;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- view state is stored per mailbox
     setState(load(address));
   }, [address]);
 

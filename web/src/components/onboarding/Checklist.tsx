@@ -21,6 +21,7 @@ export function Checklist({ scope, items }: { scope: string; items: ChecklistIte
 
   useEffect(() => {
     if (!hydrated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading saved ticks
     setState(readChecklist(scope));
     setReady(true);
   }, [hydrated, scope]);

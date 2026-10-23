@@ -53,6 +53,7 @@ export function OnboardingFlow({
     if (!hydrated) return;
     const stored = readDraft(session.scope);
     if (stored) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a draft from localStorage
       setDraft(stored);
       setRestored(draftHasContent(stored));
     }

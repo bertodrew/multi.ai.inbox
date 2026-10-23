@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ButtonLink, Container, Eyebrow } from "@/components/ui";
 import { API_URL } from "@/lib/site";
 
@@ -67,9 +68,9 @@ export default function LoginPage() {
 
         <p className="mt-6 text-sm text-muted">
           Agents authenticate with an API key instead: see the{" "}
-          <a href="/docs/quickstart/" className="underline underline-offset-4 hover:text-fg">
+          <Link href="/docs/quickstart/" className="underline underline-offset-4 hover:text-fg">
             quickstart
-          </a>
+          </Link>
           . Sessions last 15 minutes and renew automatically while the console is open.
         </p>
       </div>

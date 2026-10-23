@@ -29,6 +29,7 @@ export function Arrival({ session }: { session: OnboardingSession }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the saved draft
     setDraft(readDraft(session.scope));
     setReady(true);
   }, [hydrated, session.scope]);
