@@ -1,6 +1,6 @@
 # TODO
 
-Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execution-plan.md` and ADR `docs/agentmail-re/10-native-platform.md`.
+Updated: 2026-10-23. Source of truth for priorities: `docs/agentmail-re/09-execution-plan.md` and ADR `docs/agentmail-re/10-native-platform.md`.
 
 ## Done
 * Reverse engineering pack of agentmail.to and planning docs 01 to 14 (PRD, API, architecture, ADR, GTM and pricing, ISO 27001 and AI audit, support and SLA, disaster recovery).
@@ -13,6 +13,12 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * Inbox deletion removes raw `.eml` and attachment blobs through a durable queue (`0006_deletion.sql`, triggers + scheduler) and quarantines the address for 90 days (`409 address_quarantined`); MCP `delete_inbox`.
 * Antivirus: clamd Deployment in `deploy/k8s/base/clamd.yaml`, INSTREAM scan at SMTP DATA (`554 5.7.1` on FOUND), fail open with `av-unscanned` by default, `MAI_CLAMD_FAIL_CLOSED=true` for `451 4.7.1`.
 * Encrypted add only backups (rclone crypt, `mai_backup` read only role, Object Lock ready), weekly restore drill in `deploy/k8s/base/restore-drill.yaml`, least privilege ops runbook (Flux deploy key, Primary IP and server protection, Hetzner backups).
+* Drafts with scheduled send (`0008_drafts.sql`), MCP draft tools; Server Sent Events stream `GET /v0/events/stream` (redacted like webhooks, resume with Last-Event-ID).
+* S3 blob store (Hetzner Object Storage, hand written SigV4) behind `MAI_BLOB_BACKEND=s3`; Prometheus metrics on `MAI_METRICS_ADDR`.
+* SPF and DMARC at the SMTP edge (`MAI_DMARC_ENFORCE`), MTA-STS for direct delivery, 5 minute send burst limit (10% of the daily cap).
+* Stripe billing over net/http (`0009_billing.sql`): checkout, portal, signed webhooks, 7 day grace period; Growth plan in code.
+* Organization delete (`mai admin org-delete`), antivirus for API attachments, drafts and agent to agent mail, complaint breaker from ARF reports (`0011_complaints.sql`).
+* Customer console at `/console` (Zod validated, tested in Chromium desktop and mobile).
 * Bounce breaker (`0007_sending_health.sql`): per inbox and per org, hard bounce rate above 5% over at least 20 sends in 24h pauses sending (`403 sending_paused`, events `inbox.sending.paused` / `organization.sending.paused`); DSNs with a null sender count as bounces (`message.bounced`); `mai admin inbox-resume` / `org-resume`.
 
 ## Next (in order)
@@ -20,7 +26,8 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 2. Ops agent: runbook steps 1 to 7 on the CX33 (snapshot, rebuild, firewall, PTR, bootstrap, smoke test). Before that, protect the Primary IP and enable Hetzner backups.
 3. Founder decisions still open: legal counsel; a tenant API to change `screen_before_notify` (new `organization_write` permission).
 4. Branding, then buy the domain: `mai admin domain-add`, update `deploy/k8s/staging` config, DNS records, PTR.
-5. Console (Next.js) and Stripe billing; drafts, WebSocket events; S3 blob store; pods; metrics.
+5. Stripe setup by the founder (prices, webhook, portal, Stripe Tax) and keys in the staging secrets.
+6. Pods; IMAP; DANE; Prometheus in the cluster; an S3 migration tool for existing blobs.
 
 ## Founder decisions (2026-10-22)
 * Growth plan at €59 per month (doc 11).
@@ -30,10 +37,6 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * `message_release` is explicit only: full access keys do not hold it; `mai admin key-create -permissions` issues the first release key.
 
 ## Known gaps in the MVP
-* Plan limits cover inboxes, domains, day and month sends; the 5 minute burst limit is not implemented.
-* SPF and DMARC are not evaluated in Go yet; rspamd results are recorded when `MAI_RSPAMD_URL` is set.
-* Outbound direct delivery uses opportunistic TLS; MTA-STS and DANE checks to add.
-* Complaints (feedback loops, ARF) are not tracked; the breaker counts hard bounces only. DSNs reach us only for direct delivery (Brevo keeps its own return path), so relay bounces count only when rejected at send time.
-* Antivirus covers inbound internet mail only: agent to agent mail and attachments uploaded through the API are not scanned. Alerting on `av-unscanned` to add.
+* Outbound direct delivery enforces MTA-STS; DANE not checked yet.
+* Relay bounces count only when rejected at send time (Brevo keeps its own return path). `MAI_FBL_ADDRESS` is not set in the manifests yet; reserve that username.
 * Blob backups use `rclone copy`, so blobs of deleted inboxes stay in Object Storage; decide retention or switch to sync with versioning.
-* No organization delete command yet; the deletion triggers already cover an org delete (cascade).
