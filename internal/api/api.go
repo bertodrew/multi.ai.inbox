@@ -90,6 +90,9 @@ func (s *Server) Handler() http.Handler {
 	route("POST /v0/webhooks", core.PermWebhookWrite, s.createWebhook)
 	route("GET /v0/webhooks", core.PermWebhookRead, s.listWebhooks)
 	route("DELETE /v0/webhooks/{webhook}", core.PermWebhookWrite, s.deleteWebhook)
+	route("GET /v0/billing", core.PermBillingRead, s.getBilling)
+	route("POST /v0/billing/checkout", core.PermBillingWrite, s.checkout)
+	route("POST /v0/billing/portal", core.PermBillingWrite, s.portal)
 	if s.MCP != nil {
 		auth.Handle("/mcp", s.MCP)
 	}
@@ -97,6 +100,8 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write(openapi.Spec)
 	})
+	// Public: Stripe authenticates itself with the Stripe-Signature header.
+	mux.HandleFunc("POST /stripe/webhook", s.stripeWebhook)
 	mux.Handle("/v0/", s.authenticate(auth))
 	mux.Handle("/mcp", s.authenticate(auth))
 	return s.gateway(mux)
@@ -165,7 +170,7 @@ func (s *Server) ok(w http.ResponseWriter, status int, v any) {
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	e := core.AsError(err)
-	if e.Status >= 500 {
+	if e.Status >= 500 && e.Status != http.StatusNotImplemented { // 501: a feature switched off, not a fault
 		s.Log.Error("request failed", "err", err)
 	}
 	if e.Status == http.StatusTooManyRequests {
@@ -582,4 +587,78 @@ func (s *Server) verifyDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ok(w, http.StatusOK, d)
+}
+
+func (s *Server) getBilling(w http.ResponseWriter, r *http.Request) {
+	info, err := s.Svc.GetBilling(r.Context(), OrgFrom(r.Context()).ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, info)
+}
+
+func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
+	var req core.CheckoutRequest
+	if err := decode(r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	session, err := s.Svc.CreateCheckout(r.Context(), OrgFrom(r.Context()).ID, req)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if req.Interval == "" {
+		req.Interval = "monthly"
+	}
+	s.audit(r, "billing.checkout", session.ID, map[string]any{"plan": req.Plan, "interval": req.Interval})
+	s.ok(w, http.StatusOK, map[string]any{"session_id": session.ID, "url": session.URL})
+}
+
+func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ReturnURL string `json:"return_url"`
+	}
+	if r.ContentLength != 0 {
+		if err := decode(r, &req); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	session, err := s.Svc.CreatePortal(r.Context(), OrgFrom(r.Context()).ID, req.ReturnURL)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "billing.portal", session.ID, nil)
+	s.ok(w, http.StatusOK, map[string]any{"session_id": session.ID, "url": session.URL})
+}
+
+// maxStripeEvent bounds a webhook body; Stripe events are a few kilobytes.
+const maxStripeEvent = 1 << 20
+
+// stripeWebhook receives Stripe events. The raw body is verified against
+// the Stripe-Signature header before anything is parsed; neither the header
+// nor the payload is logged.
+func (s *Server) stripeWebhook(w http.ResponseWriter, r *http.Request) {
+	payload, err := io.ReadAll(io.LimitReader(r.Body, maxStripeEvent+1))
+	if err != nil {
+		s.fail(w, core.Validation("could not read the request body"))
+		return
+	}
+	if len(payload) > maxStripeEvent {
+		s.fail(w, &core.Error{Status: http.StatusRequestEntityTooLarge, Name: "Request Entity Too Large", Code: "payload_too_large",
+			Message: "Stripe events are limited to 1 MiB"})
+		return
+	}
+	outcome, err := s.Svc.HandleStripeWebhook(r.Context(), payload, r.Header.Get("Stripe-Signature"))
+	if err != nil {
+		if e := core.AsError(err); e.Code == "invalid_signature" {
+			s.Log.Warn("stripe webhook rejected", "reason", e.Code, "ip", clientIP(r.Context()))
+		}
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, map[string]any{"received": true, "outcome": outcome})
 }

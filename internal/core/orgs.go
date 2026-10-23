@@ -51,7 +51,8 @@ func (s *Service) plan(ctx context.Context, orgID string) (Plan, error) {
 	return planOf(o.Plan), nil
 }
 
-// SetPlan changes an organization's plan (operator command, billing later).
+// SetPlan changes an organization's plan (operator command; Stripe billing
+// updates it through the webhook).
 func (s *Service) SetPlan(ctx context.Context, orgID, plan string) error {
 	if _, ok := Plans[plan]; !ok {
 		return Validation("unknown plan %q", plan)

@@ -18,6 +18,8 @@ const permissionMeaning: Record<string, string> = {
   audit_read: "Read the audit log.",
   message_review: "Read messages held for security review with `include_review=true`. For a human review console, not for agents.",
   message_release: "Release a message held for review, which then fires `message.received`. Keep it away from the agent that reads the mail. A full access key does not hold it: only keys that list it do, and the operator issues the first one.",
+  billing_read: "Read the plan and the subscription state with `GET /v0/billing`.",
+  billing_write: "Start a Stripe Checkout for a paid plan and open the customer portal.",
 };
 
 export const quickstart: DocPage = {

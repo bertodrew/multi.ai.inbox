@@ -24,9 +24,10 @@ type Service struct {
 	DNS               Resolver
 	SendMaxAge        time.Duration // retry window for temporary send failures; 0 = DefaultSendMaxAge
 	Now               func() time.Time
+	Billing           *Billing // Stripe; nil disables billing (501 billing_disabled)
 }
 
-// Plan holds the limits of a pricing plan (doc 01, section 7).
+// Plan holds the limits of a pricing plan (doc 01 section 7, doc 11 section 5.2).
 type Plan struct {
 	Name          string `json:"name"`
 	Inboxes       int    `json:"inboxes"`
@@ -39,6 +40,7 @@ type Plan struct {
 var Plans = map[string]Plan{
 	"free":    {Name: "free", Inboxes: 3, Domains: 1, SendsPerDay: 100, SendsPerMonth: 3000, Footer: true},
 	"builder": {Name: "builder", Inboxes: 10, Domains: 5, SendsPerDay: 1000, SendsPerMonth: 10000},
+	"growth":  {Name: "growth", Inboxes: 50, Domains: 20, SendsPerDay: 2500, SendsPerMonth: 40000},
 	"team":    {Name: "team", Inboxes: 150, Domains: 50, SendsPerDay: 15000, SendsPerMonth: 150000},
 }
 

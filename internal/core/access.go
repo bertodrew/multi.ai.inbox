@@ -35,11 +35,15 @@ const (
 	// PermMessageRelease lets a key release a held message, which then fires
 	// message.received. Same advice: never to the agent that reads the inbox.
 	PermMessageRelease = "message_release"
+	// PermBillingRead reads the plan and subscription state; PermBillingWrite
+	// starts a Stripe Checkout or opens the customer portal.
+	PermBillingRead  = "billing_read"
+	PermBillingWrite = "billing_write"
 )
 
 var AllPermissions = []string{PermInboxRead, PermInboxWrite, PermMessageRead, PermMessageSend, PermMessageUpdate,
 	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead,
-	PermMessageReview, PermMessageRelease}
+	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite}
 
 // ExplicitPermissions are never implied by a full access key (nil
 // permissions): a key holds them only when they are listed, so an agent with a

@@ -72,7 +72,7 @@ export const customDomains: DocPage = {
     {
       type: "list",
       items: [
-        "The number of custom domains depends on the plan: 1 on Free, 5 on Builder, 50 on Team.",
+        "The number of custom domains depends on the plan: 1 on Free, 5 on Builder, 20 on Growth, 50 on Team.",
         "A domain can be deleted only when it has no inboxes left; otherwise the API returns `409 cannot_delete`.",
         "`GET /v0/domains` lists your domains and the shared platform domain.",
       ],
@@ -298,6 +298,7 @@ export const limits: DocPage = {
       rows: [
         ["Free", "3", "1", "100", "3,000", "Yes"],
         ["Builder", "10", "5", "1,000", "10,000", "No"],
+        ["Growth", "50", "20", "2,500", "40,000", "No"],
         ["Team", "150", "50", "15,000", "150,000", "No"],
         ["Enterprise", "Custom", "Custom", "Custom", "Custom", "No"],
       ],
