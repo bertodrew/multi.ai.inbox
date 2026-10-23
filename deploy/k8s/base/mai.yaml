@@ -26,6 +26,8 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull
+      # The platform never calls the Kubernetes API: do not hand it a token.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -55,6 +57,11 @@ spec:
           args: ["serve"]
           envFrom:
             - configMapRef: { name: mai-config }
+            # Stripe billing is env-gated. The price ids (MAI_STRIPE_PRICE_*) and
+            # MAI_BILLING_RETURN_URL live in this optional ConfigMap, the two keys
+            # in mai-secrets below. With either one absent the pod still starts and
+            # every billing endpoint answers 501 billing_disabled.
+            - configMapRef: { name: mai-billing, optional: true }
           env:
             # Runtime roles: DML only, no BYPASSRLS. mai_app serves tenant
             # requests; mai_system (SMTP edge, workers, authentication) is the
@@ -97,6 +104,18 @@ spec:
             #   valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_S3_ACCESS_KEY } }
             # - name: MAI_S3_SECRET_KEY
             #   valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_S3_SECRET_KEY } }
+            # Stripe billing (env-gated). Both keys must exist in mai-secrets for
+            # billing to turn on; with either missing the API logs "billing
+            # disabled" and answers 501 billing_disabled. Create them with:
+            #   kubectl -n mai create secret generic mai-secrets \
+            #     --from-literal=MAI_STRIPE_SECRET_KEY=sk_live_... \
+            #     --from-literal=MAI_STRIPE_WEBHOOK_SECRET=whsec_... \
+            #     --dry-run=client -o yaml | kubectl apply -f -
+            # (or add both keys to the existing secret; never commit them).
+            - name: MAI_STRIPE_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_STRIPE_SECRET_KEY, optional: true } }
+            - name: MAI_STRIPE_WEBHOOK_SECRET
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_STRIPE_WEBHOOK_SECRET, optional: true } }
           ports:
             - { name: http, containerPort: 8080 }
             - { name: smtp, containerPort: 2525 }

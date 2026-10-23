@@ -12,6 +12,7 @@
 //	mai admin org-resume -org <uuid>            resume sending for a paused organization
 //	mai admin org-delete -org <uuid> -confirm <org name>  revoke keys, print a final summary, delete with cascade
 //	mai admin check-port25                      can this host deliver directly?
+//	mai admin billing-status                    resolved Stripe settings, keys redacted (offline)
 //	mai mcp-config -url https://api.example.eu  MCP setup for Claude Code, Cursor, Codex
 package main
 
@@ -46,7 +47,6 @@ import (
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/scheduler"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
-	"github.com/bertodrew/multi.ai.inbox/internal/stripe"
 	"github.com/bertodrew/multi.ai.inbox/internal/tlsx"
 )
 
@@ -79,6 +79,7 @@ type config struct {
 	TLSKey         string
 	SendMaxAge     time.Duration
 	Billing        *core.Billing
+	BillingStatus  core.BillingStatus
 }
 
 func env(key, def string) string {
@@ -109,6 +110,9 @@ func loadConfig() config {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	// Billing is env-gated: core.LoadBilling returns nil (501 billing_disabled
+	// everywhere) unless both Stripe secrets are set. Secrets are never printed.
+	billing, billingStatus := core.LoadBilling(os.Getenv)
 	return config{
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		SystemDBURL:    os.Getenv("MAI_SYSTEM_DATABASE_URL"),
@@ -135,7 +139,8 @@ func loadConfig() config {
 		TLSCert:        os.Getenv("MAI_SMTP_TLS_CERT"),
 		TLSKey:         os.Getenv("MAI_SMTP_TLS_KEY"),
 		SendMaxAge:     sendMaxAge,
-		Billing:        loadBilling(),
+		Billing:        billing,
+		BillingStatus:  billingStatus,
 	}
 }
 
@@ -157,30 +162,8 @@ func blobStore(dir string) (blob.Store, error) {
 	}
 }
 
-// loadBilling reads the Stripe settings. Billing stays off (501
-// billing_disabled) unless both the secret key and the webhook secret are
-// set. Prices come from MAI_STRIPE_PRICE_<PLAN>_<MONTHLY|YEARLY>; a plan
-// without a price simply cannot be bought. Secrets are never printed.
-func loadBilling() *core.Billing {
-	key, secret := os.Getenv("MAI_STRIPE_SECRET_KEY"), os.Getenv("MAI_STRIPE_WEBHOOK_SECRET")
-	if key == "" || secret == "" {
-		if key != "" || secret != "" {
-			fmt.Fprintln(os.Stderr, "billing disabled: set both MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET")
-		}
-		return nil
-	}
-	b := &core.Billing{Stripe: &stripe.Client{SecretKey: key}, WebhookSecret: secret,
-		Prices: map[string]core.Price{}, ReturnURL: os.Getenv("MAI_BILLING_RETURN_URL")}
-	for _, plan := range core.PaidPlans {
-		for _, interval := range core.BillingIntervals {
-			if id := os.Getenv("MAI_STRIPE_PRICE_" + strings.ToUpper(plan) + "_" + strings.ToUpper(interval)); id != "" {
-				b.Prices[id] = core.Price{Plan: plan, Interval: interval}
-			}
-		}
-	}
-	return b
-}
-
+// Billing settings are resolved by core.LoadBilling (see loadConfig), which
+// never returns the keys and reports what is missing.
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if len(os.Args) < 2 {
@@ -319,9 +302,10 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			srv.AuthFailures = api.NewLimiter(10.0/60, 10) // 10 failed keys per IP, refilling 10 per minute
 			srv.Gateway = cfg.Gateway
 			if cfg.Billing == nil {
-				log.Info("billing disabled: MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET are not set")
+				log.Info("billing disabled", "webhook", cfg.BillingStatus.WebhookPath,
+					"hint", "set MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET; mai admin billing-status shows what is missing")
 			} else {
-				log.Info("billing enabled", "prices", len(cfg.Billing.Prices))
+				log.Info("billing enabled", "prices", len(cfg.Billing.Prices), "warnings", cfg.BillingStatus.Warnings)
 			}
 			srv.Done = ctx.Done() // open event streams end so shutdown does not wait for them
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -425,7 +409,14 @@ func metricsServer(svc *core.Service, addr string, log *slog.Logger) *http.Serve
 
 func admin(ctx context.Context, cfg config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mai admin seed|org-create|org-plan|org-screening|key-create|domain-add|inbox-resume|org-resume|org-delete|check-port25")
+		return errors.New("usage: mai admin seed|org-create|org-plan|org-screening|key-create|domain-add|inbox-resume|org-resume|org-delete|check-port25|billing-status")
+	}
+	// billing-status reads the environment only: no database, no Stripe call,
+	// and the keys are never printed.
+	if args[0] == "billing-status" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(cfg.BillingStatus)
 	}
 	if args[0] == "check-port25" {
 		return checkPort25(ctx)
