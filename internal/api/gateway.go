@@ -101,13 +101,13 @@ func (s *Server) gateway(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
-		if strings.HasPrefix(r.URL.Path, "/v0/") {
+		if strings.HasPrefix(r.URL.Path, "/v0/") || strings.HasPrefix(r.URL.Path, "/v1/") {
 			h.Set("Cache-Control", "no-store")
 		}
 		if origin := r.Header.Get("Origin"); origin != "" && slices.Contains(s.Gateway.CORSOrigins, origin) {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Vary", "Origin")
-			h.Set("Access-Control-Expose-Headers", "X-Request-Id, Retry-After")
+			h.Set("Access-Control-Expose-Headers", "X-Request-Id, Retry-After, Aimulti-Api-Version, Sunset, Link")
 			if r.Method == http.MethodOptions {
 				h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, X-Request-Id")

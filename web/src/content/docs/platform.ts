@@ -383,6 +383,10 @@ export const apiReferencePage: DocPage = {
       type: "p",
       text: `Generated from \`openapi/openapi.yaml\` (version ${apiReference.version}) at build time. Base URL: \`${API_URL}\`. The API also serves the file itself at \`${API_URL}/openapi.yaml\`.`,
     },
+    {
+      type: "p",
+      text: "Every operation answers on `/v1`, the current version, and on the deprecated `/v0` alias with the same bodies and status codes. See [Versions and SDKs](/docs/versions) for the deprecation headers, the policy and the official clients. The paths below show the `/v0` prefix used by the file; replace it with `/v1` and nothing else changes.",
+    },
     { type: "h2", text: "Endpoints" },
     { type: "endpoints", keys: apiReference.endpoints.map((e) => `${e.method} ${e.path}`) },
     { type: "h2", text: "Objects" },

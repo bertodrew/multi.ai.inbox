@@ -29,7 +29,7 @@ export const quickstart: DocPage = {
   blocks: [
     {
       type: "p",
-      text: `Base URL: \`${API_URL}\` (staging). Every endpoint lives under \`/v0\`. The same operations are available as MCP tools at \`/mcp\` with the same API key.`,
+      text: `Base URL: \`${API_URL}\` (staging). Every endpoint lives under \`/v1\`; the deprecated \`/v0\` prefix answers the same operations, see [Versions and SDKs](/docs/versions). The same operations are available as MCP tools at \`/mcp\` with the same API key.`,
     },
     { type: "h2", text: "1. Get an API key" },
     {

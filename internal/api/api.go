@@ -1,5 +1,7 @@
-// Package api is the REST surface (/v0). Handlers only decode, validate the
-// shape of the request and call core; all rules live in core.
+// Package api is the REST surface. /v1 is the documented version and /v0 is
+// the same behaviour under the old prefix (see version.go). Handlers only
+// decode, validate the shape of the request and call core; all rules live in
+// core.
 package api
 
 import (
@@ -71,8 +73,23 @@ func (s *Server) Handler() http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	// auth mux holds one handler per operation, mounted at /v0 and /v1 alike:
+	// the version lives in the path and in the request context, never in a
+	// second copy of the handler.
 	auth := http.NewServeMux()
-	route := func(pattern, perm string, h http.HandlerFunc) { auth.Handle(pattern, s.require(perm, h)) }
+	route := func(pattern, perm string, h http.HandlerFunc) {
+		handler := s.require(perm, h)
+		for _, p := range aliases(pattern) {
+			auth.Handle(p, handler)
+		}
+	}
+	// public mounts a route that checks its own credential (a magic link
+	// token, an OAuth state, a refresh token) under both versions too.
+	public := func(pattern string, h http.HandlerFunc) {
+		for _, p := range aliases(pattern) {
+			mux.HandleFunc(p, h)
+		}
+	}
 	route("POST /v0/api-keys", "", s.createKey)
 	route("GET /v0/api-keys", "", s.listKeys)
 	route("DELETE /v0/api-keys/{key}", "", s.revokeKey)
@@ -137,17 +154,19 @@ func (s *Server) Handler() http.Handler {
 	// Public: Stripe authenticates itself with the Stripe-Signature header.
 	mux.HandleFunc("POST /stripe/webhook", s.stripeWebhook)
 	// Public: people signing in. Each of these patterns is more specific than
-	// /v0/, so no API key is required; the handlers check their own credential
-	// (a magic link token, an OAuth state, a refresh token). API keys keep
-	// working on every other /v0/ route, and on these too where they apply.
-	mux.HandleFunc("POST /v0/auth/magic-link", s.magicLink)
-	mux.HandleFunc("GET /v0/auth/callback", s.authCallback)
-	mux.HandleFunc("POST /v0/auth/refresh", s.refreshSession)
-	mux.HandleFunc("POST /v0/auth/logout", s.logout)
-	mux.HandleFunc("GET /v0/auth/oauth/{provider}/start", s.oauthStart)
+	// /v0/ or /v1/, so no API key is required; the handlers check their own
+	// credential (a magic link token, an OAuth state, a refresh token). API
+	// keys keep working on every other versioned route, and on these too
+	// where they apply.
+	public("POST /v0/auth/magic-link", s.magicLink)
+	public("GET /v0/auth/callback", s.authCallback)
+	public("POST /v0/auth/refresh", s.refreshSession)
+	public("POST /v0/auth/logout", s.logout)
+	public("GET /v0/auth/oauth/{provider}/start", s.oauthStart)
 	mux.Handle("/v0/", s.authenticate(auth))
+	mux.Handle("/v1/", s.authenticate(auth))
 	mux.Handle("/mcp", s.authenticate(auth))
-	return s.gateway(mux)
+	return s.gateway(s.versioned(mux))
 }
 
 // require checks a permission before the handler runs ("" means any key).

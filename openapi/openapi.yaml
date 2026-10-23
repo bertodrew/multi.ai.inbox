@@ -17,6 +17,17 @@ info:
     screening are never returned. `message_release` is never implied by a
     full access key: only keys that list it hold it, and the first one is
     issued by the operator (`mai admin key-create -permissions ...`).
+
+    Versions: every path answers on /v1, the current version, and on /v0,
+    which is the same handler and is deprecated. Both prefixes return the
+    same bodies, status codes and error codes. A /v1 response carries
+    Aimulti-Api-Version: v1; a /v0 response carries Aimulti-Api-Version: v0,
+    Sunset (31 December 2027) and Link: </v1/...>; rel="successor-version".
+    The paths below use the /v0 prefix: replace it with /v1 and nothing else
+    changes. Policy: a version is supported at least twelve months after its
+    successor ships, breaking changes ship only in a new version, and a
+    deprecation is announced in headers, never in a response body.
+
 servers:
   - url: https://api.example.eu
 security:

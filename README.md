@@ -36,6 +36,7 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 | `internal/db/migrations` | schema with row level security |
 | `gatekeeper/` | Rust crate and JSON lines worker |
 | `openapi/openapi.yaml` | API contract |
+| `sdk/go`, `sdk/typescript` | official clients, one method per operation, typed errors |
 | `deploy/` | k3s manifests, Flux GitOps, Hetzner bootstrap, local Docker Compose |
 | `web/` | public site (Next.js static export): home, docs from the OpenAPI spec, pricing, security, FAQ, privacy, terms, careers, `llms.txt`, Markdown twins of docs |
 | `landing/` | previous landing imported from the old server, served under `/legacy/` |
@@ -80,7 +81,14 @@ The end to end test creates a fresh database with the production roles (`deploy/
 
 ## API surface
 
-REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP tools at `/mcp`:
+REST under `/v1` (contract in `openapi/openapi.yaml`), same capabilities as MCP tools at `/mcp`.
+`/v0` is an alias of the same handlers and is deprecated: its responses carry
+`Sunset` and `Link: </v1/...>; rel="successor-version"`, and its bodies are
+identical. A version is supported at least twelve months after its successor
+ships; the policy is at `web/src/content/docs/versions.ts` and at `/docs/versions`.
+Clients: `sdk/go` (module `github.com/bertodrew/multi.ai.inbox/sdk/go`, package
+`aimulti`) and `sdk/typescript` (`@aimulti/inbox`), each with a README.
+The table below writes paths with the `/v0` prefix used by older docs; `/v1` answers identically.
 
 | Area | Endpoints |
 |------|-----------|

@@ -28,9 +28,10 @@ var routeResources = map[string]bool{
 }
 
 // RouteClass maps a request path to a bounded label: healthz, readyz,
-// openapi, mcp, the /v0 resource (inboxes, threads, domains, webhooks,
+// openapi, mcp, the /v0 or /v1 resource (inboxes, threads, domains, webhooks,
 // api-keys, audit-logs, auth), messages or threads for the paths below
-// /v0/inboxes/{inbox}/messages and /threads, or other.
+// /v0/inboxes/{inbox}/messages and /threads, or other. Both versions share a
+// label: /v1 is an alias of /v0 and a split series would only duplicate it.
 func RouteClass(path string) string {
 	switch path {
 	case "/healthz":
@@ -42,7 +43,10 @@ func RouteClass(path string) string {
 	case "/mcp", "/mcp/":
 		return "mcp"
 	}
-	rest, ok := strings.CutPrefix(path, "/v0/")
+	rest, ok := strings.CutPrefix(path, "/v1/")
+	if !ok {
+		rest, ok = strings.CutPrefix(path, "/v0/")
+	}
 	if !ok {
 		return "other"
 	}
