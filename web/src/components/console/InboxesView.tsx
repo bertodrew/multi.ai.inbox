@@ -8,6 +8,7 @@ import { useAction, useResource } from "@/lib/console/use-resource";
 import { useConsole } from "./ConsoleShell";
 import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, Field, inputClass, LoadingState, PageTitle, When } from "./kit";
 import { PermissionNote } from "./PermissionNote";
+import { PushSettings } from "./PushSettings";
 
 type Page = { inboxes: Inbox[]; next?: string };
 
@@ -149,6 +150,10 @@ export function InboxesView() {
             ) : null}
           </>
         )}
+      </div>
+
+      <div className="mt-6">
+        <PushSettings />
       </div>
     </>
   );

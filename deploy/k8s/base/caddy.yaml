@@ -59,6 +59,14 @@ data:
       root * /srv
       @markdown path *.md /llms.txt
       header @markdown Content-Type "text/markdown; charset=utf-8"
+      # Go's mime table has no entry for .webmanifest, and a manifest served as
+      # text/plain is not installable in every browser.
+      @manifest path /manifest.webmanifest
+      header @manifest Content-Type "application/manifest+json; charset=utf-8"
+      # The worker script is fetched on every load; never let a proxy hold it.
+      @worker path /sw.js
+      header @worker Content-Type "text/javascript; charset=utf-8"
+      header @worker Cache-Control "no-cache"
       try_files {path} {path}/index.html {path}.html
       file_server
       handle_errors {

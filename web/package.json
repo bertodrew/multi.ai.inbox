@@ -8,7 +8,8 @@
     "dev": "npm run gen && next dev",
     "prebuild": "npm run gen",
     "build": "next build",
-    "postbuild": "node scripts/check-copy.mjs",
+    "postbuild": "node scripts/check-copy.mjs && node scripts/check-pwa.mjs",
+    "check:pwa": "node scripts/check-pwa.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
