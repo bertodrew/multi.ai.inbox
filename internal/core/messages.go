@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -45,6 +46,7 @@ type Message struct {
 	Size          int              `json:"size"`
 	AuthResults   json.RawMessage  `json:"authentication_results"`
 	Gatekeeper    json.RawMessage  `json:"gatekeeper,omitempty"`
+	Screening     *string          `json:"screening,omitempty"` // pending | review | allowed | released
 	Attachments   []AttachmentInfo `json:"attachments"`
 	CreatedAt     time.Time        `json:"created_at"`
 	rawKey        *string
@@ -54,15 +56,42 @@ type Message struct {
 
 const messageCols = `m.id, m.rfc_message_id, m.thread_id, i.address, m.direction, m.from_addr, m.to_addrs, m.cc_addrs,
 	m.bcc_addrs, m.subject, m.text_body, m.html_body, m.extracted_text, m.preview, m.labels, m.in_reply_to, m.refs,
-	m.status, m.size_bytes, m.auth_results, m.gatekeeper, m.created_at, m.raw_key, m.org_id, m.inbox_id`
+	m.status, m.size_bytes, m.auth_results, m.gatekeeper, m.screening, m.created_at, m.raw_key, m.org_id, m.inbox_id`
 
 const messageFrom = " from messages m join inboxes i on i.id = m.inbox_id"
+
+// view says which held messages a read may see (screen before notify).
+type view int
+
+const (
+	viewDefault view = iota // hides pending and review
+	viewReview              // hides pending only (include_review with message_review)
+	viewAll                 // internal: events, release
+)
+
+func viewFor(includeReview bool) view {
+	if includeReview {
+		return viewReview
+	}
+	return viewDefault
+}
+
+// visible returns the SQL condition on messages alias m for v.
+func (v view) visible() string {
+	switch v {
+	case viewReview:
+		return "m.screening is distinct from 'pending'"
+	case viewAll:
+		return "true"
+	}
+	return "(m.screening is null or m.screening not in ('pending', 'review'))"
+}
 
 func scanMessage(row pgx.Row) (*Message, error) {
 	m := &Message{}
 	err := row.Scan(&m.ID, &m.MessageID, &m.ThreadID, &m.InboxID, &m.Direction, &m.From, &m.To, &m.Cc, &m.Bcc,
 		&m.Subject, &m.Text, &m.HTML, &m.ExtractedText, &m.Preview, &m.Labels, &m.InReplyTo, &m.References,
-		&m.Status, &m.Size, &m.AuthResults, &m.Gatekeeper, &m.CreatedAt, &m.rawKey, &m.orgID, &m.inboxUUID)
+		&m.Status, &m.Size, &m.AuthResults, &m.Gatekeeper, &m.Screening, &m.CreatedAt, &m.rawKey, &m.orgID, &m.inboxUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +115,9 @@ func loadAttachments(ctx context.Context, tx pgx.Tx, m *Message) error {
 	return rows.Err()
 }
 
-// ListMessages returns metadata only (no bodies), newest first.
-func (s *Service) ListMessages(ctx context.Context, orgID, address string, p Page, label string) ([]*Message, string, error) {
+// ListMessages returns metadata only (no bodies), newest first. Messages held
+// by screening are left out; includeReview adds those held for review.
+func (s *Service) ListMessages(ctx context.Context, orgID, address string, p Page, label string, includeReview bool) ([]*Message, string, error) {
 	cur, err := p.cursor()
 	if err != nil {
 		return nil, "", err
@@ -98,7 +128,7 @@ func (s *Service) ListMessages(ctx context.Context, orgID, address string, p Pag
 		if err != nil {
 			return err
 		}
-		q := "select " + messageCols + messageFrom + " where m.inbox_id = $1"
+		q := "select " + messageCols + messageFrom + " where m.inbox_id = $1 and " + viewFor(includeReview).visible()
 		args := []any{inbox.ID, p.limit() + 1}
 		if label != "" {
 			args = append(args, label)
@@ -135,24 +165,26 @@ func (s *Service) ListMessages(ctx context.Context, orgID, address string, p Pag
 	return list, next, nil
 }
 
-// GetMessage accepts our UUID or the RFC Message-ID.
-func (s *Service) GetMessage(ctx context.Context, orgID, address, id string) (*Message, error) {
+// GetMessage accepts our UUID or the RFC Message-ID. A message held by
+// screening is not found unless includeReview is set and it is held for review.
+func (s *Service) GetMessage(ctx context.Context, orgID, address, id string, includeReview bool) (*Message, error) {
 	var out *Message
 	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		var err error
-		out, err = s.messageTx(ctx, tx, address, id)
+		out, err = s.messageTx(ctx, tx, address, id, viewFor(includeReview))
 		return err
 	})
 	return out, err
 }
 
-func (s *Service) messageTx(ctx context.Context, tx pgx.Tx, address, id string) (*Message, error) {
+func (s *Service) messageTx(ctx context.Context, tx pgx.Tx, address, id string, v view) (*Message, error) {
 	inbox, err := s.inboxTx(ctx, tx, address)
 	if err != nil {
 		return nil, err
 	}
 	m, err := scanMessage(tx.QueryRow(ctx, "select "+messageCols+messageFrom+
-		" where m.inbox_id = $1 and (m.id::text = $2 or m.rfc_message_id = $2) limit 1", inbox.ID, id))
+		" where m.inbox_id = $1 and (m.id::text = $2 or m.rfc_message_id = $2) and "+v.visible()+
+		" order by m.created_at limit 1", inbox.ID, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, NotFound("message")
 	}
@@ -163,8 +195,8 @@ func (s *Service) messageTx(ctx context.Context, tx pgx.Tx, address, id string) 
 }
 
 // RawMessage returns the stored .eml bytes.
-func (s *Service) RawMessage(ctx context.Context, orgID, address, id string) ([]byte, error) {
-	m, err := s.GetMessage(ctx, orgID, address, id)
+func (s *Service) RawMessage(ctx context.Context, orgID, address, id string, includeReview bool) ([]byte, error) {
+	m, err := s.GetMessage(ctx, orgID, address, id, includeReview)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +213,7 @@ func (s *Service) UpdateMessageLabels(ctx context.Context, orgID, address, id st
 	}
 	var out *Message
 	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
-		m, err := s.messageTx(ctx, tx, address, id)
+		m, err := s.messageTx(ctx, tx, address, id, viewDefault)
 		if err != nil {
 			return err
 		}
@@ -191,7 +223,7 @@ func (s *Service) UpdateMessageLabels(ctx context.Context, orgID, address, id st
 		if err != nil {
 			return err
 		}
-		out, err = s.messageTx(ctx, tx, address, m.ID)
+		out, err = s.messageTx(ctx, tx, address, m.ID, viewDefault)
 		return err
 	})
 	return out, err
@@ -272,6 +304,7 @@ type outbound struct {
 	threadID    string // empty starts a new thread
 	inReplyTo   string
 	references  []string
+	unscanned   bool // attachments accepted without a virus scan (fail open)
 }
 
 func (s *Service) Send(ctx context.Context, orgID, address string, req SendRequest, idemKey string) (*SendResult, error) {
@@ -301,7 +334,12 @@ func (s *Service) Send(ctx context.Context, orgID, address string, req SendReque
 	if err != nil {
 		return nil, err
 	}
-	o := outbound{to: to, cc: cc, bcc: bcc, subject: req.Subject, text: req.Text, html: req.HTML, labels: labels, attachments: atts}
+	unscanned, err := s.scanAttachments(ctx, atts)
+	if err != nil {
+		return nil, err
+	}
+	o := outbound{to: to, cc: cc, bcc: bcc, subject: req.Subject, text: req.Text, html: req.HTML, labels: labels, attachments: atts,
+		unscanned: unscanned}
 	return s.idempotent(ctx, orgID, idemKey, req, func(tx pgx.Tx) (*SendResult, error) {
 		inbox, err := s.inboxTx(ctx, tx, address)
 		if err != nil {
@@ -323,33 +361,46 @@ func (s *Service) Reply(ctx context.Context, orgID, address, id string, req Repl
 	if err != nil {
 		return nil, err
 	}
+	unscanned, err := s.scanAttachments(ctx, atts)
+	if err != nil {
+		return nil, err
+	}
 	return s.idempotent(ctx, orgID, idemKey, req, func(tx pgx.Tx) (*SendResult, error) {
 		inbox, err := s.inboxTx(ctx, tx, address)
 		if err != nil {
 			return nil, err
 		}
-		parent, err := s.messageTx(ctx, tx, address, id)
+		// Replying to a held message would let its content steer the agent.
+		parent, err := s.messageTx(ctx, tx, address, id, viewDefault)
 		if err != nil {
 			return nil, err
 		}
-		target := parent.From
-		if parent.Direction == "out" && len(parent.To) > 0 {
-			target = parent.To[0]
-		}
-		o := outbound{to: []string{target}, subject: mailx.ReplySubject(parent.Subject), text: req.Text, html: req.HTML,
-			labels: labels, attachments: atts, threadID: parent.ThreadID, inReplyTo: parent.MessageID,
-			references: append(append([]string{}, parent.References...), parent.MessageID)}
-		if req.ReplyAll {
-			seen := map[string]bool{inbox.InboxID: true, target: true}
-			for _, a := range append(append([]string{}, parent.To...), parent.Cc...) {
-				if !seen[a] {
-					seen[a] = true
-					o.cc = append(o.cc, a)
-				}
-			}
-		}
+		o := replyOutbound(inbox, parent, req.ReplyAll)
+		o.text, o.html, o.labels, o.attachments = req.Text, req.HTML, labels, atts
+		o.unscanned = unscanned
 		return s.queue(ctx, tx, orgID, inbox, o)
 	})
+}
+
+// replyOutbound addresses a reply to parent and sets its threading headers.
+// Reply all copies the other recipients of parent, never the inbox itself.
+func replyOutbound(inbox *Inbox, parent *Message, replyAll bool) outbound {
+	target := parent.From
+	if parent.Direction == "out" && len(parent.To) > 0 {
+		target = parent.To[0]
+	}
+	o := outbound{to: []string{target}, subject: mailx.ReplySubject(parent.Subject), threadID: parent.ThreadID,
+		inReplyTo: parent.MessageID, references: append(append([]string{}, parent.References...), parent.MessageID)}
+	if replyAll {
+		seen := map[string]bool{inbox.InboxID: true, target: true}
+		for _, a := range append(append([]string{}, parent.To...), parent.Cc...) {
+			if !seen[a] {
+				seen[a] = true
+				o.cc = append(o.cc, a)
+			}
+		}
+	}
+	return o
 }
 
 // queue renders the MIME, stores it and inserts an outbound message for the sender worker.
@@ -357,12 +408,19 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	if n := len(o.to) + len(o.cc) + len(o.bcc); n > maxRecipients {
 		return nil, Validation("at most %d recipients per message, got %d", maxRecipients, n)
 	}
+	if err := sendingPaused(ctx, tx, orgID, inbox.ID, inbox.InboxID); err != nil {
+		return nil, err
+	}
 	var planName string
-	var sentToday, sentMonth int
+	var sentToday, sentMonth, sentBurst int
+	var burstWait float64 // seconds until the oldest send leaves the 5 minute window
 	if err := tx.QueryRow(ctx, `select o.plan,
 		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at > now() - interval '1 day'),
-		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at >= date_trunc('month', now()))
-		from organizations o where o.id = $1`, orgID).Scan(&planName, &sentToday, &sentMonth); err != nil {
+		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at >= date_trunc('month', now())),
+		b.n, coalesce(extract(epoch from b.oldest + interval '5 minutes' - now()), 0)::float8
+		from organizations o, lateral (select count(*) as n, min(created_at) as oldest from messages
+			where org_id = o.id and direction = 'out' and created_at > now() - interval '5 minutes') b
+		where o.id = $1`, orgID).Scan(&planName, &sentToday, &sentMonth, &sentBurst, &burstWait); err != nil {
 		return nil, err
 	}
 	plan := planOf(planName)
@@ -371,6 +429,14 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	}
 	if sentMonth >= plan.SendsPerMonth {
 		return nil, errf(http.StatusTooManyRequests, "limit_exceeded", "monthly send limit of %d reached on the %s plan", plan.SendsPerMonth, plan.Name)
+	}
+	if sentBurst >= plan.SendsPer5Min {
+		e := errf(http.StatusTooManyRequests, "rate_limited", "send burst limit of %d per 5 minutes reached on the %s plan", plan.SendsPer5Min, plan.Name)
+		e.RetryAfter = max(1, int(math.Ceil(burstWait)))
+		return nil, e
+	}
+	if o.unscanned {
+		o.labels = uniqueLabels(append(o.labels, "av-unscanned"))
 	}
 	if plan.Footer {
 		o.text += freeFooterText
@@ -425,16 +491,25 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 			return nil, err
 		}
 	}
-	if err := touchThread(ctx, tx, threadID, preview, o.labels); err != nil {
+	if err := touchThread(ctx, tx, threadID, o.subject, preview, o.labels); err != nil {
 		return nil, err
+	}
+	if o.unscanned {
+		if err := s.alertAVUnscanned(ctx, tx, orgID, inbox.ID, inbox.InboxID, "api"); err != nil {
+			return nil, err
+		}
 	}
 	return &SendResult{MessageID: rfcID, ThreadID: threadID}, nil
 }
 
-func touchThread(ctx context.Context, tx pgx.Tx, threadID, preview string, labels []string) error {
+// touchThread counts a visible message in its thread. A thread created by a
+// held message has no visible message yet (message_count 0), so the first
+// visible one also sets the subject.
+func touchThread(ctx context.Context, tx pgx.Tx, threadID, subject, preview string, labels []string) error {
 	_, err := tx.Exec(ctx, `update threads set message_count = message_count + 1, last_message_at = now(),
+		subject = case when message_count = 0 then $4 else subject end,
 		preview = $2, labels = array(select distinct l from unnest(labels || $3::text[]) l) where id = $1`,
-		threadID, preview, labels)
+		threadID, preview, labels, subject)
 	return err
 }
 
@@ -485,11 +560,11 @@ func (s *Service) idempotent(ctx context.Context, orgID, key string, req any, fn
 }
 
 // GetAttachment returns attachment metadata and its bytes.
-func (s *Service) GetAttachment(ctx context.Context, orgID, address, messageID, attachmentID string) (*AttachmentInfo, []byte, error) {
+func (s *Service) GetAttachment(ctx context.Context, orgID, address, messageID, attachmentID string, includeReview bool) (*AttachmentInfo, []byte, error) {
 	var info *AttachmentInfo
 	var key string
 	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
-		m, err := s.messageTx(ctx, tx, address, messageID)
+		m, err := s.messageTx(ctx, tx, address, messageID, viewFor(includeReview))
 		if err != nil {
 			return err
 		}

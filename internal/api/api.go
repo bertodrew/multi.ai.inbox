@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -43,6 +44,12 @@ type Server struct {
 	AuthFailures *Limiter
 	// Gateway holds the edge settings (CORS, trusted proxies).
 	Gateway Gateway
+	// Streams caps the open event streams per API key; zero values use the defaults.
+	Streams StreamSettings
+	// Done ends open event streams (server shutdown); nil means never.
+	Done <-chan struct{}
+
+	streams streamCounter
 }
 
 const maxBody = 8 << 20
@@ -80,7 +87,15 @@ func (s *Server) Handler() http.Handler {
 	route("PATCH /v0/inboxes/{inbox}/messages/{message}", core.PermMessageUpdate, s.updateMessage)
 	route("GET /v0/inboxes/{inbox}/messages/{message}/raw", core.PermMessageRead, s.rawMessage)
 	route("POST /v0/inboxes/{inbox}/messages/{message}/reply", core.PermMessageSend, s.reply)
+	route("POST /v0/inboxes/{inbox}/messages/{message}/release", core.PermMessageRelease, s.releaseMessage)
 	route("GET /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}", core.PermMessageRead, s.attachment)
+	route("POST /v0/inboxes/{inbox}/drafts", core.PermMessageSend, s.createDraft)
+	route("GET /v0/inboxes/{inbox}/drafts", core.PermMessageRead, s.listDrafts)
+	route("GET /v0/inboxes/{inbox}/drafts/{draft}", core.PermMessageRead, s.getDraft)
+	route("PATCH /v0/inboxes/{inbox}/drafts/{draft}", core.PermMessageSend, s.updateDraft)
+	route("DELETE /v0/inboxes/{inbox}/drafts/{draft}", core.PermMessageSend, s.deleteDraft)
+	route("POST /v0/inboxes/{inbox}/drafts/{draft}/send", core.PermMessageSend, s.sendDraft)
+	route("GET /v0/events/stream", core.PermMessageRead, s.streamEvents)
 	route("POST /v0/domains", core.PermDomainWrite, s.createDomain)
 	route("GET /v0/domains", core.PermDomainRead, s.listDomains)
 	route("GET /v0/domains/{domain}", core.PermDomainRead, s.getDomain)
@@ -89,6 +104,9 @@ func (s *Server) Handler() http.Handler {
 	route("POST /v0/webhooks", core.PermWebhookWrite, s.createWebhook)
 	route("GET /v0/webhooks", core.PermWebhookRead, s.listWebhooks)
 	route("DELETE /v0/webhooks/{webhook}", core.PermWebhookWrite, s.deleteWebhook)
+	route("GET /v0/billing", core.PermBillingRead, s.getBilling)
+	route("POST /v0/billing/checkout", core.PermBillingWrite, s.checkout)
+	route("POST /v0/billing/portal", core.PermBillingWrite, s.portal)
 	if s.MCP != nil {
 		auth.Handle("/mcp", s.MCP)
 	}
@@ -96,6 +114,8 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write(openapi.Spec)
 	})
+	// Public: Stripe authenticates itself with the Stripe-Signature header.
+	mux.HandleFunc("POST /stripe/webhook", s.stripeWebhook)
 	mux.Handle("/v0/", s.authenticate(auth))
 	mux.Handle("/mcp", s.authenticate(auth))
 	return s.gateway(mux)
@@ -116,12 +136,7 @@ func (s *Server) require(perm string, h http.HandlerFunc) http.Handler {
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := ""
-		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			key = strings.TrimPrefix(h, "Bearer ")
-		} else if h := r.Header.Get("X-Api-Key"); h != "" {
-			key = h
-		}
+		key := apiKey(r)
 		if key == "" {
 			s.fail(w, &core.Error{Status: http.StatusUnauthorized, Name: "Unauthorized", Code: "missing_authorization",
 				Message: "send Authorization: Bearer <api key>"})
@@ -152,6 +167,14 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	})
 }
 
+// apiKey reads the API key from Authorization: Bearer, or else X-Api-Key.
+func apiKey(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimPrefix(h, "Bearer ")
+	}
+	return r.Header.Get("X-Api-Key")
+}
+
 func (s *Server) ok(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -164,12 +187,15 @@ func (s *Server) ok(w http.ResponseWriter, status int, v any) {
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	e := core.AsError(err)
-	if e.Status >= 500 {
+	if e.Status >= 500 && e.Status != http.StatusNotImplemented { // 501: a feature switched off, not a fault
 		s.Log.Error("request failed", "err", err)
 	}
 	if e.Status == http.StatusTooManyRequests {
 		retry := "60"
-		if e.Code == "rate_limit_exceeded" {
+		switch {
+		case e.RetryAfter > 0:
+			retry = strconv.Itoa(e.RetryAfter)
+		case e.Code == "rate_limit_exceeded":
 			retry = "1"
 		}
 		w.Header().Set("Retry-After", retry)
@@ -187,6 +213,20 @@ func decode(r *http.Request, v any) error {
 		return core.Validation("invalid JSON body: %v", err)
 	}
 	return nil
+}
+
+// includeReview reads include_review=true: held for review messages are
+// returned only when asked for and only to keys holding message_review.
+func includeReview(r *http.Request) (bool, error) {
+	v := r.URL.Query().Get("include_review")
+	if v == "" {
+		return false, nil
+	}
+	on, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, core.Validation("include_review must be true or false")
+	}
+	return on, PrincipalFrom(r.Context()).ReviewAccess(on)
 }
 
 func page(r *http.Request) core.Page {
@@ -209,10 +249,13 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
 	perms := p.Permissions
 	if perms == nil {
-		perms = core.AllPermissions
+		// A full access key holds every permission except the explicit ones.
+		perms = slices.DeleteFunc(slices.Clone(core.AllPermissions), func(perm string) bool {
+			return slices.Contains(core.ExplicitPermissions, perm)
+		})
 	}
 	s.ok(w, http.StatusOK, map[string]any{"organization_id": p.Org.ID, "name": p.Org.Name, "plan": p.Org.Plan,
-		"api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
+		"screen_before_notify": p.Org.ScreenBeforeNotify, "api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
 }
 
 // audit records a security relevant action; a failure is logged, never fatal.
@@ -337,7 +380,12 @@ func (s *Server) deleteInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listThreads(w http.ResponseWriter, r *http.Request) {
-	items, next, err := s.Svc.ListThreads(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	items, next, err := s.Svc.ListThreads(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -346,7 +394,12 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getThread(w http.ResponseWriter, r *http.Request) {
-	t, err := s.Svc.GetThread(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("thread"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	t, err := s.Svc.GetThread(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("thread"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -359,7 +412,12 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
-	items, next, err := s.Svc.ListMessages(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	items, next, err := s.Svc.ListMessages(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), page(r), r.URL.Query().Get("label"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -368,11 +426,26 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getMessage(w http.ResponseWriter, r *http.Request) {
-	m, err := s.Svc.GetMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"))
+	review, err := includeReview(r)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	m, err := s.Svc.GetMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), review)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, m)
+}
+
+func (s *Server) releaseMessage(w http.ResponseWriter, r *http.Request) {
+	m, err := s.Svc.ReleaseMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "message.release", m.ID, map[string]any{"inbox": m.InboxID, "message_id": m.MessageID, "gatekeeper": m.Gatekeeper})
 	s.ok(w, http.StatusOK, m)
 }
 
@@ -394,7 +467,12 @@ func (s *Server) updateMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) rawMessage(w http.ResponseWriter, r *http.Request) {
-	raw, err := s.Svc.RawMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	raw, err := s.Svc.RawMessage(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -465,7 +543,12 @@ func (s *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) attachment(w http.ResponseWriter, r *http.Request) {
-	info, data, err := s.Svc.GetAttachment(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), r.PathValue("attachment"))
+	review, err := includeReview(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	info, data, err := s.Svc.GetAttachment(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), r.PathValue("message"), r.PathValue("attachment"), review)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -527,4 +610,78 @@ func (s *Server) verifyDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ok(w, http.StatusOK, d)
+}
+
+func (s *Server) getBilling(w http.ResponseWriter, r *http.Request) {
+	info, err := s.Svc.GetBilling(r.Context(), OrgFrom(r.Context()).ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, info)
+}
+
+func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
+	var req core.CheckoutRequest
+	if err := decode(r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	session, err := s.Svc.CreateCheckout(r.Context(), OrgFrom(r.Context()).ID, req)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if req.Interval == "" {
+		req.Interval = "monthly"
+	}
+	s.audit(r, "billing.checkout", session.ID, map[string]any{"plan": req.Plan, "interval": req.Interval})
+	s.ok(w, http.StatusOK, map[string]any{"session_id": session.ID, "url": session.URL})
+}
+
+func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ReturnURL string `json:"return_url"`
+	}
+	if r.ContentLength != 0 {
+		if err := decode(r, &req); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	session, err := s.Svc.CreatePortal(r.Context(), OrgFrom(r.Context()).ID, req.ReturnURL)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "billing.portal", session.ID, nil)
+	s.ok(w, http.StatusOK, map[string]any{"session_id": session.ID, "url": session.URL})
+}
+
+// maxStripeEvent bounds a webhook body; Stripe events are a few kilobytes.
+const maxStripeEvent = 1 << 20
+
+// stripeWebhook receives Stripe events. The raw body is verified against
+// the Stripe-Signature header before anything is parsed; neither the header
+// nor the payload is logged.
+func (s *Server) stripeWebhook(w http.ResponseWriter, r *http.Request) {
+	payload, err := io.ReadAll(io.LimitReader(r.Body, maxStripeEvent+1))
+	if err != nil {
+		s.fail(w, core.Validation("could not read the request body"))
+		return
+	}
+	if len(payload) > maxStripeEvent {
+		s.fail(w, &core.Error{Status: http.StatusRequestEntityTooLarge, Name: "Request Entity Too Large", Code: "payload_too_large",
+			Message: "Stripe events are limited to 1 MiB"})
+		return
+	}
+	outcome, err := s.Svc.HandleStripeWebhook(r.Context(), payload, r.Header.Get("Stripe-Signature"))
+	if err != nil {
+		if e := core.AsError(err); e.Code == "invalid_signature" {
+			s.Log.Warn("stripe webhook rejected", "reason", e.Code, "ip", clientIP(r.Context()))
+		}
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, map[string]any{"received": true, "outcome": outcome})
 }

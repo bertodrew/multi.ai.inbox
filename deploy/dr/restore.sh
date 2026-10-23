@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# PROPOSAL (not wired into CI or Flux). Full restore of multi.ai.inbox onto a
-# NEW Hetzner Cloud server, from git (Flux) + Object Storage backups.
+# Full restore of multi.ai.inbox onto a NEW Hetzner Cloud server, from git
+# (Flux) + the encrypted Object Storage backups written by
+# deploy/k8s/base/backup.yaml (rclone crypt, layout crypt/dumps/<day>/ and
+# crypt/blobs/). Operator tool: not run by CI or Flux.
 #
 # Runs on the operator's machine (founder laptop or the ops agent host) with
 # hcloud, ssh, scp, jq and curl installed. Idempotent: every step checks state
@@ -10,8 +12,10 @@
 #
 # Required:
 #   HCLOUD_TOKEN, SSH_KEY_NAME
-#   GITHUB_TOKEN, GHCR_TOKEN, BREVO_LOGIN, BREVO_KEY        (same as bootstrap.sh)
+#   GHCR_TOKEN, BREVO_LOGIN, BREVO_KEY                      (same as bootstrap.sh)
 #   BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY, BACKUP_S3_SECRET_KEY
+#   BACKUP_CRYPT_PASSWORD, BACKUP_CRYPT_SALT   the founder's offline copy of the crypt keys;
+#                 without them nothing can be decrypted
 #   RESTORE_CONFIRM=yes   (acknowledges that the database on the target server is replaced)
 # Optional:
 #   SERVER_NAME   default mai-dr-<yyyymmdd>
@@ -22,7 +26,11 @@
 #   FLOATING_IP   name or id of a Floating IP to point at the new server
 #   MX_HOSTNAME   PTR to set, e.g. mx.2-28-99-252.sslip.io
 #   API_HOST      e.g. api.2-28-99-252.sslip.io, for the external /readyz check
-#   DUMP          object name under postgres/ (default: newest mai-*.dump)
+#   DUMP          dump path under crypt/dumps, e.g. 2026-10-21/mai-2026-10-21T0217Z.dump (default: newest)
+#   DB_OWNER      role that owns database mai (default mai_owner, created by postgres-init.sh)
+#   GITHUB_TOKEN  only for the legacy PAT bootstrap; by default bootstrap.sh uses a deploy key
+#   FLUX_DEPLOY_KEY_FILE  local private key already registered as a GitHub deploy key; copied to
+#                 the server so bootstrap.sh does not stop to ask for a new one
 #   SKIP_BLOBS=1  restore the database only
 #   SMOKE_API_KEY tester API key for the send/receive smoke test (staging only)
 #   REPO_DIR      repository checkout holding deploy/hetzner/bootstrap.sh (default: this script's repo)
@@ -50,9 +58,12 @@ need() { # need VAR "description"
 for bin in hcloud ssh scp jq curl; do command -v "$bin" >/dev/null || die "$bin not installed"; done
 need HCLOUD_TOKEN "Hetzner Cloud API token"; export HCLOUD_TOKEN
 need SSH_KEY_NAME "SSH key name in the Hetzner project"
-for v in GITHUB_TOKEN GHCR_TOKEN BREVO_LOGIN BREVO_KEY BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET BACKUP_S3_ACCESS_KEY BACKUP_S3_SECRET_KEY; do
+BOOT_VARS="GHCR_TOKEN BREVO_LOGIN BREVO_KEY BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET BACKUP_S3_ACCESS_KEY BACKUP_S3_SECRET_KEY BACKUP_CRYPT_PASSWORD BACKUP_CRYPT_SALT"
+for v in $BOOT_VARS; do
   need "$v" "value for bootstrap.sh"
 done
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then BOOT_VARS+=" GITHUB_TOKEN"; fi
+DB_OWNER=${DB_OWNER:-mai_owner}
 [[ -f "$REPO_DIR/deploy/hetzner/bootstrap.sh" ]] || die "bootstrap.sh not found under REPO_DIR=$REPO_DIR"
 if [[ "${RESTORE_CONFIRM:-}" != yes ]]; then
   [[ -t 0 ]] || die "set RESTORE_CONFIRM=yes to replace the database on $SERVER_NAME"
@@ -118,15 +129,21 @@ if done_step bootstrap; then
   echo "already done"
 else
   scp -q "$REPO_DIR/deploy/hetzner/bootstrap.sh" "root@$IP:/root/bootstrap.sh"
+  if [[ -n "${FLUX_DEPLOY_KEY_FILE:-}" ]]; then
+    rssh 'install -d -m 700 /root/.ssh'
+    scp -q "$FLUX_DEPLOY_KEY_FILE" "root@$IP:/root/.ssh/flux-deploy-key"
+    rssh 'chmod 600 /root/.ssh/flux-deploy-key'
+  fi
   # Values travel in the SSH session only; printf %q keeps them shell safe.
+  # Passing the crypt keys makes the new cluster write and read the same backups.
   envs=""
-  for v in GITHUB_TOKEN GHCR_TOKEN BREVO_LOGIN BREVO_KEY BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET BACKUP_S3_ACCESS_KEY BACKUP_S3_SECRET_KEY; do
+  for v in $BOOT_VARS; do
     envs+="$v=$(printf %q "${!v}") "
   done
   # bootstrap.sh seeds tester accounts on the empty database; they are
   # discarded below when the database is replaced by the dump.
   rssh "$envs bash /root/bootstrap.sh < /dev/null" > bootstrap-restore.log 2>&1 \
-    || { tail -n 30 bootstrap-restore.log; die "bootstrap failed, see bootstrap-restore.log"; }
+    || { tail -n 30 bootstrap-restore.log; die "bootstrap stopped, see bootstrap-restore.log (if it printed a deploy key: add it in GitHub with write access, then rerun)"; }
   mark_step bootstrap
 fi
 
@@ -138,6 +155,11 @@ rssh "flux suspend kustomization mai && kubectl -n $NS scale deploy/mai --replic
 # While mai is down, inbound SMTP is refused at TCP level and senders retry
 # (RFC 5321 section 4.5.4.1); keep this window short.
 
+# Every job script starts by giving rclone the crypt keys (obscured form).
+CRYPT_PRELUDE='for r in DUMPS BLOBS; do
+  export "RCLONE_CONFIG_${r}_PASSWORD=$(rclone obscure "$BACKUP_CRYPT_PASSWORD")" "RCLONE_CONFIG_${r}_PASSWORD2=$(rclone obscure "$BACKUP_CRYPT_SALT")"
+done
+'
 job() { # job NAME RUN_AS_UID PVC MOUNT SCRIPT
   rssh "kubectl -n $NS delete job $1 --ignore-not-found >/dev/null; kubectl -n $NS apply -f -" <<EOF
 apiVersion: batch/v1
@@ -153,20 +175,30 @@ spec:
       containers:
         - name: run
           image: rclone/rclone:1.75.2
-          command: ["/bin/sh", "-ec", $(jq -Rs . <<<"$5")]
+          command: ["/bin/sh", "-ec", $(jq -Rs . <<<"$CRYPT_PRELUDE$5")]
           env:
             - { name: HOME, value: /tmp }
             - { name: DUMP, value: "${DUMP:-}" }
+            - name: BACKUP_S3_BUCKET
+              valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_BUCKET } }
             - { name: RCLONE_CONFIG_STORE_TYPE, value: s3 }
-            - { name: RCLONE_CONFIG_STORE_PROVIDER, value: Other }
+            - { name: RCLONE_CONFIG_STORE_PROVIDER, value: Hetzner }
+            - { name: RCLONE_CONFIG_STORE_NO_CHECK_BUCKET, value: "true" }
             - name: RCLONE_CONFIG_STORE_ENDPOINT
               valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ENDPOINT } }
             - name: RCLONE_CONFIG_STORE_ACCESS_KEY_ID
               valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_ACCESS_KEY } }
             - name: RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY
               valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_SECRET_KEY } }
-            - name: BACKUP_S3_BUCKET
-              valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_S3_BUCKET } }
+            - { name: RCLONE_CONFIG_DUMPS_TYPE, value: crypt }
+            - { name: RCLONE_CONFIG_DUMPS_REMOTE, value: "store:\$(BACKUP_S3_BUCKET)/crypt/dumps" }
+            - { name: RCLONE_CONFIG_DUMPS_DIRECTORY_NAME_ENCRYPTION, value: "false" }
+            - { name: RCLONE_CONFIG_BLOBS_TYPE, value: crypt }
+            - { name: RCLONE_CONFIG_BLOBS_REMOTE, value: "store:\$(BACKUP_S3_BUCKET)/crypt/blobs" }
+            - name: BACKUP_CRYPT_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_CRYPT_PASSWORD } }
+            - name: BACKUP_CRYPT_SALT
+              valueFrom: { secretKeyRef: { name: mai-backup, key: BACKUP_CRYPT_SALT } }
           volumeMounts: [ { name: target, mountPath: $4 } ]
       volumes:
         - { name: target, persistentVolumeClaim: { claimName: $3 } }
@@ -182,18 +214,33 @@ if done_step database; then
   echo "already done"
 else
   # Download straight onto the Postgres volume (single node: RWO is shared on the node).
+  # Download and decrypt straight onto the Postgres volume (single node: RWO is shared on the node).
   job restore-fetch-dump 70 data-postgres-0 /pgdata '
-    name="${DUMP:-$(rclone lsf --files-only "store:$BACKUP_S3_BUCKET/postgres" | grep "\.dump$" | sort | tail -n 1)}"
+    name="${DUMP:-$(rclone lsf -R --files-only --include "mai-*.dump" dumps: | sort | tail -n 1)}"
     [ -n "$name" ] || { echo "no dump found"; exit 1; }
-    rclone copyto "store:$BACKUP_S3_BUCKET/postgres/$name" /pgdata/restore.dump
+    rclone copyto "dumps:$name" /pgdata/restore.dump
+    rclone copyto "dumps:$name.counts" /pgdata/restore.counts
     echo "fetched $name, $(stat -c %s /pgdata/restore.dump) bytes"'
   rssh "kubectl -n $NS exec -i postgres-0 -- sh -ec '
-    pg_restore --list /var/lib/postgresql/data/restore.dump >/dev/null
+    cd /var/lib/postgresql/data
+    pg_restore --list restore.dump >/dev/null
     psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"drop database if exists mai with (force)\"
-    psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"create database mai owner mai_app\"
-    pg_restore -U postgres -d mai --exit-on-error /var/lib/postgresql/data/restore.dump
-    rm -f /var/lib/postgresql/data/restore.dump
-    psql -U postgres -d mai -Atc \"select count(*) from organizations\"'"
+    psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"create database mai owner $DB_OWNER\"
+    pg_restore -U postgres -d mai --exit-on-error restore.dump
+    /docker-entrypoint-initdb.d/10-mai.sh
+    rm -f restore.dump'"
+  # Row counts of every table must equal the counts the backup job recorded
+  # from the same snapshot as the dump.
+  rssh "kubectl -n $NS exec postgres-0 -- cat /var/lib/postgresql/data/restore.counts" > restore-backup.counts
+  rssh "kubectl -n $NS exec -i postgres-0 -- psql -X -q -At -v ON_ERROR_STOP=1 -U postgres -d mai" > restore-restored.counts <<'SQL'
+select format('select %L, count(*) from %I.%I', tablename, schemaname, tablename) from pg_tables where schemaname = 'public' order by tablename \gexec
+SQL
+  if ! cmp -s restore-backup.counts restore-restored.counts; then
+    diff restore-backup.counts restore-restored.counts || true
+    die "restored row counts differ from the backup (files restore-*.counts)"
+  fi
+  echo "row counts match the backup: $(tr '\n' ' ' < restore-restored.counts)"
+  rssh "kubectl -n $NS exec postgres-0 -- rm -f /var/lib/postgresql/data/restore.counts"
   mark_step database
 fi
 
@@ -205,7 +252,7 @@ elif done_step blobs; then
 else
   log "6. Restore blobs (rclone copy, safe to rerun)"
   job restore-blobs 65532 mai-blobs /blobs '
-    rclone copy --transfers 16 "store:$BACKUP_S3_BUCKET/blobs" /blobs
+    rclone copy --transfers 16 blobs: /blobs
     echo "blob files: $(find /blobs -type f | wc -l)"'
   mark_step blobs
 fi
@@ -248,6 +295,10 @@ if [[ -n "${SMOKE_API_KEY:-}" && -n "${API_HOST:-}" ]]; then
   curl -fsS "$API/v0/inboxes/admin.tester@agents.localhost/messages" -H "Authorization: Bearer $SMOKE_API_KEY" | grep -q 'dr smoke' \
     && echo "send/receive smoke test: OK" || die "smoke test message not received"
 fi
+
+log "9. Protect the new server (daily Hetzner backups, delete and rebuild protection)"
+hcloud server enable-backup "$SERVER_NAME" || echo "WARN: enable-backup failed, enable it in the console"
+hcloud server enable-protection "$SERVER_NAME" delete rebuild || echo "WARN: enable-protection failed"
 
 rssh "kubectl -n $NS delete job -l dr.proposal=restore --ignore-not-found >/dev/null"
 cat <<EOF

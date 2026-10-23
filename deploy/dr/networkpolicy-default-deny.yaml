@@ -7,6 +7,7 @@
 #   internet  -> caddy 8080/8443        (ServiceLB 80/443)
 #   internet  -> mai 2525               (ServiceLB 25, SMTP inbound)
 #   caddy     -> mai 8080               (API reverse proxy)
+#   namespace -> mai 9090               (metrics scrape)
 #   mai       -> postgres 5432, rspamd 11333
 #   backup    -> postgres 5432          (the restore drill uses its own scratch DB, no access)
 #   all pods  -> kube-dns 53 UDP/TCP
@@ -102,6 +103,10 @@ spec:
         - ipBlock: { cidr: "::/0" }
       ports:
         - { protocol: TCP, port: 2525 }
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 9090 }
   egress:
     - to:
         - podSelector:

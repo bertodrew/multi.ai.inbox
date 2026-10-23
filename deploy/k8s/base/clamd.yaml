@@ -1,0 +1,66 @@
+# ClamAV daemon for the SMTP edge (MAI_CLAMD_ADDR=clamd:3310). The official
+# image runs freshclam for signature updates next to clamd. ClamAV is GPL: it
+# runs as a separate service reached over TCP and is never linked into mai.
+# clamd holds the signatures in memory (about 1.2 GB) and briefly needs more
+# while it reloads them after an update, hence the 3 GiB limit; it fits the
+# 8 GB CX33 next to Postgres, mai, rspamd and Caddy.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clamav-db
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamd
+spec:
+  selector: { app: clamd }
+  ports:
+    - port: 3310
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamd
+spec:
+  replicas: 1
+  # The signature volume is ReadWriteOnce on one node.
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: clamd }
+  template:
+    metadata:
+      labels: { app: clamd }
+    spec:
+      containers:
+        - name: clamd
+          image: clamav/clamav:1.4.6
+          ports:
+            - containerPort: 3310
+          # The first start downloads the signatures (about 300 MB) before
+          # clamd listens; later starts reuse the volume.
+          startupProbe:
+            tcpSocket: { port: 3310 }
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: { port: 3310 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 3310 }
+            periodSeconds: 30
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 50m, memory: 1536Mi }
+            limits: { memory: 3Gi }
+          volumeMounts:
+            - name: signatures
+              mountPath: /var/lib/clamav
+      volumes:
+        - name: signatures
+          persistentVolumeClaim: { claimName: clamav-db }

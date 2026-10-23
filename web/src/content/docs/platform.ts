@@ -4,13 +4,21 @@ import { mcpClaudeCode, mcpCodex, mcpCursor, verifyPython, verifyTs } from "../s
 import type { DocPage } from "../types";
 
 const eventDescriptions: Record<string, string> = {
-  "message.received": "A message arrived in an inbox and was stored.",
+  "message.received": "A message arrived in an inbox. With screen before notify (the default) it fires only after a clean verdict, or after a release.",
   "message.received.spam": "A message arrived and the spam filter flagged it (it carries the `spam` label).",
   "message.sent": "An outbound message was accepted by the next hop.",
   "message.failed": "An outbound message failed after all retries.",
+  "message.bounced": "A delivery status notification reported that an outbound message could not be delivered (it gets the `bounced` label).",
+  "message.complained": "A recipient reported an outbound message as spam through a feedback loop (it gets the `complained` label).",
   "message.security.completed": "Gatekeeper screening finished; `extracted_text` and the verdict are set.",
-  "message.security.review": "Gatekeeper screening finished with verdict `review`.",
+  "message.security.review": "Gatekeeper screening finished with verdict `review` (or could not run). With screen before notify the message is held and the payload carries no body.",
   "domain.verified": "All DNS records of a custom domain were found.",
+  "draft.created": "A draft was saved in an inbox. The payload carries the draft without attachment content.",
+  "inbox.sending.paused": "The bounce breaker paused sending from an inbox: hard bounce rate above 5% over at least 20 sends in 24 hours, spam complaints above 0.1% over at least 1000 sends, or 3 complaints in 24 hours below that volume.",
+  "inbox.sending.resumed": "Support resumed sending from an inbox.",
+  "organization.sending.paused": "The bounce breaker paused sending for the whole organization.",
+  "organization.sending.resumed": "Support resumed sending for the organization.",
+  "security.av_unavailable": "The virus scanner was unavailable and content was accepted with the `av-unscanned` label. Sent at most once per 10 minutes.",
 };
 
 export const customDomains: DocPage = {
@@ -67,7 +75,7 @@ export const customDomains: DocPage = {
     {
       type: "list",
       items: [
-        "The number of custom domains depends on the plan: 1 on Free, 5 on Builder, 50 on Team.",
+        "The number of custom domains depends on the plan: 1 on Free, 5 on Builder, 20 on Growth, 50 on Team.",
         "A domain can be deleted only when it has no inboxes left; otherwise the API returns `409 cannot_delete`.",
         "`GET /v0/domains` lists your domains and the shared platform domain.",
       ],
@@ -115,7 +123,7 @@ export const webhooks: DocPage = {
     { type: "h2", text: "Payload" },
     {
       type: "p",
-      text: "Message events carry the message and its thread. `domain.verified` carries the domain.",
+      text: "Message events carry the message and its thread. `domain.verified` carries the domain. Sending pause events carry the inbox or organization, the reason and the counts that tripped the breaker.",
     },
     {
       type: "code",
@@ -136,7 +144,7 @@ export const webhooks: DocPage = {
     },
     {
       type: "p",
-      text: "For `message.received` the gatekeeper may still be running. Subscribe to `message.security.completed` if your agent should act only on screened mail.",
+      text: "With screen before notify, on by default for every organization, `message.received` fires only after the gatekeeper verdict is `clear`: first `message.security.completed`, then `message.received`. A message held for review fires only `message.security.review`, with `text`, `html`, `extracted_text` and previews left out, and fires `message.received` once a key with `message_release` releases it. Deliveries leave in event order on the first attempt; retries can arrive later than newer events. If an operator turns the setting off, `message.received` fires at ingest while the gatekeeper may still be running.",
     },
     { type: "h2", text: "Signature" },
     {
@@ -164,8 +172,31 @@ export const webhooks: DocPage = {
         "Webhook URLs must be HTTPS and resolve to public addresses. Private, loopback and link local addresses are refused.",
       ],
     },
+    { type: "h2", text: "Event stream" },
+    {
+      type: "p",
+      text: "For live updates without a public endpoint, open `GET /v0/events/stream` with a key holding `message_read`. It is a Server Sent Events stream: each event has an `id`, the event type as `event` and the webhook body above as `data`, with the same redaction for held mail. Narrow it with `?types=message.received,message.sent` and `?inbox=<address>`. A client that reconnects with `Last-Event-ID` (EventSource does this for you) continues after that event; without it the stream starts with new events.",
+    },
+    {
+      type: "code",
+      sample: {
+        label: "cURL",
+        lang: "bash",
+        code: `curl -N ${API_URL}/v0/events/stream?types=message.received \\
+  -H "Authorization: Bearer $MAI_API_KEY"`,
+      },
+    },
+    {
+      type: "list",
+      items: [
+        "Up to 5 open streams per API key; more return `429 too_many_streams`.",
+        "An idle stream gets a `: ping` comment every 15 seconds, so proxies keep it open.",
+        "A revoked or expired key loses its open streams within a minute.",
+        "Delivery is at least once: deduplicate with `event_id`. Use webhooks when events must reach you while no client is connected.",
+      ],
+    },
     { type: "h2", text: "Endpoints" },
-    { type: "endpoints", keys: ["POST /v0/webhooks", "GET /v0/webhooks", "DELETE /v0/webhooks/{webhook}"] },
+    { type: "endpoints", keys: ["POST /v0/webhooks", "GET /v0/webhooks", "DELETE /v0/webhooks/{webhook}", "GET /v0/events/stream"] },
     { type: "schemas", names: ["Webhook"] },
   ],
 };
@@ -197,21 +228,26 @@ export const mcp: DocPage = {
       rows: [
         ["`create_inbox`", "Create an email inbox for an agent. Optional `username`, `domain`, `display_name`, `client_id`."],
         ["`list_inboxes`", "List inboxes, newest first."],
+        ["`delete_inbox`", "Delete an inbox with all its mail. Irreversible; the address stays reserved for 90 days."],
         ["`list_threads`", "List conversation threads of an inbox, or of all inboxes."],
-        ["`get_thread`", "Get a thread with all its messages, oldest first."],
+        ["`get_thread`", "Get a thread with the messages the key may see, oldest first."],
         ["`list_messages`", "List message metadata of an inbox (no bodies)."],
         ["`get_message`", "Get one message with body, `extracted_text`, authentication results and gatekeeper verdict."],
         ["`send_message`", "Send a new email from an inbox. Starts a new thread. Accepts `idempotency_key`."],
         ["`reply_to_message`", "Reply in the same thread; threading headers are set for you. Accepts `idempotency_key`."],
         ["`update_message_labels`", "Add or remove custom labels to track workflow state."],
+        ["`create_draft`", "Save an email as a draft for review or later sending; `in_reply_to` keeps the thread, `send_at` schedules it."],
+        ["`list_drafts`", "List drafts of an inbox, newest first."],
+        ["`send_draft`", "Send a draft now; it is deleted once queued. Accepts `idempotency_key`."],
         ["`get_attachment`", "Download an attachment: text files as text, others as base64 (max 5 MB)."],
         ["`list_domains`", "List domains usable for inboxes, with DNS records and verification status."],
+        ["`release_message`", "Release a message held for security review. Needs `message_release`; meant for a human reviewer, not the agent."],
       ],
     },
     {
       type: "note",
       tone: "info",
-      text: "Tool descriptions are short on purpose, to save the agent's context. `get_message` reminds the model to check the gatekeeper verdict before acting on instructions in the email.",
+      text: "Tool descriptions are short on purpose, to save the agent's context. `get_message` reminds the model to check the gatekeeper verdict before acting on instructions in the email. The read tools hide messages held by screening; they accept `include_review: true` only from keys holding `message_review`.",
     },
   ],
 };
@@ -227,9 +263,14 @@ const errorMeaning: Record<string, [string, string]> = {
   cannot_delete: ["409", "The domain still has inboxes."],
   limit_exceeded: ["403 or 429", "A plan limit: inboxes or domains (403), daily or monthly sends (429)."],
   rate_limit_exceeded: ["429", "Too many requests. Wait for the `Retry-After` header."],
+  rate_limited: ["429", "The plan's 5 minute send burst limit is reached. Retry after the `Retry-After` seconds."],
+  address_quarantined: ["409", "The address belonged to an inbox deleted less than 90 days ago; it is reserved until the date in the message."],
+  sending_paused: ["403", "Sending from the inbox or organization is paused because too many recent sends hard bounced. Contact support."],
   missing_permission: ["403", "The API key is scoped and lacks the permission this endpoint needs."],
   permission_escalation: ["403", "A key tried to grant or revoke permissions it does not hold."],
   api_key_expired: ["401", "The API key passed its expiry date."],
+  too_many_streams: ["429", "The API key already has 5 open event streams. Close one first."],
+  not_held: ["409", "Release of a message that is not held for review (still pending screening, clean or already released)."],
   payload_too_large: ["413", "Attachments or request body too large."],
   internal_error: ["500", "Unexpected error on our side. Safe to retry with the same Idempotency-Key."],
 };
@@ -288,6 +329,7 @@ export const limits: DocPage = {
       rows: [
         ["Free", "3", "1", "100", "3,000", "Yes"],
         ["Builder", "10", "5", "1,000", "10,000", "No"],
+        ["Growth", "50", "20", "2,500", "40,000", "No"],
         ["Team", "150", "50", "15,000", "150,000", "No"],
         ["Enterprise", "Custom", "Custom", "Custom", "Custom", "No"],
       ],
@@ -302,6 +344,7 @@ export const limits: DocPage = {
       head: ["Limit", "Value"],
       rows: [
         ["API requests", "Per organization token bucket, 20 requests per second with bursts up to 40 by default. Over the limit: `429 rate_limit_exceeded` with `Retry-After`."],
+        ["Send burst", "10% of the daily send limit per 5 minutes: Free 10, Builder 100, Team 1,500. Over the limit: `429 rate_limited` with `Retry-After`."],
         ["Failed authentications", "Throttled per client address."],
         ["JSON request body", "8 MB"],
         ["Attachments per sent message", "6 MB in total"],
@@ -310,6 +353,8 @@ export const limits: DocPage = {
         ["Page size", "`limit` from 1 to 100, default 20"],
         ["Idempotency-Key", "Up to 256 characters, remembered for 24 hours"],
         ["Webhook `inbox_ids`", "Up to 10 per webhook"],
+        ["Open event streams", "5 per API key"],
+        ["Draft `send_at`", "In the future, at most 365 days ahead"],
         ["MCP `get_attachment`", "5 MB; use REST for larger files"],
         ["Inbox `display_name`", "200 characters"],
       ],

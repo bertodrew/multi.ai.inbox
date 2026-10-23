@@ -10,7 +10,7 @@ Design and research: [`docs/agentmail-re/`](docs/agentmail-re/README.md) (PRD, A
 
 ```mermaid
 flowchart LR
-    Internet((Internet SMTP)) -->|":25"| MX["mx (Go)<br/>RCPT check · DKIM verify · rspamd"]
+    Internet((Internet SMTP)) -->|":25"| MX["mx (Go)<br/>RCPT check · clamd · DKIM verify · rspamd"]
     MX --> CORE["core (Go)<br/>parse · thread · store"]
     Agents["agents · SDK · MCP"] -->|"HTTPS /v0 · /mcp"| API["api + MCP (Go)"] --> CORE
     CORE --> PG[("Postgres<br/>RLS on every table")]
@@ -26,7 +26,7 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 
 | Path | What |
 |------|------|
-| `cmd/mai` | binary: `serve`, `migrate`, `admin org-create / key-create / domain-add` |
+| `cmd/mai` | binary: `serve`, `migrate`, `admin org-create / key-create / domain-add / inbox-resume / org-resume / org-delete` |
 | `internal/core` | all business rules, shared by REST, MCP, SMTP and workers |
 | `internal/api`, `internal/mcpserver` | REST `/v0` and MCP at `/mcp`, same API key |
 | `internal/mx`, `internal/sender` | SMTP in, SMTP out |
@@ -41,11 +41,18 @@ One binary, `mai`, runs any subset of roles: `api`, `mx`, `sender`, `dispatcher`
 ## Run locally
 
 ```bash
-# Postgres 16 with a non superuser role (RLS does not apply to superusers)
+# Postgres 16 with the production roles (RLS does not apply to superusers):
+# mai_owner runs migrations, mai_app serves tenants, mai_system the workers.
+psql -U postgres -d mai -c "select set_config('mai.mai_owner_password', 'mai_owner', false),
+  set_config('mai.mai_app_password', 'mai_app', false), set_config('mai.mai_system_password', 'mai_system', false)" \
+  -f deploy/k8s/base/postgres-roles.sql
+export MAI_MIGRATE_DATABASE_URL=postgres://mai_owner:mai_owner@localhost:5432/mai
 export DATABASE_URL=postgres://mai_app:mai_app@localhost:5432/mai
+export MAI_SYSTEM_DATABASE_URL=postgres://mai_system:mai_system@localhost:5432/mai
 export MAI_SHARED_DOMAIN=agents.localhost MAI_HOSTNAME=mx.localhost MAI_ALLOW_HTTP_WEBHOOKS=true
 (cd gatekeeper && cargo build --release) && export MAI_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper
 
+go run ./cmd/mai migrate        # as mai_owner; serve and admin also migrate first when MAI_MIGRATE_DATABASE_URL is set
 go run ./cmd/mai admin seed     # shared domain, "Staging" org, user.tester@ and admin.tester@, API keys (shown once)
 go run ./cmd/mai serve          # API :8080, SMTP :2525, all workers
 
@@ -67,7 +74,7 @@ MAI_TEST_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper \
 go test -race ./...
 ```
 
-The end to end test creates a fresh database owned by a non superuser role and covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP.
+The end to end test creates a fresh database with the production roles (`deploy/k8s/base/postgres-roles.sql`), migrates as the owner, runs as the runtime roles and proves they cannot disable row level security or use `app.system`; it also covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP. `TestScreenBeforeNotify` covers the hold: no `message.received` before the verdict, review messages hidden on REST and MCP, release with its permission and audit entry, webhook order, and the fail closed paths (gatekeeper unavailable, screening timeout).
 
 ## API surface
 
@@ -76,33 +83,59 @@ REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP 
 | Area | Endpoints |
 |------|-----------|
 | Identity | `GET /v0/auth/me` |
-| Inboxes | `POST/GET /v0/inboxes`, `GET/PATCH/DELETE /v0/inboxes/{inbox}` |
+| Inboxes | `POST/GET /v0/inboxes`, `GET/PATCH/DELETE /v0/inboxes/{inbox}` (delete removes the mail and its stored files; the address is quarantined for 90 days, `409 address_quarantined`) |
 | Threads | `GET /v0/inboxes/{inbox}/threads`, `GET /v0/threads`, `GET /v0/threads/{id}` |
-| Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply`, `{message}/attachments/{id}` |
+| Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply` (both `403 sending_paused` while the bounce breaker holds the inbox or organization), `{message}/attachments/{id}`, `POST {message}/release` (needs `message_release`, audited) |
+| Drafts | `POST/GET /v0/inboxes/{inbox}/drafts`, `GET/PATCH/DELETE .../drafts/{draft}`, `POST .../drafts/{draft}/send` (send path rules and `Idempotency-Key`; optional `send_at` sent by the scheduler; reply drafts with `in_reply_to` keep the thread) |
 | Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
 | Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
+| Events | `GET /v0/events/stream`: Server Sent Events with the webhook payloads (held mail redacted), `?types=`, `?inbox=`, resume with `Last-Event-ID`, 5 streams per key |
 | Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
-| Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml` |
+| Billing | `GET /v0/billing` (`billing_read`), `POST /v0/billing/checkout`, `POST /v0/billing/portal` (`billing_write`, audited), `POST /stripe/webhook` (public, Stripe-Signature verified); all `501 billing_disabled` without Stripe settings |
+| Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml`; `GET /metrics` on its own address (below) |
 
 Security at the edge: request IDs, security headers, CORS allowlist, per organization rate limit, per IP limit on failed keys, X-Forwarded-For only from trusted proxies, SMTP STARTTLS (certificate from Caddy, self signed fallback). The MCP gateway applies the same permissions per tool and writes agent actions to the audit log. `mai mcp-config -url <api>` prints the setup for Claude Code, Cursor and Codex.
 
-Events: `message.received`, `message.received.spam`, `message.sent`, `message.failed`, `message.security.completed`, `message.security.review`, `domain.verified`.
+Events: `message.received`, `message.received.spam`, `message.sent`, `message.failed`, `message.bounced`, `message.complained`, `message.security.completed`, `message.security.review`, `domain.verified`, `inbox.sending.paused`, `inbox.sending.resumed`, `organization.sending.paused`, `organization.sending.resumed`, `security.av_unavailable` (clamd could not scan; at most once per 10 minutes per organization and process).
 
-Plans (`mai admin org-plan`): free 3 inboxes, 100/day, 3,000/month, footer; builder 10 inboxes, 1,000/day, 10,000/month; team 150 inboxes, 15,000/day, 150,000/month.
+Mail hygiene:
+
+* Antivirus: with `MAI_CLAMD_ADDR` set (`clamd:3310` in k3s), the SMTP edge streams every message to clamd (INSTREAM) and rejects infected mail at DATA with `554 5.7.1`. If clamd cannot scan, mail is accepted with the `av-unscanned` label (default, fail open) or deferred with `451 4.7.1` when `MAI_CLAMD_FAIL_CLOSED=true`. `authentication_results.antivirus` is `clean` or `unscanned`. The same client and policy scan agent to agent mail before local delivery (infected mail fails, never retried) and attachments sent through the API (`422 attachment_infected`; `503 antivirus_unavailable` when failing closed). Each unscanned acceptance logs a warning with the process counter `av_unscanned_total`.
+* Bounce breaker: per inbox and per organization, once 20 messages reached a final outcome in the last 24 hours, a hard bounce rate above 5% (permanent 5xx at send time plus failed delivery status notifications received with a null sender) pauses sending: new sends get `403 sending_paused`, queued mail is held. The operator resumes with `mai admin inbox-resume -inbox <address>` or `mai admin org-resume -org <uuid>`, which starts a fresh window. Complaints count too: feedback loop reports (ARF, RFC 5965) delivered to the sending inbox, or to the shared address in `MAI_FBL_ADDRESS`, are matched by Message-ID, label the message `complained` and emit `message.complained`; above 0.1% over at least 1000 sends, or 3 complaints in 24 hours below that volume, sending pauses.
+* Organization delete: `mai admin org-delete -org <uuid> -confirm "<exact name>"` revokes every API key, prints a final JSON summary with the full audit log (keep it: the audit log goes with the organization), then deletes with cascade; blobs are queued for removal, addresses quarantined for 90 days and custom domains released.
+* Deletion: deleting an inbox queues every raw `.eml` and attachment blob in the same transaction (`blob_deletions`); the `scheduler` role removes them from the blob store, retrying until done.
+* Blob store: `MAI_BLOB_BACKEND=fs` (default, files under `MAI_BLOB_DIR`) or `s3` for Hetzner Object Storage with `MAI_S3_ENDPOINT` (for example `https://fsn1.your-objectstorage.com`), `MAI_S3_REGION` (`fsn1`), `MAI_S3_BUCKET`, `MAI_S3_ACCESS_KEY`, `MAI_S3_SECRET_KEY`. Path style URLs, Signature Version 4 with a signed SHA-256 payload, standard library only. Switching does not copy existing blobs.
+* Metrics: Prometheus text format at `GET /metrics` on `MAI_METRICS_ADDR` (default `:9090`, `off` disables), a separate listener that Caddy does not proxy; in k3s the `mai` NetworkPolicy admits scrapes from the namespace only. Counters: `mai_http_requests_total{route,code}`, `mai_smtp_sessions_total`, `mai_smtp_messages_accepted_total`, `mai_smtp_rejected_total{reason}` (`virus`, `spam`, `unknown_recipient`, ...), `mai_outbound_attempts_total{result=sent|failed|deferred}`, `mai_webhook_deliveries_total{result=ok|failed}`. Gauges read per scrape: `mai_outbox_lag_seconds`, `mai_outbox_pending_events`, `mai_screening_messages{state=pending|review}`, `mai_blob_deletion_queue`, plus `go_goroutines` and heap.
+* SPF, DKIM, DMARC: the SMTP edge evaluates SPF (RFC 7208, MAIL FROM or HELO identity, 10 lookup limit) and DMARC (RFC 7489, relaxed or strict alignment with DKIM and SPF) and stores `spf`, `dmarc` and `dmarc_policy` in `authentication_results`. DMARC failures get the `dmarc-fail` label, plus `spam` under `p=quarantine` or `p=reject`; with `MAI_DMARC_ENFORCE=true` a failure under `p=reject` is refused with `550 5.7.1`. The organizational domain uses the last two labels, or three under a short built in list of suffixes such as `co.uk` and `com.au`, not the full Public Suffix List.
+* MTA-STS: direct delivery (no `MAI_SMTP_RELAY`) reads the recipient domain's `_mta-sts` TXT record and HTTPS policy (RFC 8461), cached by id until `max_age`. In `enforce` mode only MX hosts listed in the policy are used and STARTTLS with a valid certificate is required (otherwise the attempt fails temporarily and is retried); `testing` mode only logs. DANE is not checked.
+
+Screen before notify (organization setting `screen_before_notify`, on by default, shown in `GET /v0/auth/me`, changed with `mai admin org-screening -org <id> -on|-off`): inbound mail is held until the gatekeeper verdict exists. Clean mail fires `message.security.completed`, then `message.received`. Mail with verdict `review`, or that could not be screened (gatekeeper unavailable, or no verdict within 15 minutes), is held for review and fires only `message.security.review`, with bodies and previews left out of the payload. Held messages are hidden from every message and thread read on REST and MCP; `include_review=true` shows those held for review to keys with `message_review`. `POST .../messages/{message}/release` (MCP `release_message`, permission `message_release`) releases one, writes `message.release` to the audit log and fires `message.received`. Keep both permissions away from the agent that reads the inbox.
+
+| Event | Monitor mode (setting off) | Screen before notify (default) |
+|-------|----------------------------|--------------------------------|
+| `message.received` | at ingest | after a `clear` verdict, or after a release |
+| `message.security.completed` | after screening | after a `clear` verdict, before `message.received` |
+| `message.security.review` | after screening, full payload | when held for review, no bodies |
+
+Plans (`mai admin org-plan`, or Stripe): free 3 inboxes, 100/day, 3,000/month, footer; builder (€15) 10 inboxes, 1,000/day, 10,000/month; growth (€59) 50 inboxes, 20 domains, 2,500/day, 40,000/month; team (€149) 150 inboxes, 15,000/day, 150,000/month. Yearly prices are 10 × monthly. Sends are also capped per 5 minutes at 10% of the daily cap (free 10, builder 100, growth 250, team 1,500): `429 rate_limited` with `Retry-After`.
+
+Billing (Stripe REST API over `net/http`, no SDK) is on when `MAI_STRIPE_SECRET_KEY` and `MAI_STRIPE_WEBHOOK_SECRET` are set; prices come from `MAI_STRIPE_PRICE_<BUILDER|GROWTH|TEAM>_<MONTHLY|YEARLY>` and `MAI_BILLING_RETURN_URL` is the default return page. In Stripe: create the six prices in EUR (tax behaviour exclusive), register `https://<api host>/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` and `invoice.payment_failed`, enable the customer portal, and **set up Stripe Tax** (origin address, EU OSS registration): Checkout runs with `automatic_tax` and VAT ID collection and fails until Stripe Tax is configured. A `past_due` or `unpaid` subscription keeps its plan for 7 days, then the scheduler moves the organization to free; payment restores it.
 
 ## Deploy (Hetzner, k3s, GitOps)
 
 Production runs on the Hetzner CX33 with k3s and Flux; this repository is the source of truth.
 
-1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root (an operations agent can do all of this: see `deploy/hetzner/AGENT_RUNBOOK.md`). It installs k3s and Flux, asks for the secrets (GitHub tokens, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging`, seeds the staging testers and checks outbound port 25.
-2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`.
+1. Rebuild the server with Ubuntu 24.04, then run `deploy/hetzner/bootstrap.sh` as root (an operations agent can do all of this: see `deploy/hetzner/AGENT_RUNBOOK.md`). It installs k3s and Flux, asks for the secrets (GHCR token, Brevo SMTP key, Object Storage keys) and keeps them only in the cluster, bootstraps Flux on `deploy/flux/clusters/staging` with an SSH deploy key (no GitHub PAT), generates the backup encryption keys and prints them once (store them offline: without them no backup can be restored), seeds the staging testers and checks outbound port 25.
+2. Hetzner firewall: inbound 22 (your IP), 25, 80, 443. Set the PTR of the server IP to `mx.2-28-99-252.sslip.io`. Protect the Primary IP and the server, turn on server backups, and create the Object Lock backup bucket with a write only key (runbook sections 1b, 2 and 4b).
 3. From then on, merging to `master` deploys: `release.yml` builds the image to GHCR and pins its tag in `deploy/k8s/staging`; Flux applies it.
 
 | Path | What |
 |------|------|
-| `deploy/k8s/base` | Postgres, mai, rspamd, Caddy, nightly backup to Object Storage, network policies |
+| `deploy/k8s/base` | Postgres, mai, rspamd, clamd, Caddy, network policies; `backup.yaml`: encrypted (rclone crypt), add only backup to Object Storage every 6 h; `restore-drill.yaml`: weekly restore of the newest dump into a scratch database with row count checks |
 | `deploy/k8s/staging` | staging config (sslip.io hostnames, `agents.localhost`, Brevo SPF) and image tag |
 | `deploy/flux/clusters/staging` | Flux Kustomization |
+| `deploy/hetzner` | `bootstrap.sh` and the operations agent runbook (least privilege tokens, protections, backup bucket) |
+| `deploy/dr` | `restore.sh` (full restore to a new server) and the default deny NetworkPolicy proposal; plan in `docs/agentmail-re/14-disaster-recovery-backup.md` |
 | `deploy/local` | Docker Compose for local development |
 
 When the brand domain is bought: `mai admin domain-add -name agents.<brand>`, set `MAI_SHARED_DOMAIN`, `MAI_HOSTNAME`, `MAI_API_HOST` in `deploy/k8s/staging/kustomization.yaml`, publish the DNS records it prints, update the PTR.

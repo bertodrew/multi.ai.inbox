@@ -1,5 +1,5 @@
 # Self hosted Postgres 16 (decision D9). Single replica on the node's disk;
-# nightly logical backups go to object storage (backup.yaml).
+# encrypted logical backups every 6 hours go to object storage (backup.yaml).
 apiVersion: v1
 kind: Service
 metadata:
@@ -32,8 +32,13 @@ spec:
               value: postgres
             - name: POSTGRES_PASSWORD
               valueFrom: { secretKeyRef: { name: mai-secrets, key: POSTGRES_PASSWORD } }
+            # Read by postgres-init.sh to create the owner, runtime and system roles.
+            - name: MAI_OWNER_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_OWNER_PASSWORD } }
             - name: MAI_APP_PASSWORD
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_APP_PASSWORD } }
+            - name: MAI_SYSTEM_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SYSTEM_PASSWORD } }
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:

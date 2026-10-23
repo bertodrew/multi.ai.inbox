@@ -4,9 +4,13 @@
 //	mai migrate
 //	mai admin seed                              staging org, user and admin testers
 //	mai admin org-create -name "Acme"
-//	mai admin org-plan -org <uuid> -plan team
+//	mai admin org-plan -org <uuid> -plan team   free, builder, growth, team (Stripe sets it when billing is on)
+//	mai admin org-screening -org <uuid> [-on|-off]  screen before notify (no flag prints it)
 //	mai admin key-create -org <uuid> [-name agent]
 //	mai admin domain-add -name agents.example.eu [-org <uuid>]
+//	mai admin inbox-resume -inbox a@b.eu        resume sending paused by the bounce breaker
+//	mai admin org-resume -org <uuid>            resume sending for a paused organization
+//	mai admin org-delete -org <uuid> -confirm <org name>  revoke keys, print a final summary, delete with cascade
 //	mai admin check-port25                      can this host deliver directly?
 //	mai mcp-config -url https://api.example.eu  MCP setup for Claude Code, Cursor, Codex
 package main
@@ -28,39 +32,53 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/bertodrew/multi.ai.inbox/internal/api"
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
+	"github.com/bertodrew/multi.ai.inbox/internal/clamav"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/internal/db"
 	"github.com/bertodrew/multi.ai.inbox/internal/dispatcher"
 	"github.com/bertodrew/multi.ai.inbox/internal/enrich"
 	"github.com/bertodrew/multi.ai.inbox/internal/mcpserver"
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 	"github.com/bertodrew/multi.ai.inbox/internal/mx"
 	"github.com/bertodrew/multi.ai.inbox/internal/scheduler"
 	"github.com/bertodrew/multi.ai.inbox/internal/sender"
+	"github.com/bertodrew/multi.ai.inbox/internal/stripe"
 	"github.com/bertodrew/multi.ai.inbox/internal/tlsx"
 )
 
 var version = "dev"
 
 type config struct {
-	DatabaseURL   string
-	HTTPAddr      string
-	SMTPAddr      string
-	Hostname      string
-	SharedDomain  string
-	BlobDir       string
-	Relay         string
-	RspamdURL     string
-	GatekeeperBin string
-	MaxMessage    int64
-	AllowHTTPHook bool
-	SPFInclude    string
-	RatePerSecond float64
-	Gateway       api.Gateway
-	TLSCert       string
-	TLSKey        string
-	SendMaxAge    time.Duration
+	DatabaseURL    string
+	SystemDBURL    string
+	MigrateDBURL   string
+	HTTPAddr       string
+	SMTPAddr       string
+	Hostname       string
+	SharedDomain   string
+	BlobDir        string
+	Blob           blob.Store
+	MetricsAddr    string
+	Relay          string
+	RspamdURL      string
+	ClamdAddr      string
+	ClamdFailClose bool
+	FBLAddress     string
+	DMARCEnforce   bool
+	GatekeeperBin  string
+	MaxMessage     int64
+	AllowHTTPHook  bool
+	SPFInclude     string
+	RatePerSecond  float64
+	Gateway        api.Gateway
+	TLSCert        string
+	TLSKey         string
+	SendMaxAge     time.Duration
+	Billing        *core.Billing
 }
 
 func env(key, def string) string {
@@ -85,25 +103,82 @@ func loadConfig() config {
 		fmt.Fprintln(os.Stderr, "invalid MAI_SEND_MAX_AGE: want a positive duration such as 120h")
 		os.Exit(2)
 	}
-	return config{
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		HTTPAddr:      env("MAI_HTTP_ADDR", ":8080"),
-		SMTPAddr:      env("MAI_SMTP_ADDR", ":2525"),
-		Hostname:      env("MAI_HOSTNAME", "localhost"),
-		SharedDomain:  os.Getenv("MAI_SHARED_DOMAIN"),
-		BlobDir:       env("MAI_BLOB_DIR", "./var/blobs"),
-		Relay:         os.Getenv("MAI_SMTP_RELAY"),
-		RspamdURL:     os.Getenv("MAI_RSPAMD_URL"),
-		GatekeeperBin: os.Getenv("MAI_GATEKEEPER_BIN"),
-		MaxMessage:    maxMsg,
-		AllowHTTPHook: os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
-		SPFInclude:    os.Getenv("MAI_SPF_INCLUDE"),
-		RatePerSecond: rate,
-		Gateway:       api.Gateway{CORSOrigins: splitList(os.Getenv("MAI_CORS_ORIGINS")), TrustedProxies: proxies},
-		TLSCert:       os.Getenv("MAI_SMTP_TLS_CERT"),
-		TLSKey:        os.Getenv("MAI_SMTP_TLS_KEY"),
-		SendMaxAge:    sendMaxAge,
+	blobDir := env("MAI_BLOB_DIR", "./var/blobs")
+	store, err := blobStore(blobDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
+	return config{
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		SystemDBURL:    os.Getenv("MAI_SYSTEM_DATABASE_URL"),
+		MigrateDBURL:   os.Getenv("MAI_MIGRATE_DATABASE_URL"),
+		HTTPAddr:       env("MAI_HTTP_ADDR", ":8080"),
+		SMTPAddr:       env("MAI_SMTP_ADDR", ":2525"),
+		Hostname:       env("MAI_HOSTNAME", "localhost"),
+		SharedDomain:   os.Getenv("MAI_SHARED_DOMAIN"),
+		BlobDir:        blobDir,
+		Blob:           store,
+		MetricsAddr:    env("MAI_METRICS_ADDR", ":9090"),
+		Relay:          os.Getenv("MAI_SMTP_RELAY"),
+		RspamdURL:      os.Getenv("MAI_RSPAMD_URL"),
+		ClamdAddr:      os.Getenv("MAI_CLAMD_ADDR"),
+		ClamdFailClose: os.Getenv("MAI_CLAMD_FAIL_CLOSED") == "true",
+		FBLAddress:     strings.ToLower(strings.TrimSpace(os.Getenv("MAI_FBL_ADDRESS"))),
+		DMARCEnforce:   os.Getenv("MAI_DMARC_ENFORCE") == "true",
+		GatekeeperBin:  os.Getenv("MAI_GATEKEEPER_BIN"),
+		MaxMessage:     maxMsg,
+		AllowHTTPHook:  os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
+		SPFInclude:     os.Getenv("MAI_SPF_INCLUDE"),
+		RatePerSecond:  rate,
+		Gateway:        api.Gateway{CORSOrigins: splitList(os.Getenv("MAI_CORS_ORIGINS")), TrustedProxies: proxies},
+		TLSCert:        os.Getenv("MAI_SMTP_TLS_CERT"),
+		TLSKey:         os.Getenv("MAI_SMTP_TLS_KEY"),
+		SendMaxAge:     sendMaxAge,
+		Billing:        loadBilling(),
+	}
+}
+
+// blobStore picks the blob backend: fs (default, MAI_BLOB_DIR) or s3
+// (Hetzner Object Storage, path style, Signature Version 4).
+func blobStore(dir string) (blob.Store, error) {
+	switch backend := env("MAI_BLOB_BACKEND", "fs"); backend {
+	case "fs":
+		return blob.FS{Root: dir}, nil
+	case "s3":
+		s, err := blob.NewS3(os.Getenv("MAI_S3_ENDPOINT"), os.Getenv("MAI_S3_REGION"), os.Getenv("MAI_S3_BUCKET"),
+			os.Getenv("MAI_S3_ACCESS_KEY"), os.Getenv("MAI_S3_SECRET_KEY"))
+		if err != nil {
+			return nil, fmt.Errorf("MAI_BLOB_BACKEND=s3: %w (set MAI_S3_ENDPOINT, MAI_S3_REGION, MAI_S3_BUCKET, MAI_S3_ACCESS_KEY, MAI_S3_SECRET_KEY)", err)
+		}
+		return s, nil
+	default:
+		return nil, fmt.Errorf("invalid MAI_BLOB_BACKEND %q: want fs or s3", backend)
+	}
+}
+
+// loadBilling reads the Stripe settings. Billing stays off (501
+// billing_disabled) unless both the secret key and the webhook secret are
+// set. Prices come from MAI_STRIPE_PRICE_<PLAN>_<MONTHLY|YEARLY>; a plan
+// without a price simply cannot be bought. Secrets are never printed.
+func loadBilling() *core.Billing {
+	key, secret := os.Getenv("MAI_STRIPE_SECRET_KEY"), os.Getenv("MAI_STRIPE_WEBHOOK_SECRET")
+	if key == "" || secret == "" {
+		if key != "" || secret != "" {
+			fmt.Fprintln(os.Stderr, "billing disabled: set both MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET")
+		}
+		return nil
+	}
+	b := &core.Billing{Stripe: &stripe.Client{SecretKey: key}, WebhookSecret: secret,
+		Prices: map[string]core.Price{}, ReturnURL: os.Getenv("MAI_BILLING_RETURN_URL")}
+	for _, plan := range core.PaidPlans {
+		for _, interval := range core.BillingIntervals {
+			if id := os.Getenv("MAI_STRIPE_PRICE_" + strings.ToUpper(plan) + "_" + strings.ToUpper(interval)); id != "" {
+				b.Prices[id] = core.Price{Plan: plan, Interval: interval}
+			}
+		}
+	}
+	return b
 }
 
 func main() {
@@ -119,7 +194,7 @@ func main() {
 	case "serve":
 		err = serve(ctx, cfg, log, os.Args[2:])
 	case "migrate":
-		err = withDB(ctx, cfg, func(d *db.DB) error { return d.Migrate(ctx) })
+		err = migrate(ctx, cfg)
 	case "admin":
 		err = admin(ctx, cfg, os.Args[2:])
 	case "version":
@@ -140,22 +215,67 @@ func usage() {
 	os.Exit(2)
 }
 
+// migrate applies pending migrations as the schema owner: the role in
+// MAI_MIGRATE_DATABASE_URL (mai_owner in production), or DATABASE_URL in
+// development when that role owns the schema.
+func migrate(ctx context.Context, cfg config) error {
+	url := cfg.MigrateDBURL
+	if url == "" {
+		url = cfg.DatabaseURL
+	}
+	if url == "" {
+		return errors.New("MAI_MIGRATE_DATABASE_URL or DATABASE_URL is required")
+	}
+	d, err := db.Open(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Migrate(ctx)
+}
+
+// withDB opens the runtime pools: DATABASE_URL for tenant transactions
+// (mai_app) and MAI_SYSTEM_DATABASE_URL for system ones (mai_system; falls
+// back to DATABASE_URL for development with a single privileged role).
+// Pending migrations are applied first; with only the runtime roles
+// configured, Migrate merely checks that the schema is current.
 func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 	if cfg.DatabaseURL == "" {
 		return errors.New("DATABASE_URL is required")
+	}
+	if cfg.MigrateDBURL != "" {
+		if err := migrate(ctx, cfg); err != nil {
+			return err
+		}
 	}
 	d, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer d.Close()
+	if err := d.Migrate(ctx); err != nil {
+		return err
+	}
+	if cfg.SystemDBURL != "" {
+		if err := d.OpenSystem(ctx, cfg.SystemDBURL); err != nil {
+			return err
+		}
+	}
+	if err := d.CheckSystem(ctx); err != nil {
+		return err
+	}
 	return fn(d)
 }
 
 func service(d *db.DB, cfg config) *core.Service {
-	return &core.Service{DB: d, Blob: blob.FS{Root: cfg.BlobDir}, SharedDomain: cfg.SharedDomain,
+	svc := &core.Service{DB: d, Blob: cfg.Blob, SharedDomain: cfg.SharedDomain,
 		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
-		SendMaxAge: cfg.SendMaxAge}
+		SendMaxAge: cfg.SendMaxAge, AntivirusFailClosed: cfg.ClamdFailClose, Billing: cfg.Billing}
+	if cfg.ClamdAddr != "" {
+		// API uploaded attachments and agent to agent mail; the SMTP edge has its own client.
+		svc.Antivirus = &clamav.Clamd{Addr: cfg.ClamdAddr}
+	}
+	return svc
 }
 
 func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) error {
@@ -167,12 +287,28 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		enabled[strings.TrimSpace(r)] = true
 	}
 	return withDB(ctx, cfg, func(d *db.DB) error {
-		if err := d.Migrate(ctx); err != nil {
-			return err
-		}
 		svc := service(d, cfg)
+		svc.Log = log
 		var wg sync.WaitGroup
-		errs := make(chan error, 2)
+		errs := make(chan error, 3)
+
+		if cfg.MetricsAddr != "off" {
+			metricsSrv := metricsServer(svc, cfg.MetricsAddr, log)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				log.Info("metrics listening", "addr", cfg.MetricsAddr)
+				if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					errs <- err
+				}
+			}()
+			go func() {
+				<-ctx.Done()
+				shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = metricsSrv.Shutdown(shutdown)
+			}()
+		}
 
 		if enabled["api"] {
 			srv := &api.Server{Svc: svc, Log: log}
@@ -182,6 +318,12 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			srv.MCP = mcpserver.Handler(svc, mcpCaller, log, version)
 			srv.AuthFailures = api.NewLimiter(10.0/60, 10) // 10 failed keys per IP, refilling 10 per minute
 			srv.Gateway = cfg.Gateway
+			if cfg.Billing == nil {
+				log.Info("billing disabled: MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET are not set")
+			} else {
+				log.Info("billing enabled", "prices", len(cfg.Billing.Prices))
+			}
+			srv.Done = ctx.Done() // open event streams end so shutdown does not wait for them
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			wg.Add(1)
 			go func() {
@@ -200,8 +342,14 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		}
 		if enabled["mx"] {
 			certs := &tlsx.Loader{CertGlob: cfg.TLSCert, KeyGlob: cfg.TLSKey, Hostname: cfg.Hostname}
-			smtpSrv := mx.NewServer(&mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL},
-				cfg.SMTPAddr, cfg.Hostname, certs.Config())
+			backend := &mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL, ClamdFailClosed: cfg.ClamdFailClose,
+				FBLAddress: cfg.FBLAddress, MailAuth: &mx.MailAuth{Enforce: cfg.DMARCEnforce}}
+			if cfg.ClamdAddr != "" {
+				backend.Clamd = &clamav.Clamd{Addr: cfg.ClamdAddr}
+			} else {
+				log.Warn("antivirus disabled: MAI_CLAMD_ADDR is not set")
+			}
+			smtpSrv := mx.NewServer(backend, cfg.SMTPAddr, cfg.Hostname, certs.Config())
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -218,7 +366,8 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			}()
 		}
 		if enabled["sender"] {
-			s := &sender.Sender{Svc: svc, Relay: cfg.Relay, HeloName: cfg.Hostname, Log: log}
+			s := &sender.Sender{Svc: svc, Relay: cfg.Relay, HeloName: cfg.Hostname, Log: log,
+				MTASTS: &sender.MTASTS{HTTP: dispatcher.SafeClient(), Log: log}}
 			wg.Add(1)
 			go func() { defer wg.Done(); s.Run(ctx) }()
 		}
@@ -229,7 +378,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		}
 		if enabled["enrich"] {
 			if cfg.GatekeeperBin == "" {
-				log.Warn("enrich role disabled: MAI_GATEKEEPER_BIN is not set")
+				log.Warn("enrich role disabled: MAI_GATEKEEPER_BIN is not set; organizations with screen_before_notify hold inbound mail until the scheduler times screening out to review")
 			} else {
 				e := &enrich.Enricher{Svc: svc, Bin: cfg.GatekeeperBin, Log: log}
 				wg.Add(1)
@@ -251,9 +400,32 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 	})
 }
 
+// metricsServer serves GET /metrics (Prometheus text format) on its own
+// address, which Caddy does not proxy; the NetworkPolicy admits scrapes from
+// the namespace only. Backlog gauges are read from the database per scrape.
+func metricsServer(svc *core.Service, addr string, log *slog.Logger) *http.Server {
+	metrics.Default.Log = log
+	metrics.Default.Collect("mai_queue", func(ctx context.Context) ([]metrics.Sample, error) {
+		st, err := svc.QueueStats(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return []metrics.Sample{
+			{Name: "mai_outbox_pending_events", Help: "Events not yet fanned out to webhooks.", Value: float64(st.OutboxPending)},
+			{Name: "mai_outbox_lag_seconds", Help: "Age of the oldest event not yet fanned out (0 when none).", Value: st.OutboxLagSeconds},
+			{Name: "mai_screening_messages", Help: "Inbound messages held by screening, by state.", Labels: map[string]string{"state": "pending"}, Value: float64(st.ScreeningPending)},
+			{Name: "mai_screening_messages", Help: "Inbound messages held by screening, by state.", Labels: map[string]string{"state": "review"}, Value: float64(st.ScreeningReview)},
+			{Name: "mai_blob_deletion_queue", Help: "Blobs queued for deletion.", Value: float64(st.BlobDeletions)},
+		}, nil
+	})
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Default.Handler())
+	return &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+}
+
 func admin(ctx context.Context, cfg config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mai admin seed|org-create|org-plan|key-create|domain-add|check-port25")
+		return errors.New("usage: mai admin seed|org-create|org-plan|org-screening|key-create|domain-add|inbox-resume|org-resume|org-delete|check-port25")
 	}
 	if args[0] == "check-port25" {
 		return checkPort25(ctx)
@@ -261,12 +433,14 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	name := fs.String("name", "", "name")
 	org := fs.String("org", "", "organization id")
-	plan := fs.String("plan", "", "plan: free, builder, team")
+	plan := fs.String("plan", "", "plan: free, builder, growth, team")
+	on := fs.Bool("on", false, "org-screening: hold inbound mail until the gatekeeper verdict exists")
+	off := fs.Bool("off", false, "org-screening: notify message.received at ingest (not recommended)")
+	inbox := fs.String("inbox", "", "inbox address")
+	confirm := fs.String("confirm", "", "org-delete: the organization's exact name")
+	perms := fs.String("permissions", "", "key-create: comma separated permissions (empty: full access, which never includes message_release)")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
-		if err := d.Migrate(ctx); err != nil {
-			return err
-		}
 		svc := service(d, cfg)
 		var out any
 		var err error
@@ -278,13 +452,41 @@ func admin(ctx context.Context, cfg config, args []string) error {
 		case "org-plan":
 			err = svc.SetPlan(ctx, *org, *plan)
 			out = map[string]string{"organization_id": *org, "plan": *plan}
+		case "org-screening":
+			out, err = orgScreening(ctx, svc, *org, *on, *off)
 		case "key-create":
 			if *org == "" {
 				return errors.New("-org is required")
 			}
-			out, err = svc.CreateKey(ctx, *org, *name)
+			if *perms != "" {
+				out, err = svc.CreateOperatorKey(ctx, *org, *name, splitList(*perms))
+			} else {
+				out, err = svc.CreateKey(ctx, *org, *name)
+			}
 		case "domain-add":
 			out, err = svc.AddDomain(ctx, *org, *name)
+		case "inbox-resume":
+			if *inbox == "" {
+				return errors.New("-inbox is required")
+			}
+			out, err = svc.ResumeInboxSending(ctx, *inbox)
+		case "org-resume":
+			if *org == "" {
+				return errors.New("-org is required")
+			}
+			err = svc.ResumeOrgSending(ctx, *org)
+			out = map[string]string{"organization_id": *org, "sending": "resumed"}
+		case "org-delete":
+			if *org == "" || *confirm == "" {
+				return errors.New("-org and -confirm (the organization's exact name) are required")
+			}
+			// The summary goes to stdout before anything is deleted; keep it,
+			// it holds the organization's audit log.
+			out, err = svc.DeleteOrg(ctx, *org, *confirm, func(sum *core.OrgDeletionSummary) error {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(sum)
+			})
 		default:
 			return fmt.Errorf("unknown admin command %q", args[0])
 		}
@@ -295,6 +497,32 @@ func admin(ctx context.Context, cfg config, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	})
+}
+
+// orgScreening prints or changes an organization's screen_before_notify
+// setting; a change is written to the organization's audit log.
+func orgScreening(ctx context.Context, svc *core.Service, org string, on, off bool) (*core.Org, error) {
+	switch {
+	case org == "":
+		return nil, errors.New("-org is required")
+	case on && off:
+		return nil, errors.New("pass -on or -off, not both")
+	case !on && !off:
+		o, err := svc.GetOrg(ctx, org)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, core.NotFound("organization")
+		}
+		return o, err
+	}
+	o, err := svc.SetScreening(ctx, org, on)
+	if err != nil {
+		return nil, err
+	}
+	meta, _ := json.Marshal(map[string]any{"screen_before_notify": on})
+	if err := svc.Audit(ctx, o.ID, core.AuditEntry{Actor: "operator", Action: "org.screening", Target: o.ID, Metadata: meta}); err != nil {
+		return nil, fmt.Errorf("setting changed but the audit entry failed: %w", err)
+	}
+	return o, nil
 }
 
 type seedResult struct {

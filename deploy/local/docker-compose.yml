@@ -12,25 +12,43 @@ services:
       POSTGRES_DB: mai
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set in .env}
+      MAI_OWNER_PASSWORD: ${MAI_OWNER_PASSWORD:?set in .env}
       MAI_APP_PASSWORD: ${MAI_APP_PASSWORD:?set in .env}
+      MAI_SYSTEM_PASSWORD: ${MAI_SYSTEM_PASSWORD:?set in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-mai.sh:ro
+      # Same role setup as production (deploy/k8s/base).
+      - ../k8s/base/postgres-init.sh:/docker-entrypoint-initdb.d/10-mai.sh:ro
+      - ../k8s/base/postgres-roles.sql:/docker-entrypoint-initdb.d/mai-roles.psql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d mai"]
       interval: 5s
       retries: 10
+
+  # Schema migrations with the owner role; the platform never gets its password.
+  migrate:
+    build: ../..
+    image: ghcr.io/bertodrew/multi-ai-inbox:${MAI_VERSION:-latest}
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MAI_MIGRATE_DATABASE_URL: postgres://mai_owner:${MAI_OWNER_PASSWORD}@postgres:5432/mai?sslmode=disable
 
   mai:
     build: ../..
     image: ghcr.io/bertodrew/multi-ai-inbox:${MAI_VERSION:-latest}
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
-      # Non superuser role: row level security only applies to it.
+      # Non superuser roles without BYPASSRLS: row level security always applies.
+      # mai_app serves tenant requests; mai_system is the only role whose
+      # app.system setting (cross tenant access for workers) is honoured.
       DATABASE_URL: postgres://mai_app:${MAI_APP_PASSWORD}@postgres:5432/mai?sslmode=disable
+      MAI_SYSTEM_DATABASE_URL: postgres://mai_system:${MAI_SYSTEM_PASSWORD}@postgres:5432/mai?sslmode=disable
       MAI_HOSTNAME: ${MAI_HOSTNAME:?set in .env}
       MAI_SHARED_DOMAIN: ${MAI_SHARED_DOMAIN:?set in .env}
       MAI_SMTP_RELAY: ${MAI_SMTP_RELAY:-}

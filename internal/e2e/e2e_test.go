@@ -1,8 +1,9 @@
 // Package e2e runs the whole platform against a real Postgres:
 // SMTP in, RLS isolation, gatekeeper, signed webhooks, reply out with DKIM,
 // agent to agent delivery and MCP. Set MAI_TEST_DATABASE_URL to a superuser
-// URL; the test creates a fresh database owned by a non superuser role so
-// row level security is enforced exactly as in production.
+// URL; the test creates a fresh database with the production roles (owner,
+// runtime, system), migrates as the owner and runs the platform as the
+// runtime roles, so row level security is enforced exactly as in production.
 package e2e
 
 import (
@@ -26,6 +27,7 @@ import (
 
 	"github.com/emersion/go-smtp"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/api"
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
@@ -41,11 +43,21 @@ import (
 
 const shared = "agents.test"
 
-func freshDatabase(t *testing.T) string {
+// dsns are the connection strings of the three production roles.
+type dsns struct{ owner, app, system string }
+
+// freshDatabase creates an empty database and sets up the roles exactly as
+// production does, by running deploy/k8s/base/postgres-roles.sql as the
+// superuser (in production postgres-init.sh runs it on first start).
+func freshDatabase(t *testing.T) dsns {
 	t.Helper()
 	admin := os.Getenv("MAI_TEST_DATABASE_URL")
 	if admin == "" {
 		t.Skip("MAI_TEST_DATABASE_URL not set")
+	}
+	rolesSQL, err := os.ReadFile("../../deploy/k8s/base/postgres-roles.sql")
+	if err != nil {
+		t.Fatal(err)
 	}
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, admin)
@@ -54,13 +66,8 @@ func freshDatabase(t *testing.T) string {
 	}
 	defer conn.Close(ctx)
 	name := fmt.Sprintf("mai_e2e_%d", time.Now().UnixNano())
-	for _, q := range []string{
-		"do $$ begin if not exists (select from pg_roles where rolname = 'mai_app') then create role mai_app login password 'mai_app' nosuperuser nobypassrls; end if; end $$",
-		"create database " + name + " owner mai_app",
-	} {
-		if _, err := conn.Exec(ctx, q); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := conn.Exec(ctx, "create database "+name); err != nil {
+		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		c, err := pgx.Connect(context.Background(), admin)
@@ -69,19 +76,170 @@ func freshDatabase(t *testing.T) string {
 			c.Close(context.Background())
 		}
 	})
-	// Extensions need a superuser; create them up front in the new database.
 	u, _ := url.Parse(admin)
 	u.Path = "/" + name
 	sc, err := pgx.Connect(ctx, u.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sc.Exec(ctx, "create extension if not exists citext; create extension if not exists pgcrypto"); err != nil {
+	defer sc.Close(ctx)
+	// Same inputs as postgres-init.sh. The roles are cluster wide and shared
+	// by concurrent runs, so the passwords are fixed.
+	if _, err := sc.Exec(ctx, `select set_config('mai.mai_owner_password', 'mai_owner', false),
+		set_config('mai.mai_app_password', 'mai_app', false),
+		set_config('mai.mai_system_password', 'mai_system', false)`); err != nil {
 		t.Fatal(err)
 	}
-	sc.Close(ctx)
-	u.User = url.UserPassword("mai_app", "mai_app")
-	return u.String()
+	if _, err := sc.Exec(ctx, string(rolesSQL)); err != nil {
+		t.Fatalf("postgres-roles.sql: %v", err)
+	}
+	as := func(role string) string {
+		v := *u
+		v.User = url.UserPassword(role, role)
+		return v.String()
+	}
+	return dsns{owner: as("mai_owner"), app: as("mai_app"), system: as("mai_system")}
+}
+
+// openPlatform migrates as the owner and opens the runtime pools the way
+// `mai serve` does in production.
+func openPlatform(t *testing.T, ctx context.Context, urls dsns) *db.DB {
+	t.Helper()
+	owner, err := db.Open(ctx, urls.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	owner.Close()
+	d, err := db.Open(ctx, urls.app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(d.Close)
+	// Nothing pending: the runtime role only checks the schema is current.
+	if err := d.Migrate(ctx); err != nil {
+		t.Fatalf("migrate check as mai_app: %v", err)
+	}
+	if err := d.CheckSystem(ctx); err == nil {
+		t.Fatal("mai_app must not pass the system context check")
+	}
+	if err := d.OpenSystem(ctx, urls.system); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.CheckSystem(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// checkRoleSplit proves the runtime roles cannot weaken row level security.
+func checkRoleSplit(t *testing.T, ctx context.Context, d *db.DB, orgA, orgB string) {
+	t.Helper()
+	for _, role := range []string{"mai_owner", "mai_app", "mai_system"} {
+		var super, bypass bool
+		if err := d.Pool.QueryRow(ctx, "select rolsuper, rolbypassrls from pg_roles where rolname = $1", role).Scan(&super, &bypass); err != nil {
+			t.Fatal(err)
+		}
+		if super || bypass {
+			t.Fatalf("%s: superuser %v bypassrls %v", role, super, bypass)
+		}
+	}
+	var owners []string
+	rows, err := d.Pool.Query(ctx, `select distinct pg_get_userbyid(relowner)::text from pg_class
+		where relnamespace = 'public'::regnamespace and relkind in ('r', 'S')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var o string
+		_ = rows.Scan(&o)
+		owners = append(owners, o)
+	}
+	rows.Close()
+	if len(owners) != 1 || owners[0] != "mai_owner" {
+		t.Fatalf("tables must all be owned by mai_owner, got %v", owners)
+	}
+
+	// DDL that would switch off isolation, as both runtime roles.
+	for name, pool := range map[string]*pgxpool.Pool{"mai_app": d.Pool, "mai_system": d.System} {
+		for _, q := range []string{
+			"alter table messages disable row level security",
+			"alter table messages no force row level security",
+			"drop policy tenant_isolation on inboxes",
+			"create policy open on inboxes using (true)",
+			"alter table inboxes add column x int",
+			"create or replace function app_system() returns boolean language sql as 'select true'",
+			"create table evil (id int)",
+			"truncate audit_log",
+			"set role mai_owner",
+			"grant mai_system to mai_app",
+		} {
+			if _, err := pool.Exec(ctx, q); err == nil {
+				t.Fatalf("%s could run %q", name, q)
+			}
+		}
+	}
+	if _, err := d.Pool.Exec(ctx, "set role mai_system"); err == nil {
+		t.Fatal("mai_app could set role mai_system")
+	}
+
+	// mai_app turning on app.system gets nothing beyond its own tenant.
+	count := func(tx pgx.Tx, q string) int {
+		var n int
+		if err := tx.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	tx, err := d.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // also releases row locks when a check fails
+	if _, err := tx.Exec(ctx, "select set_config('app.system', 'on', false)"); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(tx, "select count(*) from organizations"); n != 0 {
+		t.Fatalf("mai_app with app.system sees %d organizations", n)
+	}
+	if n := count(tx, "select count(*) from inboxes"); n != 0 {
+		t.Fatalf("mai_app with app.system sees %d inboxes", n)
+	}
+	if _, err := tx.Exec(ctx, "select set_config('app.org_id', $1, true)", orgB); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(tx, "select count(*) from organizations"); n != 1 {
+		t.Fatalf("mai_app with app.system in org B sees %d organizations", n)
+	}
+	if n := count(tx, "select count(*) from inboxes where org_id = '"+orgA+"'"); n != 0 {
+		t.Fatalf("mai_app with app.system in org B sees %d org A inboxes", n)
+	}
+	if _, err := tx.Exec(ctx, "update organizations set plan = 'team' where id = $1", orgA); err != nil {
+		t.Fatal(err)
+	}
+	_ = tx.Rollback(ctx)
+	if _, err := d.Pool.Exec(ctx, "insert into organizations (name) values ('forged')"); err == nil {
+		t.Fatal("mai_app inserted an organization")
+	}
+
+	// The system role does get cross tenant access, but only inside WithSystem.
+	var n int
+	_ = d.WithSystem(ctx, func(tx pgx.Tx) error { n = count(tx, "select count(*) from organizations"); return nil })
+	if n < 2 {
+		t.Fatalf("system context sees %d organizations", n)
+	}
+	if err := d.System.QueryRow(ctx, "select count(*) from organizations").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("mai_system without app.system sees %d organizations (%v)", n, err)
+	}
+	var plan string
+	_ = d.WithSystem(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select plan from organizations where id = $1", orgA).Scan(&plan)
+	})
+	if plan == "team" {
+		t.Fatal("mai_app changed another organization")
+	}
 }
 
 type capture struct {
@@ -157,15 +315,7 @@ func (c client) do(method, path string, body any, headers map[string]string) (in
 
 func TestPlatformEndToEnd(t *testing.T) {
 	ctx := context.Background()
-	dsn := freshDatabase(t)
-	d, err := db.Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-	if err := d.Migrate(ctx); err != nil {
-		t.Fatal(err)
-	}
+	d := openPlatform(t, ctx, freshDatabase(t))
 	log := slog.New(slog.NewTextHandler(testWriter{t}, nil))
 	svc := &core.Service{DB: d, Blob: blob.FS{Root: t.TempDir()}, SharedDomain: shared, Hostname: "mx." + shared, AllowHTTPWebhooks: true}
 
@@ -186,6 +336,16 @@ func TestPlatformEndToEnd(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// This test covers monitor mode (message.received at ingest, verdict
+	// later); screen before notify is covered by TestScreenBeforeNotify.
+	if !orgA.ScreenBeforeNotify {
+		t.Fatal("new organizations must default to screen_before_notify")
+	}
+	if _, err := svc.SetScreening(ctx, orgA.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("roles", func(t *testing.T) { checkRoleSplit(t, ctx, d, orgA.ID, orgB.ID) })
 
 	srv := &api.Server{Svc: svc, Log: log}
 	srv.MCP = mcpserver.Handler(svc, func(ctx context.Context) mcpserver.Caller {

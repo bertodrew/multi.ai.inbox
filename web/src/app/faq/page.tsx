@@ -93,7 +93,8 @@ const faqs: Array<{ q: string; a: ReactNode }> = [
     q: "How much does it cost?",
     a: (
       <>
-        Free is €0, Builder is €15 per month, Team is €149 per month, Enterprise is priced on request. This is launch
+        Free is €0, Builder is €15 per month, Growth is €59 per month, Team is €149 per month, Enterprise is priced on
+        request. Yearly billing costs 10 months. This is launch
         pricing and billing is not live yet. See {a("/pricing/", "pricing")}.
       </>
     ),

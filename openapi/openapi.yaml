@@ -7,6 +7,16 @@ info:
     fields follow the shape of the market leader so agents can switch by
     changing base URL and key. The same operations are available as MCP tools
     at POST /mcp (header X-Api-Key or Authorization: Bearer).
+
+    Screen before notify (organization setting `screen_before_notify`, on by
+    default): inbound mail is held until the gatekeeper verdict exists.
+    `message.received` fires only for a clean verdict, or when a key with
+    `message_release` releases a message held for review. Held messages are
+    left out of every list and get; `include_review=true` (needs
+    `message_review`) adds those held for review. Messages still pending
+    screening are never returned. `message_release` is never implied by a
+    full access key: only keys that list it hold it, and the first one is
+    issued by the operator (`mai admin key-create -permissions ...`).
 servers:
   - url: https://api.example.eu
 security:
@@ -21,6 +31,9 @@ paths:
   /v0/inboxes:
     post:
       summary: Create an inbox (repeat client_id to get the same inbox)
+      description: |
+        409 already_exists when the address is taken, 409 address_quarantined
+        when it belonged to an inbox deleted less than 90 days ago.
       requestBody:
         content:
           application/json:
@@ -52,51 +65,78 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
     delete:
       summary: Delete an inbox and all its mail
-      responses: { "204": { description: Deleted } }
+      description: |
+        Removes the inbox, its threads, messages and attachments. Raw .eml
+        files and attachment blobs are queued for deletion in the same
+        transaction and removed from storage by the scheduler within minutes.
+        The address is quarantined for 90 days: no organization can create
+        it again in that window (409 address_quarantined).
+      responses: { "204": { description: Deleted }, "404": { $ref: "#/components/responses/Error" } }
   /v0/inboxes/{inbox}/threads:
     parameters: [{ $ref: "#/components/parameters/inbox" }]
     get:
       summary: List threads of an inbox
-      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }, { $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ThreadList" } } } }
   /v0/threads:
     get:
       summary: List threads across the organization
-      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }, { $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ThreadList" } } } }
   /v0/threads/{thread}:
     parameters: [{ name: thread, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
-      summary: Get a thread with its messages, oldest first
+      summary: Get a thread with the messages the caller may see, oldest first
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Thread" } } } }
   /v0/inboxes/{inbox}/messages:
     parameters: [{ $ref: "#/components/parameters/inbox" }]
     get:
       summary: List message metadata (no bodies)
-      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }]
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }, { $ref: "#/components/parameters/label" }, { $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessageList" } } } }
   /v0/inboxes/{inbox}/messages/send:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/idempotency_key" }]
     post:
       summary: Send a new message (new thread)
+      description: |
+        403 sending_paused when the bounce breaker paused the inbox or the
+        organization (hard bounce rate above 5% over at least 20 sends in 24
+        hours, or spam complaints above 0.1% over at least 1000 sends, or 3
+        complaints in 24 hours below that volume). Queued mail is held, not
+        sent, until an operator resumes.
+        429 limit_exceeded when the plan's daily or monthly send limit is
+        reached; 429 rate_limited when the plan's 5 minute burst limit is
+        reached (free 10, builder 100, growth 250, team 1,500), with Retry-After in seconds.
+
+        Attachments are scanned for viruses before the message is queued:
+        422 attachment_infected when one is infected. When the scanner is
+        unavailable the message is queued with the av-unscanned label, or
+        refused with 503 antivirus_unavailable if the platform fails closed.
       requestBody:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Send" }
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     get:
       summary: Get a message with bodies, extracted_text, authentication results and gatekeeper verdict
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
     patch:
       summary: Add or remove custom labels
       requestBody:
@@ -114,17 +154,36 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     get:
       summary: Raw RFC 822 message
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses: { "200": { description: OK, content: { message/rfc822: {} } } }
   /v0/inboxes/{inbox}/messages/{message}/reply:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }, { $ref: "#/components/parameters/idempotency_key" }]
     post:
       summary: Reply in the same thread
+      description: "Attachments are scanned like on send (422 attachment_infected, 503 antivirus_unavailable). Same send limits as a new message: 429 limit_exceeded or rate_limited."
       requestBody:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Reply" }
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v0/inboxes/{inbox}/messages/{message}/release:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
+    post:
+      summary: Release a message held for review (needs message_release, audited)
+      description: |
+        Marks the message `released`, makes it visible and fires
+        `message.received`. Only messages with `screening: review` can be
+        released; anything else returns `409 not_held`.
+      responses:
+        "200": { description: Released, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}/attachments/{attachment}:
     parameters:
       - { $ref: "#/components/parameters/inbox" }
@@ -132,7 +191,94 @@ paths:
       - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       summary: Download an attachment
+      parameters: [{ $ref: "#/components/parameters/include_review" }]
       responses: { "200": { description: Attachment bytes with its content type } }
+  /v0/inboxes/{inbox}/drafts:
+    parameters: [{ $ref: "#/components/parameters/inbox" }]
+    post:
+      summary: Create a draft (needs message_send)
+      description: |
+        Recipients and a body are only required to send. With `in_reply_to`
+        the draft is a reply: `to`, `subject` and threading default to those
+        of the message replied to, and the sent message stays in its thread.
+        Messages held by screening cannot be replied to. With `send_at` the
+        scheduler sends the draft at that time (checked every minute). Fires
+        `draft.created`.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDraft" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List drafts, newest first (needs message_read)
+      parameters: [{ $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/page_token" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/DraftList" } } } }
+  /v0/inboxes/{inbox}/drafts/{draft}:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/draft" }]
+    get:
+      summary: Get a draft (needs message_read)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Update a draft (needs message_send)
+      description: |
+        Replaces the fields present in the body. `send_at` schedules the
+        draft, `send_at: null` cancels a scheduled send. Editing a draft whose
+        scheduled send failed makes it a plain draft again.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDraft" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete a draft (needs message_send)
+      responses: { "204": { description: Deleted } }
+  /v0/inboxes/{inbox}/drafts/{draft}/send:
+    parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/draft" }, { $ref: "#/components/parameters/idempotency_key" }]
+    post:
+      summary: Send a draft now and delete it (needs message_send)
+      description: |
+        Same rules as a send: plan limits (429 limit_exceeded), 403
+        sending_paused, the free plan footer and Idempotency-Key. A repeated
+        key returns the first result although the draft is gone.
+      responses:
+        "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v0/events/stream:
+    get:
+      summary: Live events as Server Sent Events (needs message_read)
+      description: |
+        Streams the organization's events as `text/event-stream`. Each event
+        has `id` (its position, for resuming), `event` (the event type) and
+        `data` (the webhook envelope: type, event_type, event_id, created_at,
+        data). Payloads are the webhook payloads: events about messages held
+        by screening carry no body. Without `Last-Event-ID` the stream starts
+        with new events; with it, it continues after that id (EventSource
+        sends it on reconnect). A `: ping` comment is sent every 15 seconds
+        when idle. Up to 5 open streams per API key (429 too_many_streams);
+        a revoked or expired key loses its streams within a minute.
+      parameters:
+        - { name: types, in: query, description: "Comma separated event types; all when absent", schema: { type: string } }
+        - { name: inbox, in: query, description: "Only events of this inbox", schema: { type: string, format: email } }
+        - { name: Last-Event-ID, in: header, description: "Resume after this event id", schema: { type: integer, minimum: 0 } }
+        - { name: last_event_id, in: query, description: "Same as Last-Event-ID, for clients that cannot set headers", schema: { type: integer, minimum: 0 } }
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /v0/domains:
     post:
       summary: Add a custom domain; returns the DNS records to publish
@@ -213,16 +359,81 @@ paths:
       parameters: [{ name: webhook, in: path, required: true, schema: { type: string, format: uuid } }]
       summary: Delete a webhook
       responses: { "204": { description: Deleted } }
+  /v0/billing:
+    get:
+      summary: Plan and Stripe subscription state (requires billing_read)
+      description: |
+        `status` is `none` until a Checkout completes, then the Stripe
+        subscription status. A `past_due` or `unpaid` subscription keeps its
+        plan until `grace_period_ends_at` (7 days), then the organization
+        moves to free; paying restores the plan. 501 billing_disabled when
+        the deployment has no Stripe configuration.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Billing" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /v0/billing/checkout:
+    post:
+      summary: Start a Stripe Checkout for a paid plan (requires billing_write, audited)
+      description: |
+        Creates a Checkout Session in subscription mode and returns its `url`;
+        send the user there. Stripe Tax adds EU VAT and the customer can enter
+        a VAT ID. The plan changes when Stripe confirms the payment through
+        the webhook, not when this call returns. 409 already_subscribed when
+        a subscription is live: change plans in the portal instead.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Checkout" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/BillingSession" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /v0/billing/portal:
+    post:
+      summary: Open the Stripe customer portal (requires billing_write, audited)
+      description: Plan and interval changes, payment method, invoices and cancellation. 409 no_billing_account before the first Checkout.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { return_url: { type: string, format: uri } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/BillingSession" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /stripe/webhook:
+    post:
+      summary: Stripe webhook endpoint (public, Stripe-Signature verified)
+      description: |
+        Not for API clients: register this URL in the Stripe dashboard. The
+        raw body must carry a valid `Stripe-Signature` (HMAC SHA256, at most
+        5 minutes old). Handles checkout.session.completed,
+        customer.subscription.created, customer.subscription.updated,
+        customer.subscription.deleted and invoice.payment_failed; other types
+        are acknowledged. Each event id is applied once.
+      security: []
+      parameters: [{ name: Stripe-Signature, in: header, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Received; outcome is applied, duplicate, stale or ignored" }
+        "400": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, description: "API key, prefix mai_live_" }
   parameters:
     inbox: { name: inbox, in: path, required: true, schema: { type: string, format: email } }
     message: { name: message, in: path, required: true, description: "Message UUID or RFC Message-ID (URL encoded)", schema: { type: string } }
+    draft: { name: draft, in: path, required: true, schema: { type: string, format: uuid } }
     limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
     page_token: { name: page_token, in: query, schema: { type: string } }
     label: { name: label, in: query, schema: { type: string } }
     idempotency_key: { name: Idempotency-Key, in: header, schema: { type: string, maxLength: 256 } }
+    include_review: { name: include_review, in: query, description: "Also return messages held for security review; needs message_review", schema: { type: boolean, default: false } }
   responses:
     Error:
       description: Error envelope
@@ -237,13 +448,19 @@ components:
                 type: string
                 enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
-                       missing_permission, permission_escalation, api_key_expired,
-                       payload_too_large, internal_error]
+                       rate_limited, address_quarantined, sending_paused,
+                       missing_permission, permission_escalation, api_key_expired, not_held,
+                       billing_disabled, billing_provider_error, already_subscribed, no_billing_account,
+                       invalid_signature, too_many_streams, payload_too_large, attachment_infected, antivirus_unavailable, internal_error]
               message: { type: string }
   schemas:
     Org:
       type: object
-      properties: { organization_id: { type: string, format: uuid }, name: { type: string }, plan: { type: string } }
+      properties:
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        plan: { type: string, enum: [free, builder, growth, team] }
+        screen_before_notify: { type: boolean, description: "Hold inbound mail until screened (operator setting: mai admin org-screening)" }
     CreateInbox:
       type: object
       additionalProperties: false
@@ -260,6 +477,11 @@ components:
         email: { type: string, format: email }
         display_name: { type: string }
         client_id: { type: string }
+        sending_paused_at:
+          type: string
+          format: date-time
+          description: Set when the bounce breaker paused sending (hard bounce rate above 5% over at least 20 sends in 24 hours); an operator resumes it.
+        sending_paused_reason: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     InboxList:
@@ -299,15 +521,30 @@ components:
         in_reply_to: { type: string }
         references: { type: array, items: { type: string } }
         status: { type: string, enum: [received, queued, sending, sent, failed] }
-        authentication_results: { type: object, description: "dkim, spam_score, spam_action" }
+        authentication_results:
+          type: object
+          description: "What the SMTP edge verified for inbound mail: dkim, spf, dmarc, dmarc_policy, antivirus, spam_score, spam_action. Mail failing DMARC is labelled dmarc-fail, and spam under p=quarantine or p=reject."
+          properties:
+            dkim: { type: string, enum: [pass, fail, none], description: "A valid signature aligned with the From domain" }
+            spf: { type: string, enum: [pass, fail, softfail, neutral, none, temperror, permerror], description: "RFC 7208 result for the MAIL FROM identity (HELO for a null sender)" }
+            dmarc: { type: string, enum: [pass, fail, none, temperror, permerror], description: "RFC 7489 result with relaxed or strict alignment as the record asks" }
+            dmarc_policy: { type: string, enum: [none, quarantine, reject], description: "Policy of the From domain after sp= and pct=, when a record exists" }
+            antivirus: { type: string, enum: [clean, unscanned] }
+            spam_score: { type: number }
+            spam_action: { type: string }
+            internal: { type: boolean, description: "Delivered between inboxes of this platform" }
         gatekeeper:
           type: object
           properties:
-            status: { type: string, enum: [pending, complete, unavailable] }
+            status: { type: string, enum: [pending, complete, unavailable, timeout] }
             verdict: { type: string, enum: [clear, review] }
             score: { type: number }
             reasons: { type: array, items: { type: string } }
             model: { type: string }
+        screening:
+          type: string
+          enum: [review, allowed, released]
+          description: "Hold state under screen before notify; absent when the message was not held. Pending messages are never returned."
         attachments: { type: array, items: { type: object, properties: { attachment_id: { type: string }, filename: { type: string }, content_type: { type: string }, size: { type: integer } } } }
         created_at: { type: string, format: date-time }
     MessageList:
@@ -342,9 +579,63 @@ components:
     SendResult:
       type: object
       properties: { message_id: { type: string }, thread_id: { type: string, format: uuid } }
+    CreateDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        to: { type: array, items: { type: string, format: email } }
+        cc: { type: array, items: { type: string, format: email } }
+        bcc: { type: array, items: { type: string, format: email } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+        in_reply_to: { type: string, description: "Message UUID or RFC Message-ID to reply to" }
+        reply_all: { type: boolean, description: "With in_reply_to: copy the other recipients" }
+        send_at: { type: string, format: date-time, description: "Send automatically at this time (future, within 365 days)" }
+    UpdateDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        to: { type: array, items: { type: string, format: email } }
+        cc: { type: array, items: { type: string, format: email } }
+        bcc: { type: array, items: { type: string, format: email } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+        send_at: { type: [string, "null"], format: date-time, description: "null cancels a scheduled send" }
+    Draft:
+      type: object
+      properties:
+        draft_id: { type: string, format: uuid }
+        inbox_id: { type: string, format: email }
+        thread_id: { type: string, format: uuid, description: Set for a reply draft }
+        in_reply_to: { type: string, description: RFC Message-ID of the message replied to }
+        references: { type: array, items: { type: string } }
+        to: { type: array, items: { type: string } }
+        cc: { type: array, items: { type: string } }
+        bcc: { type: array, items: { type: string } }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string }
+        labels: { type: array, items: { type: string } }
+        attachments: { type: array, items: { type: object, properties: { filename: { type: string }, content_type: { type: string }, size: { type: integer } } } }
+        send_at: { type: string, format: date-time }
+        status: { type: string, enum: [draft, scheduled, failed] }
+        last_error: { type: string, description: Why a scheduled send was refused }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DraftList:
+      type: object
+      properties: { count: { type: integer }, next_page_token: { type: string }, drafts: { type: array, items: { $ref: "#/components/schemas/Draft" } } }
     EventType:
       type: string
-      enum: [message.received, message.received.spam, message.sent, message.failed, message.security.completed, message.security.review, domain.verified]
+      enum: [message.received, message.received.spam, message.sent, message.failed, message.bounced, message.complained,
+             message.security.completed, message.security.review, domain.verified, draft.created, inbox.sending.paused, inbox.sending.resumed,
+             organization.sending.paused, organization.sending.resumed, security.av_unavailable]
     Webhook:
       type: object
       properties:
@@ -375,4 +666,27 @@ components:
     Permission:
       type: string
       enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
-             webhook_read, webhook_write, api_key_read, api_key_write, audit_read]
+             webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release,
+             billing_read, billing_write]
+    Checkout:
+      type: object
+      additionalProperties: false
+      required: [plan]
+      properties:
+        plan: { type: string, enum: [builder, growth, team] }
+        interval: { type: string, enum: [monthly, yearly], default: monthly }
+        success_url: { type: string, format: uri, description: "Defaults to the deployment's MAI_BILLING_RETURN_URL" }
+        cancel_url: { type: string, format: uri, description: "Defaults to the deployment's MAI_BILLING_RETURN_URL" }
+    BillingSession:
+      type: object
+      properties: { session_id: { type: string }, url: { type: string, format: uri } }
+    Billing:
+      type: object
+      properties:
+        plan: { type: string, enum: [free, builder, growth, team] }
+        status: { type: string, enum: [none, incomplete, incomplete_expired, trialing, active, past_due, unpaid, canceled, paused] }
+        interval: { type: string, enum: [monthly, yearly] }
+        current_period_end: { type: string, format: date-time }
+        cancel_at_period_end: { type: boolean }
+        past_due_since: { type: string, format: date-time }
+        grace_period_ends_at: { type: string, format: date-time, description: "Set while past_due or unpaid; the plan drops to free after it" }

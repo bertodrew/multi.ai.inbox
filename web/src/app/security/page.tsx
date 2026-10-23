@@ -18,7 +18,9 @@ const items: Item[] = [
     points: [
       "Every inbound message is screened before an agent should act on it. The result is stored on the message as a verdict, clear or review, with a score and the reasons.",
       "The rules are transparent: instruction overrides (\"ignore previous instructions\"), role hijacking, requests to send credentials or forward all mail, fake tool or system markup, text hidden with CSS, invisible Unicode characters, and a failing DMARC result.",
-      "Messages with verdict review get the review label and fire the message.security.review event, so your agent can route them to a human.",
+      "Screen before notify is on by default: inbound mail is held until the verdict exists, so message.received never reaches your agent before screening finishes.",
+      "Messages with verdict review get the review label, stay hidden from every list and read, and fire only the message.security.review event, without the body. A human with a release permission decides; each release is audited.",
+      "When the screener is down or slow, the hold fails closed: the message waits for review instead of being delivered unscreened.",
       "The screener also extracts the new text of a reply without quoted history, which shrinks the attack surface the model reads.",
       "Screening reduces risk; it does not remove it. Keep sensitive actions behind a confirmation step in your agent.",
     ],

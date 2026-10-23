@@ -16,13 +16,16 @@ import (
 )
 
 type Inbox struct {
-	ID          string    `json:"id"`
-	InboxID     string    `json:"inbox_id"` // the address, as in the reference API
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
-	ClientID    *string   `json:"client_id,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string  `json:"id"`
+	InboxID     string  `json:"inbox_id"` // the address, as in the reference API
+	Email       string  `json:"email"`
+	DisplayName string  `json:"display_name"`
+	ClientID    *string `json:"client_id,omitempty"`
+	// Set when the bounce breaker paused sending; an operator resumes it.
+	SendingPausedAt     *time.Time `json:"sending_paused_at,omitempty"`
+	SendingPausedReason *string    `json:"sending_paused_reason,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 type CreateInboxRequest struct {
@@ -37,11 +40,11 @@ var (
 	clientIDRe = regexp.MustCompile(`^[A-Za-z0-9._~-]{1,256}$`)
 )
 
-const inboxCols = "id, address, display_name, client_id, created_at, updated_at"
+const inboxCols = "id, address, display_name, client_id, sending_paused_at, sending_paused_reason, created_at, updated_at"
 
 func scanInbox(row pgx.Row) (*Inbox, error) {
 	i := &Inbox{}
-	if err := row.Scan(&i.ID, &i.InboxID, &i.DisplayName, &i.ClientID, &i.CreatedAt, &i.UpdatedAt); err != nil {
+	if err := row.Scan(&i.ID, &i.InboxID, &i.DisplayName, &i.ClientID, &i.SendingPausedAt, &i.SendingPausedReason, &i.CreatedAt, &i.UpdatedAt); err != nil {
 		return nil, err
 	}
 	i.Email = i.InboxID
@@ -105,6 +108,11 @@ func (s *Service) CreateInbox(ctx context.Context, orgID string, req CreateInbox
 		}
 		if plan := planOf(planName); count >= plan.Inboxes {
 			return errf(http.StatusForbidden, "limit_exceeded", "the %s plan allows %d inboxes", plan.Name, plan.Inboxes)
+		}
+		if until, ok, err := quarantinedUntil(ctx, tx, address); err != nil {
+			return err
+		} else if ok {
+			return quarantineError(address, until)
 		}
 		out, err = scanInbox(tx.QueryRow(ctx, `insert into inboxes (org_id, domain_id, address, display_name, client_id)
 			values ($1, $2, $3, $4, $5) returning `+inboxCols, orgID, domainID, address, req.DisplayName, clientID))
@@ -194,6 +202,9 @@ func (s *Service) UpdateInbox(ctx context.Context, orgID, address string, displa
 	return out, err
 }
 
+// DeleteInbox removes an inbox with its threads, messages and attachments.
+// Triggers (migration 0006) queue every blob for the scheduler to remove and
+// quarantine the address for 90 days, in the same transaction.
 func (s *Service) DeleteInbox(ctx context.Context, orgID, address string) error {
 	return s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, "delete from inboxes where address = $1", strings.ToLower(address))

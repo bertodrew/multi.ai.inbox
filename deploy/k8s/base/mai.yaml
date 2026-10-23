@@ -31,6 +31,24 @@ spec:
         runAsUser: 65532
         fsGroup: 65532
         seccompProfile: { type: RuntimeDefault }
+      # Schema migrations run here with the owner role (mai_owner), so the
+      # serving container never holds credentials that can alter tables.
+      initContainers:
+        - name: migrate
+          image: mai
+          args: ["migrate"]
+          env:
+            - name: MAI_OWNER_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_OWNER_PASSWORD } }
+            - name: MAI_MIGRATE_DATABASE_URL
+              value: postgres://mai_owner:$(MAI_OWNER_PASSWORD)@postgres:5432/mai?sslmode=disable
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
       containers:
         - name: mai
           image: mai
@@ -38,22 +56,53 @@ spec:
           envFrom:
             - configMapRef: { name: mai-config }
           env:
+            # Runtime roles: DML only, no BYPASSRLS. mai_app serves tenant
+            # requests; mai_system (SMTP edge, workers, authentication) is the
+            # only role whose app.system setting row level security honours.
             - name: MAI_APP_PASSWORD
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_APP_PASSWORD } }
             - name: DATABASE_URL
               value: postgres://mai_app:$(MAI_APP_PASSWORD)@postgres:5432/mai?sslmode=disable
+            - name: MAI_SYSTEM_PASSWORD
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SYSTEM_PASSWORD } }
+            - name: MAI_SYSTEM_DATABASE_URL
+              value: postgres://mai_system:$(MAI_SYSTEM_PASSWORD)@postgres:5432/mai?sslmode=disable
             - name: MAI_SMTP_RELAY
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SMTP_RELAY, optional: true } }
             - name: MAI_RSPAMD_URL
               value: http://rspamd:11333
+            # Antivirus at SMTP DATA: infected mail gets 554 5.7.1. While clamd is
+            # down mail is accepted with the av-unscanned label; set
+            # MAI_CLAMD_FAIL_CLOSED=true to answer 451 4.7.1 instead.
+            - name: MAI_CLAMD_ADDR
+              value: clamd:3310
             # STARTTLS certificate for the MX host, obtained and renewed by Caddy.
             - name: MAI_SMTP_TLS_CERT
               value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).crt
             - name: MAI_SMTP_TLS_KEY
               value: /caddy-data/caddy/certificates/*/$(MAI_HOSTNAME)/$(MAI_HOSTNAME).key
+            # Blobs live on the mai-blobs volume (MAI_BLOB_BACKEND=fs, default).
+            # For Hetzner Object Storage, uncomment and add both keys to
+            # mai-secrets; use its own bucket, not the Object Lock backup one.
+            # Existing blobs are not copied over by the switch.
+            # - name: MAI_BLOB_BACKEND
+            #   value: s3
+            # - name: MAI_S3_ENDPOINT
+            #   value: https://fsn1.your-objectstorage.com
+            # - name: MAI_S3_REGION
+            #   value: fsn1
+            # - name: MAI_S3_BUCKET
+            #   value: mai-blobs-staging
+            # - name: MAI_S3_ACCESS_KEY
+            #   valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_S3_ACCESS_KEY } }
+            # - name: MAI_S3_SECRET_KEY
+            #   valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_S3_SECRET_KEY } }
           ports:
             - { name: http, containerPort: 8080 }
             - { name: smtp, containerPort: 2525 }
+            # GET /metrics (MAI_METRICS_ADDR, default :9090): not in any
+            # Service Caddy proxies; NetworkPolicy mai admits the namespace only.
+            - { name: metrics, containerPort: 9090 }
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 5

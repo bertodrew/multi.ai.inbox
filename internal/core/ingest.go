@@ -42,7 +42,10 @@ type InboundMeta struct {
 }
 
 // Ingest stores one inbound message for each local recipient, threads it and
-// emits message.received. The raw MIME is stored once.
+// emits message.received. When the organization has screen_before_notify on,
+// the message is stored as held (screening = pending) instead: it stays out of
+// listings and thread counters, and the event waits for the gatekeeper verdict
+// (see SaveEnrichment). The raw MIME is stored once per recipient.
 func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipient, meta InboundMeta) error {
 	parsed, err := mailx.Parse(raw)
 	if err != nil {
@@ -60,6 +63,9 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 		if err := s.Blob.Put(ctx, rawKey, raw); err != nil {
 			return fmt.Errorf("store raw: %w", err)
 		}
+		// Blobs written for this delivery; removed again unless the message row commits.
+		written := []string{rawKey}
+		inserted, bounced, complained := false, false, false
 		err := s.DB.WithOrg(ctx, rc.OrgID, func(tx pgx.Tx) error {
 			var dup bool
 			if err := tx.QueryRow(ctx, "select exists(select 1 from messages where inbox_id = $1 and rfc_message_id = $2 and direction = 'in')",
@@ -68,6 +74,14 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 			}
 			if dup {
 				return nil // a retried delivery of a message we already stored
+			}
+			var hold bool
+			if err := tx.QueryRow(ctx, "select screen_before_notify from organizations where id = $1", rc.OrgID).Scan(&hold); err != nil {
+				return err
+			}
+			var screening any
+			if hold {
+				screening = "pending"
 			}
 			threadID, err := s.findThread(ctx, tx, rc.InboxID, parsed)
 			if err != nil {
@@ -88,16 +102,17 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 			var msgID string
 			if err := tx.QueryRow(ctx, `insert into messages (org_id, inbox_id, thread_id, direction, rfc_message_id, in_reply_to,
 				refs, from_addr, to_addrs, cc_addrs, subject, text_body, html_body, preview, labels, raw_key, size_bytes,
-				status, auth_results)
-				values ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, $10, nullif($11, ''), nullif($12, ''), $13, $14, $15, $16, 'received', $17)
+				status, auth_results, screening)
+				values ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, $10, nullif($11, ''), nullif($12, ''), $13, $14, $15, $16, 'received', $17, $18)
 				returning id`,
 				rc.OrgID, rc.InboxID, threadID, parsed.MessageID, inReplyTo, nonNil(parsed.References), strings.ToLower(parsed.From),
 				nonNil(parsed.To), nonNil(parsed.Cc), parsed.Subject, parsed.Text, parsed.HTML, preview, labels, rawKey, len(raw),
-				auth).Scan(&msgID); err != nil {
+				auth, screening).Scan(&msgID); err != nil {
 				return err
 			}
 			for i, a := range parsed.Attachments {
 				key := fmt.Sprintf("att/%s/%s/%d", rc.OrgID, msgID, i)
+				written = append(written, key)
 				if err := s.Blob.Put(ctx, key, a.Data); err != nil {
 					return err
 				}
@@ -106,17 +121,42 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 					return err
 				}
 			}
-			if err := touchThread(ctx, tx, threadID, preview, labels); err != nil {
+			inserted = true
+			// A DSN counts against the sending inbox whether or not it is held.
+			if bounced, err = s.recordBounce(ctx, tx, rc, parsed, raw, meta); err != nil {
 				return err
 			}
-			eventType := "message.received"
-			if contains(labels, "spam") {
-				eventType = "message.received.spam"
+			// So does a feedback loop complaint (ARF).
+			if complained, err = s.recordComplaint(ctx, tx, rc, raw); err != nil {
+				return err
 			}
-			return s.emitMessageEvent(ctx, tx, eventType, rc.Address, msgID)
+			if meta.AuthResults["antivirus"] == "unscanned" {
+				source := "mx"
+				if meta.AuthResults["internal"] == true {
+					source = "internal"
+				}
+				if err := s.alertAVUnscanned(ctx, tx, rc.OrgID, rc.InboxID, rc.Address, source); err != nil {
+					return err
+				}
+			}
+			if hold {
+				return nil // counted and notified once screened or released
+			}
+			return s.notifyReceived(ctx, tx, rc.Address, msgID, threadID, parsed.Subject, preview, labels)
 		})
+		if err != nil || !inserted {
+			// A duplicate delivery or a rolled back transaction: nothing references these blobs.
+			for _, key := range written {
+				_ = s.Blob.Delete(ctx, key)
+			}
+		}
 		if err != nil {
 			return err
+		}
+		if bounced || complained {
+			if err := s.CheckSendingHealth(ctx, rc.OrgID, rc.InboxID); err != nil {
+				return fmt.Errorf("sending health: %w", err)
+			}
 		}
 	}
 	return nil
@@ -140,15 +180,39 @@ func (s *Service) findThread(ctx context.Context, tx pgx.Tx, inboxID string, p *
 	return threadID, err
 }
 
+// notifyReceived makes an inbound message visible in its thread and emits
+// message.received (or message.received.spam).
+func (s *Service) notifyReceived(ctx context.Context, tx pgx.Tx, address, msgID, threadID, subject, preview string, labels []string) error {
+	if err := touchThread(ctx, tx, threadID, subject, preview, labels); err != nil {
+		return err
+	}
+	eventType := "message.received"
+	if contains(labels, "spam") {
+		eventType = "message.received.spam"
+	}
+	return s.emitMessageEvent(ctx, tx, eventType, address, msgID)
+}
+
 // emitMessageEvent writes an outbox event with the full message and its thread.
 func (s *Service) emitMessageEvent(ctx context.Context, tx pgx.Tx, eventType, address, msgID string) error {
-	m, err := s.messageTx(ctx, tx, address, msgID)
+	return s.emitEvent(ctx, tx, eventType, address, msgID, false)
+}
+
+// emitEvent writes an outbox event; redact drops every field that carries
+// body content (text, html, extracted_text, previews), so an event about a
+// held message cannot deliver its prompt injection to a webhook consumer.
+func (s *Service) emitEvent(ctx context.Context, tx pgx.Tx, eventType, address, msgID string, redact bool) error {
+	m, err := s.messageTx(ctx, tx, address, msgID, viewAll)
 	if err != nil {
 		return err
 	}
 	t, err := scanThread(tx.QueryRow(ctx, "select "+threadCols+threadFrom+" where t.id = $1", m.ThreadID))
 	if err != nil {
 		return err
+	}
+	if redact {
+		m.Text, m.HTML, m.ExtractedText, m.Preview = nil, nil, nil, ""
+		t.Preview = ""
 	}
 	return insertEvent(ctx, tx, m.orgID, m.inboxUUID, eventType, map[string]any{"message": m, "thread": t})
 }

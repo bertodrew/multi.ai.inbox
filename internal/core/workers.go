@@ -1,18 +1,23 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/bertodrew/multi.ai.inbox/internal/metrics"
 )
 
 // OutboundJob is a queued message leased to the sender worker.
 type OutboundJob struct {
 	ID         string
 	OrgID      string
+	InboxID    string
 	Address    string
 	Recipients []string
 	RawKey     string
@@ -36,10 +41,13 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 		rows, err := tx.Query(ctx, `update messages m set status = 'sending', attempts = attempts + 1,
 				next_attempt_at = now() + $2::interval
 			from inboxes i, domains d
-			where m.id in (select id from messages where status in ('queued', 'sending') and next_attempt_at <= now()
+			where m.id in (select id from messages q where status in ('queued', 'sending') and next_attempt_at <= now()
+				-- paused inboxes and organizations keep their queue until resumed
+				and not exists (select 1 from inboxes p where p.id = q.inbox_id and p.sending_paused_at is not null)
+				and not exists (select 1 from organizations p where p.id = q.org_id and p.sending_paused_at is not null)
 				order by next_attempt_at limit $1 for update skip locked)
 			and i.id = m.inbox_id and d.id = i.domain_id
-			returning m.id, m.org_id, i.address, m.to_addrs || m.cc_addrs || m.bcc_addrs, m.raw_key, m.attempts,
+			returning m.id, m.org_id, m.inbox_id, i.address, m.to_addrs || m.cc_addrs || m.bcc_addrs, m.raw_key, m.attempts,
 				d.name, d.dkim_selector, coalesce(d.dkim_private_key, ''), m.created_at`, n, sendLease.String())
 		if err != nil {
 			return err
@@ -47,7 +55,7 @@ func (s *Service) ClaimOutbound(ctx context.Context, n int) ([]OutboundJob, erro
 		defer rows.Close()
 		for rows.Next() {
 			var j OutboundJob
-			if err := rows.Scan(&j.ID, &j.OrgID, &j.Address, &j.Recipients, &j.RawKey, &j.Attempts,
+			if err := rows.Scan(&j.ID, &j.OrgID, &j.InboxID, &j.Address, &j.Recipients, &j.RawKey, &j.Attempts,
 				&j.DKIMDomain, &j.DKIMSel, &j.DKIMKeyPEM, &j.CreatedAt); err != nil {
 				return err
 			}
@@ -105,30 +113,65 @@ func outboundRetry(j OutboundJob, sendErr error, now time.Time, maxAge time.Dura
 // FinishOutbound records the outcome of a delivery attempt and emits an event.
 // Permanent (5xx) errors fail at once; temporary ones are retried until the
 // message is older than the max age (MAI_SEND_MAX_AGE, default 5 days).
-func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr error) error {
+func (s *Service) FinishOutbound(ctx context.Context, j OutboundJob, sendErr error) (err error) {
 	retry, delay := false, time.Duration(0)
 	if sendErr != nil {
 		retry, delay = outboundRetry(j, sendErr, s.now(), s.sendMaxAge())
 	}
+	result := "sent"
+	switch {
+	case sendErr != nil && retry:
+		result = "deferred"
+	case sendErr != nil:
+		result = "failed"
+	}
+	defer func() {
+		if err == nil {
+			metrics.Outbound.With(result).Inc()
+		}
+	}()
 	return s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
 		switch {
 		case sendErr == nil:
 			if _, err := tx.Exec(ctx, "update messages set status = 'sent', last_error = null, next_attempt_at = null where id = $1", j.ID); err != nil {
 				return err
 			}
-			return s.emitMessageEvent(ctx, tx, "message.sent", j.Address, j.ID)
+			if err := s.emitMessageEvent(ctx, tx, "message.sent", j.Address, j.ID); err != nil {
+				return err
+			}
+			return s.finalOutcome(ctx, tx, j, "sent")
 		case !retry:
 			if _, err := tx.Exec(ctx, `update messages set status = 'failed', last_error = $2, next_attempt_at = null,
 				labels = array(select distinct l from unnest(labels || '{failed}'::text[]) l) where id = $1`, j.ID, sendErr.Error()); err != nil {
 				return err
 			}
-			return s.emitMessageEvent(ctx, tx, "message.failed", j.Address, j.ID)
+			if err := s.emitMessageEvent(ctx, tx, "message.failed", j.Address, j.ID); err != nil {
+				return err
+			}
+			// Only a permanent (5xx) refusal is a hard bounce; giving up after
+			// the retry window, or refusing infected content, says nothing
+			// about the recipient address.
+			if errors.Is(sendErr, ErrPermanent) && !errors.Is(sendErr, ErrInfected) {
+				return s.finalOutcome(ctx, tx, j, "rejected")
+			}
+			return nil
 		default:
 			_, err := tx.Exec(ctx, "update messages set status = 'queued', last_error = $2, next_attempt_at = now() + $3::interval where id = $1",
 				j.ID, sendErr.Error(), delay.String())
 			return err
 		}
 	})
+}
+
+// finalOutcome records a send outcome and runs the bounce breaker.
+func (s *Service) finalOutcome(ctx context.Context, tx pgx.Tx, j OutboundJob, outcome string) error {
+	if j.InboxID == "" {
+		return nil // a job built by hand (tests) without its inbox
+	}
+	if _, err := recordOutcome(ctx, tx, j.OrgID, j.InboxID, j.ID, outcome); err != nil {
+		return err
+	}
+	return s.checkSendingHealth(ctx, tx, j.OrgID, j.InboxID)
 }
 
 // ErrPermanent marks a delivery error that must not be retried (5xx).
@@ -178,31 +221,37 @@ type Delivery struct {
 	EventType string
 	Payload   json.RawMessage
 	CreatedAt time.Time
+	seq       int64 // events.id, the outbox order
 }
 
-// ClaimDeliveries leases due webhook deliveries for one minute.
+// ClaimDeliveries leases due webhook deliveries for one minute, oldest event
+// first, so a first attempt reaches each endpoint in outbox order (for
+// example message.security.completed before message.received). Retries can
+// still arrive later than newer events.
 func (s *Service) ClaimDeliveries(ctx context.Context, n int) ([]Delivery, error) {
 	var list []Delivery
 	err := s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `update webhook_deliveries d set attempt = attempt + 1, next_attempt_at = now() + interval '1 minute'
 			from webhooks w, events e
 			where d.id in (select id from webhook_deliveries where status = 'pending' and next_attempt_at <= now()
-				order by next_attempt_at limit $1 for update skip locked)
+				order by next_attempt_at, event_id limit $1 for update skip locked)
 			and w.id = d.webhook_id and e.id = d.event_id
-			returning d.id, d.attempt, w.url, w.secret, e.event_id, e.type, e.payload, e.created_at`, n)
+			returning d.id, d.attempt, w.url, w.secret, e.event_id, e.type, e.payload, e.created_at, e.id`, n)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var d Delivery
-			if err := rows.Scan(&d.ID, &d.Attempt, &d.URL, &d.Secret, &d.EventID, &d.EventType, &d.Payload, &d.CreatedAt); err != nil {
+			if err := rows.Scan(&d.ID, &d.Attempt, &d.URL, &d.Secret, &d.EventID, &d.EventType, &d.Payload, &d.CreatedAt, &d.seq); err != nil {
 				return err
 			}
 			list = append(list, d)
 		}
 		return rows.Err()
 	})
+	// update ... returning has no defined order; deliver in outbox order.
+	slices.SortFunc(list, func(a, b Delivery) int { return cmp.Compare(a.seq, b.seq) })
 	return list, err
 }
 
@@ -273,16 +322,51 @@ type Verdict struct {
 	ExtractedText string   `json:"-"`
 }
 
+// SaveEnrichment stores the verdict and emits the security events. For a
+// message held by screen before notify it also decides the hold:
+//   - clean verdict: message.security.completed, then message.received
+//   - review verdict, or no verdict because the gatekeeper was unavailable
+//     (fail closed): held for review, only message.security.review, redacted
+//
+// Messages that are not held keep the original behavior: completed, and
+// review when flagged, with message.received already sent at ingest.
 func (s *Service) SaveEnrichment(ctx context.Context, j EnrichJob, v Verdict) error {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	return s.DB.WithSystem(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `update messages set gatekeeper = $2, extracted_text = nullif($3, ''),
-			labels = case when $4 then array(select distinct l from unnest(labels || '{review}'::text[]) l) else labels end
-			where id = $1`, j.ID, body, v.ExtractedText, v.Verdict == "review"); err != nil {
+		var h heldMessage
+		if err := tx.QueryRow(ctx, `select screening, thread_id, subject, preview, labels from messages where id = $1 for update`, j.ID).
+			Scan(&h.screening, &h.threadID, &h.subject, &h.preview, &h.labels); err != nil {
 			return err
+		}
+		pending := h.screening != nil && *h.screening == "pending"
+		hold := pending && (v.Verdict != "clear" || v.Status != "complete")
+		next := h.screening
+		if pending {
+			next = ptr("allowed")
+			if hold {
+				next = ptr("review")
+			}
+		}
+		if _, err := tx.Exec(ctx, `update messages set gatekeeper = $2, extracted_text = nullif($3, ''), screening = $5,
+			labels = case when $4 then array(select distinct l from unnest(labels || '{review}'::text[]) l) else labels end
+			where id = $1`, j.ID, body, v.ExtractedText, v.Verdict == "review" || hold, next); err != nil {
+			return err
+		}
+		switch {
+		case hold:
+			return s.emitEvent(ctx, tx, "message.security.review", j.Address, j.ID, true)
+		case pending:
+			if err := s.emitMessageEvent(ctx, tx, "message.security.completed", j.Address, j.ID); err != nil {
+				return err
+			}
+			return s.notifyReceived(ctx, tx, j.Address, j.ID, h.threadID, h.subject, h.preview, h.labels)
+		case h.screening != nil:
+			// Held state already decided (screening timed out or the message
+			// was released meanwhile): record the verdict, emit nothing more.
+			return nil
 		}
 		if err := s.emitMessageEvent(ctx, tx, "message.security.completed", j.Address, j.ID); err != nil {
 			return err

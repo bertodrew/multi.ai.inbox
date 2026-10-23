@@ -33,7 +33,7 @@ export const inboxes: DocPage = {
     },
     {
       type: "p",
-      text: "Errors: `403 limit_exceeded` when the plan's inbox limit is reached, `403 domain_not_verified` when the domain is not verified for your organization, `409 already_exists` when the address is taken.",
+      text: "Errors: `403 limit_exceeded` when the plan's inbox limit is reached, `403 domain_not_verified` when the domain is not verified for your organization, `409 already_exists` when the address is taken, `409 address_quarantined` when it belonged to an inbox deleted less than 90 days ago.",
     },
     { type: "h2", text: "Identify an inbox" },
     {
@@ -43,7 +43,7 @@ export const inboxes: DocPage = {
     { type: "h2", text: "Delete" },
     {
       type: "p",
-      text: "Deleting an inbox deletes all its threads, messages and attachments. It cannot be undone.",
+      text: "Deleting an inbox deletes all its threads, messages and attachments, including the stored raw messages and files. It cannot be undone. The address is then reserved for 90 days: no organization can create it again in that window (`409 address_quarantined`), so nobody receives mail meant for the previous owner.",
     },
     { type: "h2", text: "Endpoints" },
     {
@@ -113,7 +113,45 @@ export const messagesAndThreads: DocPage = {
     },
     {
       type: "p",
-      text: "`status` is `pending` until screening finishes and `unavailable` if the screener could not run. Messages with verdict `review` also get the `review` label, and the `message.security.review` event fires.",
+      text: "`status` is `pending` until screening finishes, `unavailable` if the screener could not run and `timeout` if no verdict arrived within 15 minutes. Messages with verdict `review` also get the `review` label, and the `message.security.review` event fires.",
+    },
+    { type: "h2", text: "Screen before notify" },
+    {
+      type: "p",
+      text: "Every organization has the setting `screen_before_notify`, on by default (see `GET /v0/auth/me`). Inbound mail is held until the gatekeeper verdict exists, so an agent never reads a prompt injection before screening finishes. The message field `screening` shows the hold state:",
+    },
+    {
+      type: "table",
+      head: ["`screening`", "Meaning", "Visible", "Events"],
+      rows: [
+        ["(pending)", "Waiting for the gatekeeper.", "Never returned.", "None yet."],
+        ["`allowed`", "Verdict `clear`.", "Yes.", "`message.security.completed`, then `message.received`."],
+        ["`review`", "Verdict `review`, screener unavailable or timed out: the hold fails closed.", "Only with `include_review=true` and `message_review`.", "`message.security.review` only, without bodies."],
+        ["`released`", "A reviewer released it.", "Yes.", "`message.received`."],
+      ],
+    },
+    {
+      type: "p",
+      text: "Held messages are left out of message and thread lists, gets, raw downloads and attachments, and cannot be replied to or relabeled. A thread started by a held message stays hidden until one of its messages is visible. The same rules apply to the MCP tools.",
+    },
+    {
+      type: "code",
+      sample: {
+        label: "Review and release",
+        lang: "bash",
+        code: `# a key with message_read and message_review
+curl -s "${API_URL}/v0/inboxes/billing@agents.your-domain.eu/messages?include_review=true&label=review" \
+  -H "Authorization: Bearer $MAI_REVIEW_KEY"
+
+# a key with message_release: the message becomes visible and message.received fires
+curl -s -X POST "${API_URL}/v0/inboxes/billing@agents.your-domain.eu/messages/$MESSAGE_ID/release" \
+  -H "Authorization: Bearer $MAI_REVIEW_KEY"`,
+      },
+    },
+    {
+      type: "note",
+      tone: "warn",
+      text: "Give `message_review` and `message_release` to a human review tool, not to the agent that reads the inbox: an agent that can release its own mail can be talked into it. Every release is written to the audit log. Keys without a permission list hold every permission, including these two, so give agents scoped keys.",
     },
     { type: "h2", text: "Labels" },
     {
@@ -142,6 +180,7 @@ export const messagesAndThreads: DocPage = {
         "GET /v0/inboxes/{inbox}/messages/{message}",
         "PATCH /v0/inboxes/{inbox}/messages/{message}",
         "GET /v0/inboxes/{inbox}/messages/{message}/raw",
+        "POST /v0/inboxes/{inbox}/messages/{message}/release",
       ],
     },
     { type: "schemas", names: ["Thread", "Message"] },
@@ -156,7 +195,7 @@ export const sendingAndReplying: DocPage = {
     { type: "h2", text: "Send a new message" },
     {
       type: "p",
-      text: "`POST /v0/inboxes/{inbox}/messages/send` starts a new thread. `to` needs at least one address; `text` or `html` is required. The response is `200` with the `message_id` and `thread_id` once the message is queued; delivery happens in the background and ends with a `message.sent` or `message.failed` event.",
+      text: "`POST /v0/inboxes/{inbox}/messages/send` starts a new thread. `to` needs at least one address; `text` or `html` is required. The response is `200` with the `message_id` and `thread_id` once the message is queued; delivery happens in the background and ends with a `message.sent` or `message.failed` event. When more than 5% of an inbox's (or organization's) last 24 hours of sends hard bounced, over at least 20 sends, sending is paused: the call returns `403 sending_paused` until support resumes it.",
     },
     {
       type: "code",
@@ -203,9 +242,34 @@ export const sendingAndReplying: DocPage = {
         "On the free plan a short footer is appended: \"Sent via multi.ai.inbox\".",
       ],
     },
+    { type: "h2", text: "Drafts" },
+    {
+      type: "p",
+      text: "A draft is a message saved for later: for a human to review, or to send at `send_at`. Create it with the same fields as a send; recipients and a body are only needed when it is sent. With `in_reply_to` (a message id) the draft is a reply: `to`, `subject` and the threading headers default to those of that message, and the sent message joins its thread. `POST .../drafts/{draft}/send` sends it now through the normal send path (plan limits, `403 sending_paused`, `Idempotency-Key`) and deletes the draft.",
+    },
+    {
+      type: "list",
+      items: [
+        "`send_at` schedules the draft; the scheduler checks every minute. `PATCH` with `send_at: null` cancels it.",
+        "If a scheduled send is refused (for example a plan limit), the draft gets `status: failed` and `last_error`. Edit it or send it by hand to retry.",
+        "Creating a draft needs `message_send`; reading drafts needs `message_read`. `draft.created` fires for every new draft.",
+      ],
+    },
     { type: "h2", text: "Endpoints" },
-    { type: "endpoints", keys: ["POST /v0/inboxes/{inbox}/messages/send", "POST /v0/inboxes/{inbox}/messages/{message}/reply"] },
-    { type: "schemas", names: ["Send", "Reply", "SendResult"] },
+    {
+      type: "endpoints",
+      keys: [
+        "POST /v0/inboxes/{inbox}/messages/send",
+        "POST /v0/inboxes/{inbox}/messages/{message}/reply",
+        "POST /v0/inboxes/{inbox}/drafts",
+        "GET /v0/inboxes/{inbox}/drafts",
+        "GET /v0/inboxes/{inbox}/drafts/{draft}",
+        "PATCH /v0/inboxes/{inbox}/drafts/{draft}",
+        "DELETE /v0/inboxes/{inbox}/drafts/{draft}",
+        "POST /v0/inboxes/{inbox}/drafts/{draft}/send",
+      ],
+    },
+    { type: "schemas", names: ["Send", "Reply", "SendResult", "Draft"] },
   ],
 };
 

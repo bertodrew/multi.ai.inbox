@@ -12,6 +12,7 @@ type Plan = {
   name: string;
   price: string;
   period: string;
+  yearly?: string;
   blurb: string;
   limits: string[];
   extras: string[];
@@ -37,6 +38,7 @@ const plans: Plan[] = [
     name: "Builder",
     price: "€15",
     period: "per month",
+    yearly: "or €150 per year",
     blurb: "For a product with a few agents in production.",
     limits: ["10 inboxes", "5 custom domains", "1,000 sends per day", "10,000 sends per month"],
     extras: ["No footer"],
@@ -45,9 +47,21 @@ const plans: Plan[] = [
     highlight: true,
   },
   {
+    name: "Growth",
+    price: "€59",
+    period: "per month",
+    yearly: "or €590 per year",
+    blurb: "For a startup running agents for its customers.",
+    limits: ["50 inboxes", "20 custom domains", "2,500 sends per day", "40,000 sends per month"],
+    extras: ["No footer"],
+    planned: [],
+    cta: { label: "Ask for Growth", href: mail("Growth plan") },
+  },
+  {
     name: "Team",
     price: "€149",
     period: "per month",
+    yearly: "or €1,490 per year",
     blurb: "For platforms that give an inbox to each customer.",
     limits: ["150 inboxes", "50 custom domains", "15,000 sends per day", "150,000 sends per month"],
     extras: ["No footer"],
@@ -84,14 +98,14 @@ export default function PricingPage() {
       <PageHeader
         eyebrow="Pricing"
         title="Simple plans. EU hosting on all of them."
-        intro="Prices in EUR. The limits below are the ones the API enforces today."
+        intro="Prices in EUR, excluding VAT. Yearly billing costs 10 months. The limits below are the ones the API enforces today."
       />
       <Container className="py-12">
         <p className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs tracking-[0.08em] uppercase">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
           Launch pricing
         </p>
-        <ul className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ul className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {plans.map((p) => (
             <li
               key={p.name}
@@ -103,6 +117,7 @@ export default function PricingPage() {
                 <span className="font-display text-4xl font-semibold">{p.price}</span>
                 {p.period ? <span className="ml-1 text-sm text-muted">{p.period}</span> : null}
               </p>
+              {p.yearly ? <p className="mt-1 text-sm text-muted">{p.yearly}</p> : null}
               <h3 className="mt-6 font-mono text-xs tracking-[0.08em] text-muted uppercase">Limits</h3>
               <ul className="mt-2 space-y-1.5 text-sm">
                 {p.limits.map((l) => (
@@ -166,11 +181,19 @@ export default function PricingPage() {
             <div>
               <dt className="font-medium">Can I pay today?</dt>
               <dd className="mt-1 text-muted">
-                Not yet. Billing is not live while the service is in staging. Plans are assigned on request: write to{" "}
+                Not yet. Card payments through Stripe are built but stay switched off while the service is in staging.
+                Plans are assigned on request: write to{" "}
                 <a className="text-primary underline underline-offset-2" href={`mailto:${CONTACT_EMAIL}`}>
                   {CONTACT_EMAIL}
                 </a>
                 .
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium">How is VAT handled?</dt>
+              <dd className="mt-1 text-muted">
+                Prices exclude VAT. At checkout VAT is added for your country, and EU businesses can enter their VAT ID
+                for the reverse charge.
               </dd>
             </div>
             <div>

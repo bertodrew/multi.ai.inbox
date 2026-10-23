@@ -1,12 +1,13 @@
 // Package blob stores raw messages and attachments. The filesystem store is
-// for single node deployments; an S3 compatible store (Hetzner Object Storage)
-// implements the same interface later.
+// for single node deployments; S3 (s3.go) implements the same interface on
+// an S3 compatible bucket (Hetzner Object Storage).
 package blob
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,9 @@ import (
 type Store interface {
 	Put(ctx context.Context, key string, data []byte) error
 	Get(ctx context.Context, key string) ([]byte, error)
+	// Delete removes a blob. A missing blob is not an error, so a retried
+	// deletion is harmless.
+	Delete(ctx context.Context, key string) error
 }
 
 type FS struct{ Root string }
@@ -48,4 +52,21 @@ func (f FS) Get(_ context.Context, key string) ([]byte, error) {
 		return nil, err
 	}
 	return os.ReadFile(p)
+}
+
+func (f FS) Delete(_ context.Context, key string) error {
+	p, err := f.path(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("blob delete: %w", err)
+	}
+	// Prune directories left empty (org/yyyy/mm, att/org/message), never the root.
+	for dir := filepath.Dir(p); dir != filepath.Clean(f.Root) && strings.HasPrefix(dir, filepath.Clean(f.Root)); dir = filepath.Dir(dir) {
+		if os.Remove(dir) != nil {
+			break // not empty, or already gone
+		}
+	}
+	return nil
 }
