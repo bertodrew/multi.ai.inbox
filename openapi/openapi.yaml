@@ -24,10 +24,101 @@ security:
 paths:
   /v0/auth/me:
     get:
-      summary: Organization of the API key
+      summary: Caller summary (kept for older clients; same body as GET /v0/me)
       responses:
-        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Org" } } } }
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } }
         "401": { $ref: "#/components/responses/Error" }
+  /v0/me:
+    get:
+      summary: The authenticated caller, a person's session or an API key
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+  /v0/auth/magic-link:
+    post:
+      summary: Email a single use sign in link (public)
+      description: |
+        Answers 202 for a known and an unknown address alike, so the endpoint
+        never reveals who has an account. The link expires in 15 minutes and
+        works once. A browser form post is redirected back to /login.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [email], properties: { email: { type: string, format: email }, redirect_after: { type: string, description: "Path on the site, for example /console/" } } }
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: { email: { type: string }, redirect_after: { type: string } } }
+      responses:
+        "202": { description: "Sent (or accepted when the address has no account: same answer)" }
+        "303": { description: A form post is redirected back to the login page with sent=1 }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /v0/auth/callback:
+    get:
+      summary: Finish a sign in, with a magic link token or an OAuth code (public)
+      description: |
+        Called by the link in the email, or by the identity provider. A client
+        that asks for `application/json` gets the session in the body; a
+        browser is sent to `<site>/login/#access_token=...` with the tokens in
+        the fragment (never in a query string, so they stay out of logs) or to
+        `<site>/login/?error=<code>`.
+      security: []
+      parameters:
+        - { name: token, in: query, schema: { type: string }, description: Magic link token }
+        - { name: code, in: query, schema: { type: string }, description: OAuth authorization code }
+        - { name: state, in: query, schema: { type: string }, description: "OAuth state, single use, 10 minutes" }
+      responses:
+        "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "303": { description: "A browser goes to the login page with the session in the fragment, or with ?error=<code>" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /v0/auth/oauth/{provider}/start:
+    get:
+      summary: Start Google or GitHub sign in with PKCE (public)
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [google, github] } }
+        - { name: redirect, in: query, schema: { type: string, enum: ["1"] }, description: "Send the browser to the provider instead of returning JSON" }
+        - { name: redirect_after, in: query, schema: { type: string }, description: "Path on the site to return to" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OAuthStart" } } } }
+        "302": { description: The browser goes to the provider }
+        "400": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /v0/auth/refresh:
+    post:
+      summary: Rotate a refresh token into a new session (public)
+      description: |
+        The refresh token is single use: the exchange revokes it and returns a
+        new pair. A replayed token answers 401.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [refresh_token], properties: { refresh_token: { type: string } } }
+      responses:
+        "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /v0/auth/logout:
+    post:
+      summary: End a session (public)
+      description: |
+        Revokes the session of the refresh token in the body and of the access
+        token in Authorization, when either is sent. Idempotent: 204 either way.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { refresh_token: { type: string } } }
+      responses:
+        "204": { description: Ended (also when the token was already invalid) }
+        "400": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
   /v0/inboxes:
     post:
       summary: Create an inbox (repeat client_id to get the same inbox)
@@ -476,7 +567,7 @@ paths:
         "501": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
-    bearer: { type: http, scheme: bearer, description: "API key, prefix mai_live_" }
+    bearer: { type: http, scheme: bearer, description: "API key (mai_live_..., for agents) or a session access token (a signed JWT, for people). Both go in Authorization: Bearer" }
   parameters:
     inbox: { name: inbox, in: path, required: true, schema: { type: string, format: email } }
     message: { name: message, in: path, required: true, description: "Message UUID or RFC Message-ID (URL encoded)", schema: { type: string } }
@@ -503,9 +594,55 @@ components:
                        rate_limited, address_quarantined, sending_paused,
                        missing_permission, permission_escalation, api_key_expired, not_held,
                        billing_disabled, billing_provider_error, already_subscribed, no_billing_account,
-                       invalid_signature, too_many_streams, payload_too_large, attachment_infected, antivirus_unavailable, internal_error]
+                       invalid_signature, too_many_streams, payload_too_large, attachment_infected, antivirus_unavailable,
+                       auth_disabled, provider_not_configured, invalid_magic_link, invalid_state, code_rejected,
+                       email_not_verified, provider_unavailable, email_delivery_failed, invalid_refresh_token,
+                       token_expired, unknown_token, session_revoked, access_denied, internal_error]
               message: { type: string }
   schemas:
+    User:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        provider: { type: string, enum: [magic_link, google, github], description: Identity that first proved this address }
+        role: { type: string, enum: [owner, admin, member] }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time }
+    Session:
+      type: object
+      properties:
+        access_token: { type: string, description: "Signed JWT, send as Authorization: Bearer, 15 minutes" }
+        refresh_token: { type: string, description: "Single use, 30 days, rotate it at POST /v0/auth/refresh" }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: Seconds until the access token expires }
+        expires_at: { type: string, format: date-time }
+        refresh_expires_at: { type: string, format: date-time }
+        role: { type: string, enum: [owner, admin, member] }
+        user: { $ref: "#/components/schemas/User" }
+        organization: { $ref: "#/components/schemas/Org" }
+    OAuthStart:
+      type: object
+      properties:
+        provider: { type: string, enum: [google, github] }
+        authorize_url: { type: string, description: "Provider URL, with state and the S256 PKCE challenge" }
+        state: { type: string, description: "Single use, 10 minutes" }
+        expires_at: { type: string, format: date-time }
+    Me:
+      type: object
+      properties:
+        auth: { type: string, enum: [api_key, session] }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        plan: { type: string, enum: [free, builder, growth, team] }
+        screen_before_notify: { type: boolean }
+        role: { type: string, enum: [owner, admin, member], description: Only for a session }
+        api_key_id: { type: string, format: uuid, description: Only for an API key }
+        user: { type: object, properties: { user_id: { type: string, format: uuid }, email: { type: string, format: email } }, description: Only for a session }
+        organization: { $ref: "#/components/schemas/Org" }
+        permissions: { type: array, items: { type: string } }
+        expires_at: { type: string, format: date-time }
     Org:
       type: object
       properties:

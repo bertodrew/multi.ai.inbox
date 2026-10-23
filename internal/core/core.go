@@ -32,6 +32,9 @@ type Service struct {
 	// av-unscanned label, or refused when AntivirusFailClosed is set.
 	Antivirus           Scanner
 	AntivirusFailClosed bool
+	// Auth configures people signing in (magic link, Google, GitHub). Nil
+	// disables those endpoints with 501; API keys always keep working.
+	Auth *AuthConfig
 }
 
 // Plan holds the limits of a pricing plan (doc 01, section 7). The 5 minute

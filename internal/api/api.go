@@ -11,11 +11,11 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bertodrew/multi.ai.inbox/internal/auth"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/openapi"
 )
@@ -44,8 +44,12 @@ type Server struct {
 	Limiter *Limiter
 	// AuthFailures caps failed authentications per client IP (brute force); nil disables it.
 	AuthFailures *Limiter
+	// MagicLinks caps magic link requests per client IP; nil disables it.
+	MagicLinks *Limiter
 	// Gateway holds the edge settings (CORS, trusted proxies).
 	Gateway Gateway
+	// Auth holds the site and API origins used to build sign in links.
+	Auth AuthSurface
 	// Streams caps the open event streams per API key; zero values use the defaults.
 	Streams StreamSettings
 	// Done ends open event streams (server shutdown); nil means never.
@@ -74,6 +78,7 @@ func (s *Server) Handler() http.Handler {
 	route("DELETE /v0/api-keys/{key}", "", s.revokeKey)
 	route("GET /v0/audit-logs", "", s.listAudit)
 	route("GET /v0/auth/me", "", s.me)
+	route("GET /v0/me", "", s.me)
 	route("POST /v0/inboxes", core.PermInboxWrite, s.createInbox)
 	route("GET /v0/inboxes", core.PermInboxRead, s.listInboxes)
 	route("GET /v0/inboxes/{inbox}", core.PermInboxRead, s.getInbox)
@@ -122,6 +127,15 @@ func (s *Server) Handler() http.Handler {
 	})
 	// Public: Stripe authenticates itself with the Stripe-Signature header.
 	mux.HandleFunc("POST /stripe/webhook", s.stripeWebhook)
+	// Public: people signing in. Each of these patterns is more specific than
+	// /v0/, so no API key is required; the handlers check their own credential
+	// (a magic link token, an OAuth state, a refresh token). API keys keep
+	// working on every other /v0/ route, and on these too where they apply.
+	mux.HandleFunc("POST /v0/auth/magic-link", s.magicLink)
+	mux.HandleFunc("GET /v0/auth/callback", s.authCallback)
+	mux.HandleFunc("POST /v0/auth/refresh", s.refreshSession)
+	mux.HandleFunc("POST /v0/auth/logout", s.logout)
+	mux.HandleFunc("GET /v0/auth/oauth/{provider}/start", s.oauthStart)
 	mux.Handle("/v0/", s.authenticate(auth))
 	mux.Handle("/mcp", s.authenticate(auth))
 	return s.gateway(mux)
@@ -140,12 +154,15 @@ func (s *Server) require(perm string, h http.HandlerFunc) http.Handler {
 	})
 }
 
+// authenticate accepts either an API key (an agent) or a session access token
+// (a person). The two cannot be confused: API keys carry the mai_live_ prefix
+// and are opaque, access tokens are compact JWS.
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := apiKey(r)
-		if key == "" {
+		token, _ := bearer(r)
+		if token == "" {
 			s.fail(w, &core.Error{Status: http.StatusUnauthorized, Name: "Unauthorized", Code: "missing_authorization",
-				Message: "send Authorization: Bearer <api key>"})
+				Message: "send Authorization: Bearer with an API key or an access token"})
 			return
 		}
 		ip := clientIP(r.Context())
@@ -154,7 +171,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				Message: "too many failed authentications from this address, retry later"})
 			return
 		}
-		principal, err := s.Svc.Authenticate(r.Context(), key)
+		principal, err := s.credential(r.Context(), token)
 		if err != nil {
 			if s.AuthFailures != nil && core.AsError(err).Status == http.StatusUnauthorized {
 				s.AuthFailures.Allow(ip) // consume a token per failure
@@ -173,12 +190,13 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	})
 }
 
-// apiKey reads the API key from Authorization: Bearer, or else X-Api-Key.
-func apiKey(r *http.Request) string {
-	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-		return strings.TrimPrefix(h, "Bearer ")
+// credential resolves a bearer value: a session token when it looks like a
+// JWT, an API key otherwise.
+func (s *Server) credential(ctx context.Context, token string) (*core.Principal, error) {
+	if auth.LooksLikeJWT(token) {
+		return s.Svc.AuthenticateSession(ctx, token)
 	}
-	return r.Header.Get("X-Api-Key")
+	return s.Svc.Authenticate(ctx, token)
 }
 
 func (s *Server) ok(w http.ResponseWriter, status int, v any) {
@@ -249,19 +267,6 @@ func listBody[T any](name string, items []T, next string) map[string]any {
 		body["next_page_token"] = next
 	}
 	return body
-}
-
-func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	p := PrincipalFrom(r.Context())
-	perms := p.Permissions
-	if perms == nil {
-		// A full access key holds every permission except the explicit ones.
-		perms = slices.DeleteFunc(slices.Clone(core.AllPermissions), func(perm string) bool {
-			return slices.Contains(core.ExplicitPermissions, perm)
-		})
-	}
-	s.ok(w, http.StatusOK, map[string]any{"organization_id": p.Org.ID, "name": p.Org.Name, "plan": p.Org.Plan,
-		"screen_before_notify": p.Org.ScreenBeforeNotify, "api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
 }
 
 // audit records a security relevant action; a failure is logged, never fatal.

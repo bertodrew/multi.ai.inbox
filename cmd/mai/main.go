@@ -36,6 +36,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/api"
+	authpkg "github.com/bertodrew/multi.ai.inbox/internal/auth"
 	"github.com/bertodrew/multi.ai.inbox/internal/blob"
 	"github.com/bertodrew/multi.ai.inbox/internal/clamav"
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
@@ -80,6 +81,16 @@ type config struct {
 	SendMaxAge     time.Duration
 	Billing        *core.Billing
 	BillingStatus  core.BillingStatus
+	// People signing in. AuthSecret enables the endpoints at all; the OAuth
+	// client ids are optional, a provider without them answers 501.
+	AuthSecret     string
+	AuthMailFrom   string
+	WebOrigin      string
+	PublicAPIURL   string
+	GoogleClientID string
+	GoogleSecret   string
+	GitHubClientID string
+	GitHubSecret   string
 }
 
 func env(key, def string) string {
@@ -103,6 +114,13 @@ func loadConfig() config {
 	if err != nil || sendMaxAge <= 0 {
 		fmt.Fprintln(os.Stderr, "invalid MAI_SEND_MAX_AGE: want a positive duration such as 120h")
 		os.Exit(2)
+	}
+	// Sign in mail comes from the relay, so the sender must be a domain the
+	// relay is allowed to send for.
+	authMailFrom := os.Getenv("MAI_AUTH_MAIL_FROM")
+	if authMailFrom == "" {
+		domain := env("MAI_SHARED_DOMAIN", env("MAI_HOSTNAME", "localhost"))
+		authMailFrom = "no-reply@" + domain
 	}
 	blobDir := env("MAI_BLOB_DIR", "./var/blobs")
 	store, err := blobStore(blobDir)
@@ -141,6 +159,14 @@ func loadConfig() config {
 		SendMaxAge:     sendMaxAge,
 		Billing:        billing,
 		BillingStatus:  billingStatus,
+		AuthSecret:     os.Getenv("MAI_AUTH_SECRET"),
+		AuthMailFrom:   authMailFrom,
+		WebOrigin:      env("MAI_WEB_ORIGIN", "https://aimulti.inbox"),
+		PublicAPIURL:   os.Getenv("MAI_PUBLIC_API_URL"),
+		GoogleClientID: os.Getenv("MAI_GOOGLE_CLIENT_ID"),
+		GoogleSecret:   os.Getenv("MAI_GOOGLE_CLIENT_SECRET"),
+		GitHubClientID: os.Getenv("MAI_GITHUB_CLIENT_ID"),
+		GitHubSecret:   os.Getenv("MAI_GITHUB_CLIENT_SECRET"),
 	}
 }
 
@@ -254,6 +280,16 @@ func service(d *db.DB, cfg config) *core.Service {
 	svc := &core.Service{DB: d, Blob: cfg.Blob, SharedDomain: cfg.SharedDomain,
 		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
 		SendMaxAge: cfg.SendMaxAge, AntivirusFailClosed: cfg.ClamdFailClose, Billing: cfg.Billing}
+	if cfg.AuthSecret != "" {
+		// Without a relay a magic link cannot be delivered, so the link
+		// endpoint reports 501 and OAuth keeps working.
+		authCfg := &core.AuthConfig{Secret: []byte(cfg.AuthSecret), WebOrigin: cfg.WebOrigin, MailFrom: cfg.AuthMailFrom,
+			Google: authpkg.Google(cfg.GoogleClientID, cfg.GoogleSecret), GitHub: authpkg.GitHub(cfg.GitHubClientID, cfg.GitHubSecret)}
+		if cfg.Relay != "" {
+			authCfg.Mailer = &authpkg.RelayMailer{Relay: cfg.Relay, From: cfg.AuthMailFrom, Helo: cfg.Hostname}
+		}
+		svc.Auth = authCfg
+	}
 	if cfg.ClamdAddr != "" {
 		// API uploaded attachments and agent to agent mail; the SMTP edge has its own client.
 		svc.Antivirus = &clamav.Clamd{Addr: cfg.ClamdAddr}
@@ -299,6 +335,8 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 				srv.Limiter = api.NewLimiter(cfg.RatePerSecond, cfg.RatePerSecond*2)
 			}
 			srv.MCP = mcpserver.Handler(svc, mcpCaller, log, version)
+			srv.Auth = api.AuthSurface{WebOrigin: cfg.WebOrigin, PublicURL: cfg.PublicAPIURL}
+			srv.MagicLinks = api.NewLimiter(5.0/60, 5)     // 5 sign in links per IP, refilling 5 per minute
 			srv.AuthFailures = api.NewLimiter(10.0/60, 10) // 10 failed keys per IP, refilling 10 per minute
 			srv.Gateway = cfg.Gateway
 			if cfg.Billing == nil {

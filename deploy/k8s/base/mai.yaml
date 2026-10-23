@@ -76,6 +76,28 @@ spec:
               value: postgres://mai_system:$(MAI_SYSTEM_PASSWORD)@postgres:5432/mai?sslmode=disable
             - name: MAI_SMTP_RELAY
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_SMTP_RELAY, optional: true } }
+            # People signing in (magic link, Google, GitHub). MAI_AUTH_SECRET
+            # turns the endpoints on: without it they answer 501 auth_disabled
+            # and API keys keep working. At least 32 bytes; generate once with
+            # openssl rand -base64 48 and keep it in mai-secrets. Sign in mail
+            # leaves through MAI_SMTP_RELAY above, so a missing relay only
+            # disables magic links (501), never Google or GitHub.
+            - name: MAI_WEB_ORIGIN
+              value: https://aimulti.inbox
+            - name: MAI_PUBLIC_API_URL
+              value: https://api.162-55-213-24.sslip.io
+            - name: MAI_AUTH_SECRET
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_AUTH_SECRET, optional: true } }
+            - name: MAI_AUTH_MAIL_FROM
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_AUTH_MAIL_FROM, optional: true } }
+            - name: MAI_GOOGLE_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_GOOGLE_CLIENT_SECRET, optional: true } }
+            - name: MAI_GITHUB_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_GITHUB_CLIENT_SECRET, optional: true } }
+            - name: MAI_GOOGLE_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_GOOGLE_CLIENT_ID, optional: true } }
+            - name: MAI_GITHUB_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_GITHUB_CLIENT_ID, optional: true } }
             - name: MAI_RSPAMD_URL
               value: http://rspamd:11333
             # Antivirus at SMTP DATA: infected mail gets 554 5.7.1. While clamd is

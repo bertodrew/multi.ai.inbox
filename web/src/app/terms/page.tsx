@@ -100,7 +100,12 @@ const sections: LegalSection[] = [
   },
   {
     title: "Governing law",
-    body: <p>[Governing law and place of jurisdiction to be defined.]</p>,
+    body: (
+      <p>
+        Estonian law; courts of Tallinn, Estonia, save the mandatory consumer forum. The contractual entity is
+        KaiFloor OÜ, registry code EE-1049281, Tallinn, Estonia.
+      </p>
+    ),
   },
   {
     title: "Changes and contact",

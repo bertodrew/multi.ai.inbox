@@ -5,23 +5,298 @@ export const apiReference: ApiReference = {
   "title": "multi.ai.inbox API",
   "version": "0.1.0",
   "description": "Email inboxes for AI agents, hosted in the EU. Resource names, paths and\nfields follow the shape of the market leader so agents can switch by\nchanging base URL and key. The same operations are available as MCP tools\nat POST /mcp (header X-Api-Key or Authorization: Bearer).\n\nScreen before notify (organization setting `screen_before_notify`, on by\ndefault): inbound mail is held until the gatekeeper verdict exists.\n`message.received` fires only for a clean verdict, or when a key with\n`message_release` releases a message held for review. Held messages are\nleft out of every list and get; `include_review=true` (needs\n`message_review`) adds those held for review. Messages still pending\nscreening are never returned. `message_release` is never implied by a\nfull access key: only keys that list it hold it, and the first one is\nissued by the operator (`mai admin key-create -permissions ...`).",
-  "auth": "API key, prefix mai_live_",
+  "auth": "API key (mai_live_..., for agents) or a session access token (a signed JWT, for people). Both go in Authorization: Bearer",
   "endpoints": [
     {
       "id": "get-v0-auth-me",
       "method": "GET",
       "path": "/v0/auth/me",
-      "summary": "Organization of the API key",
+      "summary": "Caller summary (kept for older clients; same body as GET /v0/me)",
       "params": [],
       "body": null,
       "responses": [
         {
           "code": "200",
           "description": "OK",
-          "schema": "Org"
+          "schema": "Me"
         },
         {
           "code": "401",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-me",
+      "method": "GET",
+      "path": "/v0/me",
+      "summary": "The authenticated caller, a person's session or an API key",
+      "params": [],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "Me"
+        },
+        {
+          "code": "401",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-auth-magic-link",
+      "method": "POST",
+      "path": "/v0/auth/magic-link",
+      "summary": "Email a single use sign in link (public)",
+      "params": [],
+      "body": {
+        "schema": "",
+        "fields": [
+          {
+            "name": "email",
+            "type": "string (email)",
+            "required": true,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "redirect_after",
+            "type": "string",
+            "required": false,
+            "description": "Path on the site, for example /console/",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "202",
+          "description": "Sent (or accepted when the address has no account: same answer)",
+          "schema": ""
+        },
+        {
+          "code": "303",
+          "description": "A form post is redirected back to the login page with sent=1",
+          "schema": ""
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "502",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-auth-callback",
+      "method": "GET",
+      "path": "/v0/auth/callback",
+      "summary": "Finish a sign in, with a magic link token or an OAuth code (public)",
+      "params": [
+        {
+          "name": "token",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "Magic link token",
+          "constraints": []
+        },
+        {
+          "name": "code",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "OAuth authorization code",
+          "constraints": []
+        },
+        {
+          "name": "state",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "OAuth state, single use, 10 minutes",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "Session",
+          "schema": "Session"
+        },
+        {
+          "code": "303",
+          "description": "A browser goes to the login page with the session in the fragment, or with ?error=<code>",
+          "schema": ""
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "401",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "502",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-auth-oauth-provider-start",
+      "method": "GET",
+      "path": "/v0/auth/oauth/{provider}/start",
+      "summary": "Start Google or GitHub sign in with PKCE (public)",
+      "params": [
+        {
+          "name": "provider",
+          "in": "path",
+          "required": true,
+          "type": "google | github",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "redirect",
+          "in": "query",
+          "required": false,
+          "type": "1",
+          "description": "Send the browser to the provider instead of returning JSON",
+          "constraints": []
+        },
+        {
+          "name": "redirect_after",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "Path on the site to return to",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "OAuthStart"
+        },
+        {
+          "code": "302",
+          "description": "The browser goes to the provider",
+          "schema": ""
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-auth-refresh",
+      "method": "POST",
+      "path": "/v0/auth/refresh",
+      "summary": "Rotate a refresh token into a new session (public)",
+      "params": [],
+      "body": {
+        "schema": "",
+        "fields": [
+          {
+            "name": "refresh_token",
+            "type": "string",
+            "required": true,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "Session",
+          "schema": "Session"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "401",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-auth-logout",
+      "method": "POST",
+      "path": "/v0/auth/logout",
+      "summary": "End a session (public)",
+      "params": [],
+      "body": {
+        "schema": "",
+        "fields": [
+          {
+            "name": "refresh_token",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "204",
+          "description": "Ended (also when the token was already invalid)",
+          "schema": ""
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
           "description": "Error envelope",
           "schema": "Error"
         }
@@ -1843,6 +2118,62 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "id": "get-v0-export",
+      "method": "GET",
+      "path": "/v0/export",
+      "summary": "Export the organization's own data (requires data_export, audited)",
+      "params": [],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "OrgExport"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "delete-v0-organization",
+      "method": "DELETE",
+      "path": "/v0/organization",
+      "summary": "Delete the organization and all its data (requires data_delete, audited)",
+      "params": [],
+      "body": {
+        "schema": "",
+        "fields": [
+          {
+            "name": "confirm",
+            "type": "string",
+            "required": true,
+            "description": "The organization name, verbatim",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "Deleted; body carries the export taken before deletion",
+          "schema": "object"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
       "id": "post-stripe-webhook",
       "method": "POST",
       "path": "/stripe/webhook",
@@ -1878,6 +2209,243 @@ export const apiReference: ApiReference = {
     }
   ],
   "schemas": [
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "string (uuid)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "email",
+          "type": "string (email)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "provider",
+          "type": "magic_link | google | github",
+          "required": false,
+          "description": "Identity that first proved this address",
+          "constraints": []
+        },
+        {
+          "name": "role",
+          "type": "owner | admin | member",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "created_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "last_login_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "Session",
+      "fields": [
+        {
+          "name": "access_token",
+          "type": "string",
+          "required": false,
+          "description": "Signed JWT, send as Authorization: Bearer, 15 minutes",
+          "constraints": []
+        },
+        {
+          "name": "refresh_token",
+          "type": "string",
+          "required": false,
+          "description": "Single use, 30 days, rotate it at POST /v0/auth/refresh",
+          "constraints": []
+        },
+        {
+          "name": "token_type",
+          "type": "Bearer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "expires_in",
+          "type": "integer",
+          "required": false,
+          "description": "Seconds until the access token expires",
+          "constraints": []
+        },
+        {
+          "name": "expires_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "refresh_expires_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "role",
+          "type": "owner | admin | member",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "user",
+          "type": "User",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "organization",
+          "type": "Org",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "OAuthStart",
+      "fields": [
+        {
+          "name": "provider",
+          "type": "google | github",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "authorize_url",
+          "type": "string",
+          "required": false,
+          "description": "Provider URL, with state and the S256 PKCE challenge",
+          "constraints": []
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "required": false,
+          "description": "Single use, 10 minutes",
+          "constraints": []
+        },
+        {
+          "name": "expires_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "Me",
+      "fields": [
+        {
+          "name": "auth",
+          "type": "api_key | session",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "organization_id",
+          "type": "string (uuid)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "plan",
+          "type": "free | builder | growth | team",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "screen_before_notify",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "role",
+          "type": "owner | admin | member",
+          "required": false,
+          "description": "Only for a session",
+          "constraints": []
+        },
+        {
+          "name": "api_key_id",
+          "type": "string (uuid)",
+          "required": false,
+          "description": "Only for an API key",
+          "constraints": []
+        },
+        {
+          "name": "user",
+          "type": "object",
+          "required": false,
+          "description": "Only for a session",
+          "constraints": []
+        },
+        {
+          "name": "organization",
+          "type": "Org",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "permissions",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "expires_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
     {
       "name": "Org",
       "fields": [
@@ -2981,6 +3549,81 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "name": "OrgExport",
+      "fields": [
+        {
+          "name": "format",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "generated_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "organization",
+          "type": "Org",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "inboxes",
+          "type": "object[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "domains",
+          "type": "object[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "webhooks",
+          "type": "object[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "api_keys",
+          "type": "object[]",
+          "required": false,
+          "description": "Metadata only; the key and its hash are never exported.",
+          "constraints": []
+        },
+        {
+          "name": "counts",
+          "type": "object",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "audit_log",
+          "type": "object[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "notice",
+          "type": "string",
+          "required": false,
+          "description": "What this export deliberately leaves out, in plain language",
+          "constraints": []
+        }
+      ]
+    },
+    {
       "name": "Error",
       "fields": [
         {
@@ -2992,7 +3635,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | auth_disabled | provider_not_configured | invalid_magic_link | invalid_state | code_rejected | email_not_verified | provider_unavailable | email_delivery_failed | invalid_refresh_token | token_expired | unknown_token | session_revoked | access_denied | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -3034,6 +3677,19 @@ export const apiReference: ApiReference = {
     "payload_too_large",
     "attachment_infected",
     "antivirus_unavailable",
+    "auth_disabled",
+    "provider_not_configured",
+    "invalid_magic_link",
+    "invalid_state",
+    "code_rejected",
+    "email_not_verified",
+    "provider_unavailable",
+    "email_delivery_failed",
+    "invalid_refresh_token",
+    "token_expired",
+    "unknown_token",
+    "session_revoked",
+    "access_denied",
     "internal_error"
   ],
   "eventTypes": [
@@ -3069,6 +3725,8 @@ export const apiReference: ApiReference = {
     "message_review",
     "message_release",
     "billing_read",
-    "billing_write"
+    "billing_write",
+    "data_export",
+    "data_delete"
   ]
 };

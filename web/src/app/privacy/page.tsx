@@ -35,7 +35,8 @@ const sections: LegalSection[] = [
     body: (
       <>
         <p>
-          <strong>Controller.</strong> We are the controller for personal data about our customers and their users
+          <strong>Controller.</strong> KaiFloor OÜ (registry code EE-1049281, Tallinn, Estonia) is the controller for
+          personal data about our customers and their users
           (account and contact details, billing data, API usage) and about visitors of this website.
         </p>
         <p>

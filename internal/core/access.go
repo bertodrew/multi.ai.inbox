@@ -65,12 +65,19 @@ var ExplicitPermissions = []string{PermMessageRelease, PermDataDelete}
 var GrantablePermissions = slices.Compact(slices.Sorted(slices.Values(
 	append(slices.Clone(AllPermissions), ExplicitPermissions...))))
 
-// Principal is the authenticated caller of a request.
+// Principal is the authenticated caller of a request: an API key (an agent) or
+// a session (a person).
 type Principal struct {
 	Org         *Org
 	KeyID       string
 	Permissions []string // nil means all
 	ExpiresAt   *time.Time
+	// UserID, UserEmail, Role and SessionID are set when a person signed in;
+	// KeyID is empty in that case.
+	UserID    string
+	UserEmail string
+	Role      string
+	SessionID string
 }
 
 func (p *Principal) Can(perm string) bool {
@@ -97,7 +104,13 @@ func (p *Principal) ReviewAccess(includeReview bool) error {
 	return p.Require(PermMessageReview)
 }
 
-func (p *Principal) Actor() string { return "api_key:" + p.KeyID }
+// Actor names the caller in the audit log: a person or a key, never both.
+func (p *Principal) Actor() string {
+	if p.UserID != "" {
+		return "user:" + p.UserID
+	}
+	return "api_key:" + p.KeyID
+}
 
 // Authenticate resolves an API key to its organization and permissions.
 func (s *Service) Authenticate(ctx context.Context, plain string) (*Principal, error) {

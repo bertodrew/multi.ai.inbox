@@ -107,12 +107,17 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, fmt.Errorf("response writer cannot flush"))
 		return
 	}
-	if !s.streams.acquire(p.KeyID, cfg.PerKey) {
+	// A person's streams are counted per user, an agent's per key.
+	owner := p.KeyID
+	if owner == "" {
+		owner = "user:" + p.UserID
+	}
+	if !s.streams.acquire(owner, cfg.PerKey) {
 		s.fail(w, &core.Error{Status: http.StatusTooManyRequests, Name: "Too Many Requests", Code: "too_many_streams",
-			Message: fmt.Sprintf("this API key already has %d open event streams", cfg.PerKey)})
+			Message: fmt.Sprintf("this caller already has %d open event streams", cfg.PerKey)})
 		return
 	}
-	defer s.streams.release(p.KeyID)
+	defer s.streams.release(owner)
 
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -124,7 +129,7 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	key := apiKey(r)
+	raw, _ := bearer(r)
 	poll := time.NewTicker(cfg.Poll)
 	defer poll.Stop()
 	lastWrite, lastCheck := time.Now(), time.Now()
@@ -158,9 +163,9 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 			lastWrite = time.Now()
 		}
 		if time.Since(lastCheck) >= cfg.Recheck {
-			// A revoked or expired key loses its open streams too.
-			if _, err := s.Svc.Authenticate(ctx, key); err != nil {
-				_, _ = fmt.Fprint(w, "event: error\ndata: {\"code\":\"api_key_invalid\"}\n\n")
+			// A revoked key or an ended session loses its open streams too.
+			if _, err := s.credential(ctx, raw); err != nil {
+				_, _ = fmt.Fprint(w, "event: error\ndata: {\"code\":\"credential_invalid\"}\n\n")
 				flusher.Flush()
 				return
 			}
