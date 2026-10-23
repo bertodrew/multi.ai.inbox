@@ -65,7 +65,7 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 		}
 		// Blobs written for this delivery; removed again unless the message row commits.
 		written := []string{rawKey}
-		inserted, bounced := false, false
+		inserted, bounced, complained := false, false, false
 		err := s.DB.WithOrg(ctx, rc.OrgID, func(tx pgx.Tx) error {
 			var dup bool
 			if err := tx.QueryRow(ctx, "select exists(select 1 from messages where inbox_id = $1 and rfc_message_id = $2 and direction = 'in')",
@@ -126,6 +126,19 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 			if bounced, err = s.recordBounce(ctx, tx, rc, parsed, raw, meta); err != nil {
 				return err
 			}
+			// So does a feedback loop complaint (ARF).
+			if complained, err = s.recordComplaint(ctx, tx, rc, raw); err != nil {
+				return err
+			}
+			if meta.AuthResults["antivirus"] == "unscanned" {
+				source := "mx"
+				if meta.AuthResults["internal"] == true {
+					source = "internal"
+				}
+				if err := s.alertAVUnscanned(ctx, tx, rc.OrgID, rc.InboxID, rc.Address, source); err != nil {
+					return err
+				}
+			}
 			if hold {
 				return nil // counted and notified once screened or released
 			}
@@ -140,7 +153,7 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 		if err != nil {
 			return err
 		}
-		if bounced {
+		if bounced || complained {
 			if err := s.CheckSendingHealth(ctx, rc.OrgID, rc.InboxID); err != nil {
 				return fmt.Errorf("sending health: %w", err)
 			}

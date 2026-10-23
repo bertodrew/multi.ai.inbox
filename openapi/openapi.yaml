@@ -106,7 +106,14 @@ paths:
       description: |
         403 sending_paused when the bounce breaker paused the inbox or the
         organization (hard bounce rate above 5% over at least 20 sends in 24
-        hours). Queued mail is held, not sent, until an operator resumes.
+        hours, or spam complaints above 0.1% over at least 1000 sends, or 3
+        complaints in 24 hours below that volume). Queued mail is held, not
+        sent, until an operator resumes.
+
+        Attachments are scanned for viruses before the message is queued:
+        422 attachment_infected when one is infected. When the scanner is
+        unavailable the message is queued with the av-unscanned label, or
+        refused with 503 antivirus_unavailable if the platform fails closed.
       requestBody:
         content:
           application/json:
@@ -115,7 +122,9 @@ paths:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     get:
@@ -148,6 +157,7 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }, { $ref: "#/components/parameters/idempotency_key" }]
     post:
       summary: Reply in the same thread
+      description: Attachments are scanned like on send (422 attachment_infected, 503 antivirus_unavailable).
       requestBody:
         content:
           application/json:
@@ -155,6 +165,8 @@ paths:
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
         "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}/release:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     post:
@@ -284,7 +296,7 @@ components:
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
                        address_quarantined, sending_paused,
                        missing_permission, permission_escalation, api_key_expired, not_held,
-                       payload_too_large, internal_error]
+                       payload_too_large, attachment_infected, antivirus_unavailable, internal_error]
               message: { type: string }
   schemas:
     Org:
@@ -354,7 +366,7 @@ components:
         in_reply_to: { type: string }
         references: { type: array, items: { type: string } }
         status: { type: string, enum: [received, queued, sending, sent, failed] }
-        authentication_results: { type: object, description: "dkim, spam_score, spam_action" }
+        authentication_results: { type: object, description: "dkim, spam_score, spam_action, antivirus (clean or unscanned)" }
         gatekeeper:
           type: object
           properties:
@@ -403,9 +415,9 @@ components:
       properties: { message_id: { type: string }, thread_id: { type: string, format: uuid } }
     EventType:
       type: string
-      enum: [message.received, message.received.spam, message.sent, message.failed, message.bounced, message.security.completed,
-             message.security.review, domain.verified, inbox.sending.paused, inbox.sending.resumed,
-             organization.sending.paused, organization.sending.resumed]
+      enum: [message.received, message.received.spam, message.sent, message.failed, message.bounced, message.complained,
+             message.security.completed, message.security.review, domain.verified, inbox.sending.paused, inbox.sending.resumed,
+             organization.sending.paused, organization.sending.resumed, security.av_unavailable]
     Webhook:
       type: object
       properties:

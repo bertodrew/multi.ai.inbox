@@ -17,6 +17,7 @@ var EventTypes = map[string]bool{
 	"message.sent":                 true,
 	"message.failed":               true,
 	"message.bounced":              true,
+	"message.complained":           true,
 	"message.security.completed":   true,
 	"message.security.review":      true,
 	"domain.verified":              true,
@@ -24,6 +25,7 @@ var EventTypes = map[string]bool{
 	"inbox.sending.resumed":        true,
 	"organization.sending.paused":  true,
 	"organization.sending.resumed": true,
+	"security.av_unavailable":      true,
 }
 
 type Webhook struct {

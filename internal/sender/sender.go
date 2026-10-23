@@ -96,6 +96,18 @@ func (s *Sender) deliver(ctx context.Context, j core.OutboundJob) error {
 	}
 	if len(local) > 0 {
 		meta := core.InboundMeta{MailFrom: j.Address, AuthResults: map[string]any{"dkim": "pass", "spf": "pass", "dmarc": "pass", "internal": true}}
+		// Agent to agent mail skips the SMTP edge, so it is scanned here;
+		// infected mail fails for every recipient, remote ones included.
+		av, err := s.Svc.ScanInternal(ctx, raw)
+		if err != nil {
+			return err
+		}
+		if av != "" {
+			meta.AuthResults["antivirus"] = av
+		}
+		if av == "unscanned" {
+			meta.Labels = []string{"av-unscanned"}
+		}
 		if err := s.Svc.Ingest(ctx, raw, local, meta); err != nil {
 			return fmt.Errorf("local delivery: %w", err)
 		}

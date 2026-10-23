@@ -303,6 +303,7 @@ type outbound struct {
 	threadID    string // empty starts a new thread
 	inReplyTo   string
 	references  []string
+	unscanned   bool // attachments accepted without a virus scan (fail open)
 }
 
 func (s *Service) Send(ctx context.Context, orgID, address string, req SendRequest, idemKey string) (*SendResult, error) {
@@ -332,7 +333,12 @@ func (s *Service) Send(ctx context.Context, orgID, address string, req SendReque
 	if err != nil {
 		return nil, err
 	}
-	o := outbound{to: to, cc: cc, bcc: bcc, subject: req.Subject, text: req.Text, html: req.HTML, labels: labels, attachments: atts}
+	unscanned, err := s.scanAttachments(ctx, atts)
+	if err != nil {
+		return nil, err
+	}
+	o := outbound{to: to, cc: cc, bcc: bcc, subject: req.Subject, text: req.Text, html: req.HTML, labels: labels, attachments: atts,
+		unscanned: unscanned}
 	return s.idempotent(ctx, orgID, idemKey, req, func(tx pgx.Tx) (*SendResult, error) {
 		inbox, err := s.inboxTx(ctx, tx, address)
 		if err != nil {
@@ -354,6 +360,10 @@ func (s *Service) Reply(ctx context.Context, orgID, address, id string, req Repl
 	if err != nil {
 		return nil, err
 	}
+	unscanned, err := s.scanAttachments(ctx, atts)
+	if err != nil {
+		return nil, err
+	}
 	return s.idempotent(ctx, orgID, idemKey, req, func(tx pgx.Tx) (*SendResult, error) {
 		inbox, err := s.inboxTx(ctx, tx, address)
 		if err != nil {
@@ -370,7 +380,7 @@ func (s *Service) Reply(ctx context.Context, orgID, address, id string, req Repl
 		}
 		o := outbound{to: []string{target}, subject: mailx.ReplySubject(parent.Subject), text: req.Text, html: req.HTML,
 			labels: labels, attachments: atts, threadID: parent.ThreadID, inReplyTo: parent.MessageID,
-			references: append(append([]string{}, parent.References...), parent.MessageID)}
+			references: append(append([]string{}, parent.References...), parent.MessageID), unscanned: unscanned}
 		if req.ReplyAll {
 			seen := map[string]bool{inbox.InboxID: true, target: true}
 			for _, a := range append(append([]string{}, parent.To...), parent.Cc...) {
@@ -406,6 +416,9 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	}
 	if sentMonth >= plan.SendsPerMonth {
 		return nil, errf(http.StatusTooManyRequests, "limit_exceeded", "monthly send limit of %d reached on the %s plan", plan.SendsPerMonth, plan.Name)
+	}
+	if o.unscanned {
+		o.labels = uniqueLabels(append(o.labels, "av-unscanned"))
 	}
 	if plan.Footer {
 		o.text += freeFooterText
@@ -462,6 +475,11 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	}
 	if err := touchThread(ctx, tx, threadID, o.subject, preview, o.labels); err != nil {
 		return nil, err
+	}
+	if o.unscanned {
+		if err := s.alertAVUnscanned(ctx, tx, orgID, inbox.ID, inbox.InboxID, "api"); err != nil {
+			return nil, err
+		}
 	}
 	return &SendResult{MessageID: rfcID, ThreadID: threadID}, nil
 }
