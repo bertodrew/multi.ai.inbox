@@ -39,17 +39,31 @@ const (
 	// starts a Stripe Checkout or opens the customer portal.
 	PermBillingRead  = "billing_read"
 	PermBillingWrite = "billing_write"
+	// PermDataExport reads the organization's own account export
+	// (GET /v0/export): an access/portability request (Art. 15 and 20 GDPR).
+	PermDataExport = "data_export"
+	// PermDataDelete deletes the whole organization and everything it owns
+	// (DELETE /v0/organization). Never implied by a full access key: erasing a
+	// tenant is a human decision, so the operator issues the key explicitly.
+	PermDataDelete = "data_delete"
 )
 
 var AllPermissions = []string{PermInboxRead, PermInboxWrite, PermMessageRead, PermMessageSend, PermMessageUpdate,
 	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead,
-	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite}
+	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite, PermDataExport}
 
 // ExplicitPermissions are never implied by a full access key (nil
 // permissions): a key holds them only when they are listed, so an agent with a
 // full key cannot approve the prompt injection it was screened from. Only the
 // operator (mai admin key-create -permissions) can issue them first.
-var ExplicitPermissions = []string{PermMessageRelease}
+var ExplicitPermissions = []string{PermMessageRelease, PermDataDelete}
+
+// GrantablePermissions is what a key may hold once issued: the standard set
+// plus the explicit-only ones. Validation for key creation uses this list, so
+// the operator can issue (and only the operator first issues) an explicit
+// permission such as data_delete.
+var GrantablePermissions = slices.Compact(slices.Sorted(slices.Values(
+	append(slices.Clone(AllPermissions), ExplicitPermissions...))))
 
 // Principal is the authenticated caller of a request.
 type Principal struct {
@@ -139,8 +153,8 @@ func (s *Service) CreateOperatorKey(ctx context.Context, orgID, name string, per
 		return nil, Validation("permissions must not be empty")
 	}
 	for _, perm := range perms {
-		if !slices.Contains(AllPermissions, perm) {
-			return nil, Validation("unknown permission %q; valid: %s", perm, strings.Join(AllPermissions, ", "))
+		if !slices.Contains(GrantablePermissions, perm) {
+			return nil, Validation("unknown permission %q; valid: %s", perm, strings.Join(GrantablePermissions, ", "))
 		}
 	}
 	perms = append([]string{}, slices.Compact(slices.Sorted(slices.Values(perms)))...)
@@ -166,8 +180,8 @@ func (s *Service) CreateScopedKey(ctx context.Context, p *Principal, req CreateK
 		perms = p.Permissions // inherit: a full key creates a full key, a scoped key a copy of its scope
 	}
 	for _, perm := range perms {
-		if !slices.Contains(AllPermissions, perm) {
-			return nil, Validation("unknown permission %q; valid: %s", perm, strings.Join(AllPermissions, ", "))
+		if !slices.Contains(GrantablePermissions, perm) {
+			return nil, Validation("unknown permission %q; valid: %s", perm, strings.Join(GrantablePermissions, ", "))
 		}
 		if !p.Can(perm) {
 			return nil, errf(http.StatusForbidden, "permission_escalation", "cannot grant %s: the calling key does not hold it", perm)

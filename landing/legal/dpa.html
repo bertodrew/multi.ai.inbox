@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Data Processing Agreement (Art. 28 GDPR) of AImulti.inbox: roles, security measures, sub-processors, transfers, deletion and audit.">
+  <meta property="og:title" content="Data Processing Agreement — AImulti.inbox">
+  <meta property="og:description" content="Data Processing Agreement (Art. 28 GDPR) of AImulti.inbox: roles, security measures, sub-processors, transfers, deletion and audit.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/legal/dpa.html">
+  <meta property="og:url" content="https://multi.ai/legal/dpa.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Data Processing Agreement — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="../index.html">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav">
+        <a class="btn ghost" href="../index.html">Home</a>
+        <a class="btn ghost" href="privacy.html">Privacy</a>
+        <a class="btn ghost" href="terms.html">Terms</a>
+        <a class="btn ghost" href="sla.html">SLA</a>
+        <a class="btn ghost" href="subprocessors.html">Sub-processors</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap">
+      <h1 class="page-title">Data Processing Agreement</h1>
+      <p class="lede small">Art. 28 GDPR processing terms for tenant mailboxes. Version 1.0-draft, updated 2026-10-23.</p>
+
+      <p class="msg error"><strong>DRAFT</strong> &mdash; structure and security annex are published for transparency and procurement; the binding text is the signed agreement. Fields marked [ ] are completed per customer, and the transfer impact assessment is still being prepared.</p>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>1. Roles and scope</h3></div>
+        <p>
+          For the mailboxes, email content and attachments of the Customer's users and of their
+          correspondents, the <strong>Customer is the controller</strong> and AImulti.inbox is the
+          <strong>processor</strong>. For contact, account and billing data of the Customer,
+          AImulti.inbox is an <strong>independent controller</strong> (see the
+          <a href="privacy.html">Privacy Policy</a>). Processing covers hosting of mailboxes,
+          reception, storage and transmission of email and attachments, inbound screening, attachment
+          scanning, webhook delivery, security logging and support.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>2. Processor obligations</h3></div>
+        <ul>
+          <li><strong>Documented instructions only</strong>: the Terms, this agreement and the settings the Customer applies in the Service (for example <code>screen_before_notify</code>).</li>
+          <li><strong>Confidentiality</strong>: access to mailbox content by personnel only on the Customer's authorised request, and logged.</li>
+          <li><strong>Security</strong>: the measures in the annex below.</li>
+          <li><strong>Sub-processors</strong>: only those on the <a href="subprocessors.html">published list</a>, bound by the same obligations; changes announced <strong>30 days</strong> in advance, with a right to object.</li>
+          <li><strong>Data subject requests</strong>: self-service export and deletion in the API; a request that reaches us and concerns Customer data is forwarded without undue delay, not answered on the Customer's behalf.</li>
+          <li><strong>Breach</strong>: notification to the Customer without undue delay after we become aware, with the information available under Art. 33(3).</li>
+          <li><strong>Audit</strong>: information and cooperation for audits, at most once a year, 30 days notice, without access to other tenants' data.</li>
+          <li><strong>Deletion or return</strong> at termination, with export available before deletion.</li>
+        </ul>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>3. Security measures (annex)</h3></div>
+        <table>
+          <thead><tr><th>Area</th><th>Measure</th></tr></thead>
+          <tbody>
+            <tr><td>In transit</td><td>TLS on API, SMTP (STARTTLS), IMAP and web surfaces; MTA-STS</td></tr>
+            <tr><td>At rest</td><td>Backups encrypted client-side before upload; provider credentials encrypted with AES-256-GCM</td></tr>
+            <tr><td>Tenant isolation</td><td>PostgreSQL row level security per organization; scoped API keys; sensitive permissions never implied</td></tr>
+            <tr><td>Access control</td><td>Keys with per-permission scopes and expiry; operator actions audited; no shared accounts</td></tr>
+            <tr><td>Audit</td><td>Security log per organization (actor, action, target, IP, request id), 90-day retention, no content or secrets, exportable by the Customer</td></tr>
+            <tr><td>Malware and abuse</td><td>Antivirus fail-closed, screening before notification, rate limiting per organization and per IP</td></tr>
+            <tr><td>Resilience</td><td>Backups every 6 hours, immutable 30 days, restore drills</td></tr>
+            <tr><td>Deletion</td><td>Cascading deletion, asynchronous blob deletion with retry, 90-day address quarantine</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>4. Transfers outside the EEA</h3></div>
+        <p>
+          Mailboxes and backups are hosted in the <strong>European Union</strong> (Hetzner Online GmbH,
+          Germany). Transfers outside the EEA happen only towards the sub-processors marked as such on the
+          <a href="subprocessors.html">sub-processor list</a>, under the Standard Contractual Clauses
+          (Decision (EU) 2021/914, module two) and a documented transfer impact assessment.
+          <strong>[TIA in preparation]</strong>
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>5. Deletion, backups and quarantine</h3></div>
+        <p>
+          At termination the Customer can export everything and then delete the organization:
+          database rows go immediately, message blobs within minutes through a deletion queue, and
+          deleted addresses stay <strong>quarantined for 90 days</strong> so they cannot be registered by
+          someone else. Database dumps in the encrypted backup bucket expire by rotation (45-day
+          lifecycle, 30-day immutable lock); immutable blob copies are removed through a dedicated
+          procedure with the vault key.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>6. Getting the signed agreement</h3></div>
+        <p>
+          Customers who need a countersigned DPA with their legal name, address and signature receive
+          it before production use: write to <strong>[legal email]</strong>. The controller&ndash;processor
+          split, the liability clauses and the transfer assessment are completed with qualified counsel
+          and prevail over the Terms in case of conflict.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="dpa.html" aria-current="page">DPA</a> &middot; <a href="sla.html">SLA</a> &middot; <a href="subprocessors.html">Sub-processors</a></span>
+    </div>
+  </footer>
+  <script src="../assets/nav.js"></script>
+</body>
+</html>

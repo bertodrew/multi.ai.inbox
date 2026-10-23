@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
 	"github.com/bertodrew/multi.ai.inbox/openapi"
@@ -107,6 +109,10 @@ func (s *Server) Handler() http.Handler {
 	route("GET /v0/billing", core.PermBillingRead, s.getBilling)
 	route("POST /v0/billing/checkout", core.PermBillingWrite, s.checkout)
 	route("POST /v0/billing/portal", core.PermBillingWrite, s.portal)
+	// Data subject rights: export and erase the organization the key belongs
+	// to. Deletion needs data_delete, which a full key never implies.
+	route("GET /v0/export", core.PermDataExport, s.exportOrganization)
+	route("DELETE /v0/organization", core.PermDataDelete, s.deleteOrganization)
 	if s.MCP != nil {
 		auth.Handle("/mcp", s.MCP)
 	}
@@ -660,6 +666,48 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 
 // maxStripeEvent bounds a webhook body; Stripe events are a few kilobytes.
 const maxStripeEvent = 1 << 20
+
+// exportOrganization answers an access/portability request (Art. 15 and 20
+// GDPR) with the organization's own data as a downloadable JSON document.
+// Secrets are excluded by core.ExportOrg; the action is audited.
+func (s *Server) exportOrganization(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	out, err := s.Svc.ExportOrg(r.Context(), p)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "org.export", p.Org.ID, map[string]any{"inboxes": len(out.Inboxes), "audit_entries": len(out.AuditLog)})
+	name := fmt.Sprintf("aimulti-export-%s.json", time.Now().UTC().Format("20060102T150405Z"))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.Header().Set("Cache-Control", "no-store")
+	s.ok(w, http.StatusOK, out)
+}
+
+// deleteOrganization deletes the caller's organization and everything it owns
+// (Art. 17 GDPR). confirm must equal the organization name. The response is the
+// export taken before deletion (including the audit log, which goes away with
+// the organization); blobs are deleted by the scheduler afterwards.
+func (s *Server) deleteOrganization(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := decode(r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	var summary *core.OrgDeletionSummary
+	res, err := s.Svc.DeleteOrg(r.Context(), p.Org.ID, req.Confirm, func(sum *core.OrgDeletionSummary) error {
+		summary = sum
+		return nil
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.ok(w, http.StatusOK, map[string]any{"deletion": res, "export_before_deletion": summary})
+}
 
 // stripeWebhook receives Stripe events. The raw body is verified against
 // the Stripe-Signature header before anything is parsed; neither the header

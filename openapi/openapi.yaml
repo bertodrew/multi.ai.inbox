@@ -406,6 +406,58 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         "501": { $ref: "#/components/responses/Error" }
         "502": { $ref: "#/components/responses/Error" }
+  /v0/export:
+    get:
+      summary: Export the organization's own data (requires data_export, audited)
+      description: |
+        Access and portability (Art. 15 and 20 GDPR) in one JSON document:
+        organization settings, inboxes, custom domains, webhooks, API key
+        metadata, row counts and the security audit log. Mailbox contents are
+        not duplicated here — export them in full over IMAP, or one message at
+        a time through the `raw` endpoint. Secrets (API key material, webhook
+        signing secrets, DKIM private keys) are never exported.
+        The response carries `Content-Disposition: attachment`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgExport" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v0/organization:
+    delete:
+      summary: Delete the organization and all its data (requires data_delete, audited)
+      description: |
+        Erasure (Art. 17 GDPR). `confirm` must equal the organization name
+        exactly. API keys are revoked first, then the export is returned, then
+        the organization row is deleted: inboxes, messages, attachments,
+        domains, webhooks, events, drafts and the audit log go with it. Blob
+        deletion is asynchronous (scheduler) and deleted addresses stay
+        quarantined for 90 days, so they cannot be re-registered by someone
+        else. `data_delete` is never implied by a full access key: the operator
+        must issue a key that lists it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm]
+              properties:
+                confirm: { type: string, description: "The organization name, verbatim" }
+      responses:
+        "200":
+          description: Deleted; body carries the export taken before deletion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deletion: { type: object }
+                  export_before_deletion: { $ref: "#/components/schemas/OrgExport" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /stripe/webhook:
     post:
       summary: Stripe webhook endpoint (public, Stripe-Signature verified)
@@ -667,7 +719,7 @@ components:
       type: string
       enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
              webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release,
-             billing_read, billing_write]
+             billing_read, billing_write, data_export, data_delete]
     Checkout:
       type: object
       additionalProperties: false
@@ -690,3 +742,68 @@ components:
         cancel_at_period_end: { type: boolean }
         past_due_since: { type: string, format: date-time }
         grace_period_ends_at: { type: string, format: date-time, description: "Set while past_due or unpaid; the plan drops to free after it" }
+    OrgExport:
+      type: object
+      properties:
+        format: { type: string, example: "aimulti.inbox/export@1" }
+        generated_at: { type: string, format: date-time }
+        organization: { $ref: "#/components/schemas/Org" }
+        inboxes:
+          type: array
+          items:
+            type: object
+            properties:
+              address: { type: string }
+              display_name: { type: string }
+              client_id: { type: string }
+              created_at: { type: string, format: date-time }
+              messages: { type: integer }
+        domains:
+          type: array
+          items:
+            type: object
+            properties:
+              domain: { type: string }
+              status: { type: string, enum: [verified, pending] }
+              created_at: { type: string, format: date-time }
+              verified_at: { type: string, format: date-time }
+        webhooks:
+          type: array
+          items:
+            type: object
+            properties:
+              webhook_id: { type: string }
+              url: { type: string, format: uri }
+              event_types: { type: array, items: { $ref: "#/components/schemas/EventType" } }
+              enabled: { type: boolean }
+              created_at: { type: string, format: date-time }
+        api_keys:
+          type: array
+          description: Metadata only; the key and its hash are never exported.
+          items:
+            type: object
+            properties:
+              api_key_id: { type: string }
+              name: { type: string }
+              permissions: { type: array, items: { $ref: "#/components/schemas/Permission" } }
+              created_at: { type: string, format: date-time }
+              expires_at: { type: string, format: date-time }
+              last_used_at: { type: string, format: date-time }
+              revoked_at: { type: string, format: date-time }
+        counts:
+          type: object
+          additionalProperties: { type: integer }
+        audit_log:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              actor: { type: string }
+              action: { type: string }
+              target: { type: string }
+              ip: { type: string }
+              request_id: { type: string }
+              metadata: { type: object }
+              created_at: { type: string, format: date-time }
+        notice: { type: string, description: "What this export deliberately leaves out, in plain language" }

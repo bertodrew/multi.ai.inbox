@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Sub-processors of AImulti.inbox: providers, countries, services, transfer safeguards and change notice.">
+  <meta property="og:title" content="Sub-processors — AImulti.inbox">
+  <meta property="og:description" content="Sub-processors of AImulti.inbox: providers, countries, services, transfer safeguards and change notice.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://multi.ai/legal/subprocessors.html">
+  <meta property="og:url" content="https://multi.ai/legal/subprocessors.html">
+  <meta property="og:image" content="https://multi.ai/assets/og.png">
+  <title>Sub-processors — AImulti.inbox</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/theme.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="wrap bar-inner">
+      <a class="brand" href="../index.html">
+        <svg class="logo" viewBox="0 0 48 48" width="30" height="30" fill="none" aria-hidden="true">
+          <rect x="10" y="4" width="34" height="26" rx="6" fill="#4f8ef7" opacity="0.25"/>
+          <rect x="7" y="9" width="34" height="26" rx="6" fill="#2fbf71" opacity="0.40"/>
+          <rect x="4" y="14" width="34" height="26" rx="6" fill="#232b38" stroke="#2fbf71" stroke-width="1.5"/>
+          <path d="M6 17 L21 29 L36 17" stroke="#2fbf71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">AI<b>multi.inbox</b></span>
+      </a>
+      <button class="btn ghost bar-toggle" id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-nav" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <nav id="bar-nav" class="bar-nav">
+        <a class="btn ghost" href="../index.html">Home</a>
+        <a class="btn ghost" href="privacy.html">Privacy</a>
+        <a class="btn ghost" href="terms.html">Terms</a>
+        <a class="btn ghost" href="dpa.html">DPA</a>
+        <a class="btn ghost" href="sla.html">SLA</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="wrap">
+      <h1 class="page-title">Sub-processors</h1>
+      <p class="lede small">Who processes data on our behalf, where, and under which safeguard. Updated 2026-10-23.</p>
+
+      <p class="msg error"><strong>DRAFT</strong> &mdash; published for transparency while the DPA text is finalised. The list below is the one that applies; changes are announced 30 days in advance.</p>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>Current sub-processors</h3></div>
+        <table>
+          <thead>
+            <tr><th>Provider</th><th>Country</th><th>Service</th><th>Data</th><th>Transfer safeguard</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Hetzner Online GmbH</td><td>Germany (EU)</td>
+              <td>Servers, database, object storage, encrypted backups</td>
+              <td>All service data: mailboxes, metadata, audit log, encrypted backups</td>
+              <td>Within the EEA &mdash; no transfer</td>
+            </tr>
+            <tr>
+              <td>Namecheap Inc.</td><td>USA</td>
+              <td>Domain registration and WHOIS</td>
+              <td>Domain name, connector username and API key, authorised IPs, registrant data where processed</td>
+              <td>SCC (Decision (EU) 2021/914) in the provider DPA + transfer impact assessment <strong>[in preparation]</strong></td>
+            </tr>
+            <tr>
+              <td>Infomaniak Network SA</td><td>Switzerland</td>
+              <td>Domain connector &mdash; <em>not active yet</em></td>
+              <td>Same as Namecheap, when enabled</td>
+              <td>EU adequacy decision for Switzerland</td>
+            </tr>
+            <tr>
+              <td>Internet Security Research Group (Let's Encrypt)</td><td>USA</td>
+              <td>TLS certificate issuance</td>
+              <td>Domain name only</td>
+              <td>Technical necessity; independent controller for certificate records</td>
+            </tr>
+            <tr>
+              <td>LLM provider &mdash; <em>to be defined, not active</em></td><td>[ ]</td>
+              <td>AI agents reading mailboxes</td>
+              <td>Message content and metadata, only where a task requires it</td>
+              <td>DPA + SCC or EU-based provider, defined <strong>before</strong> activation</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          No analytics service, no third-party CDN and no advertising tracker is used: the site sets no
+          cookie of its own. The server's egress IP is read from a public service
+          (<code>api.ipify.org</code>) to build SPF records; that is an IP of the server, not of a person.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>Changes</h3></div>
+        <p>
+          A new sub-processor is added to this page <strong>before</strong> it processes any customer data.
+          Customers receive an email at the organization's administrative address at least
+          <strong>30 days</strong> in advance, and may object on data protection grounds; if an objection
+          cannot be resolved, the affected service can be terminated without penalty.
+          Questions and objections: <strong>[legal email]</strong>.
+        </p>
+      </article>
+
+      <article class="connector-card">
+        <div class="connector-head"><h3>Where the data lives</h3></div>
+        <p>
+          Mailboxes, the database and backups stay on servers in the <strong>European Union</strong>.
+          There is no multi-region replication. Backups are encrypted on the server before they are
+          uploaded, so the storage provider holds ciphertext; the vault key is held separately by the operator.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>AImulti.inbox &mdash; self-hosted mail platform</span>
+      <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
+      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="dpa.html">DPA</a> &middot; <a href="sla.html">SLA</a> &middot; <a href="subprocessors.html" aria-current="page">Sub-processors</a></span>
+    </div>
+  </footer>
+  <script src="../assets/nav.js"></script>
+</body>
+</html>

@@ -39,6 +39,14 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 		s.sendDrafts(ctx)
 		s.purgeBlobs(ctx)
+		// Retention promise of the privacy policy: audit entries older than
+		// core.AuditLogRetention are dropped, so the published 90 days is
+		// enforced and not a target.
+		if n, err := s.Svc.PurgeExpiredAudit(ctx, core.AuditLogRetention); err != nil {
+			s.Log.Error("audit retention sweep failed", "err", err)
+		} else if n > 0 {
+			s.Log.Info("expired audit entries purged", "count", n)
+		}
 		if n, err := s.Svc.PurgeExpiredQuarantine(ctx); err != nil {
 			s.Log.Error("quarantine purge failed", "err", err)
 		} else if n > 0 {

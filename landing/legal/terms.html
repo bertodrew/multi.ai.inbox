@@ -37,7 +37,9 @@
         <a class="btn ghost" href="../index.html">Home</a>
         <a class="btn ghost" href="../webmail.html">Webmail</a>
         <a class="btn ghost" href="privacy.html">Privacy</a>
+        <a class="btn ghost" href="dpa.html">DPA</a>
         <a class="btn ghost" href="sla.html">SLA</a>
+        <a class="btn ghost" href="subprocessors.html">Sub-processors</a>
       </nav>
     </div>
   </header>
@@ -150,9 +152,12 @@
       <article class="connector-card">
         <div class="connector-head"><h3>9. Backups and retention</h3></div>
         <p>
-          <strong>Encrypted backups</strong> of mailboxes and configuration on a dedicated volume, with <strong>[30-day &mdash; planned]</strong> rotation.
-          Contractual <strong>RPO/RTO targets are stated only after the restore-drill result</strong>. Retention: mailboxes while active; backups until
-          rotation; system/audit logs [90 days &mdash; planned]; invoicing data [10 years, Italian law]. At termination: export and deletion (&sect;13).
+          <strong>Encrypted backups</strong> of mailboxes and configuration on a dedicated volume, with a
+          <strong>30-day immutable retention lock</strong> and database dumps expiring after <strong>45 days</strong>.
+          Contractual <strong>RPO/RTO targets are stated only after the restore-drill result</strong>. Retention: mailboxes while active;
+          backups until rotation; <strong>security and audit logs 90 days</strong> (enforced by a scheduled purge);
+          deleted mailbox addresses <strong>90 days</strong> in quarantine (the address only);
+          invoicing data [10 years, Italian law]. At termination: export and deletion (&sect;12).
         </p>
       </article>
 
@@ -160,8 +165,10 @@
         <div class="connector-head"><h3>10. Data ownership and processing</h3></div>
         <p>
           Mail, contacts, attachments and brand data belong to the <strong>Customer</strong>. For tenant mailboxes the Provider is the <strong>processor</strong>
-          under Art. 28 GDPR and the Customer the <strong>controller</strong> (attached <a href="privacy.html">DPA</a>); for contact and billing data the Provider
-          is an independent controller. Personnel access to mailbox contents happens <strong>only on the Customer's authorized request</strong>, logged.
+          under Art. 28 GDPR and the Customer the <strong>controller</strong>, under the <a href="dpa.html">Data Processing Agreement</a>; for contact and billing data the Provider
+          is an independent controller. Sub-processors are only those on the <a href="subprocessors.html">published list</a>, bound by the same obligations;
+          a change is announced <strong>30 days</strong> in advance with a right to object. Personnel access to mailbox contents happens
+          <strong>only on the Customer's authorized request</strong>, logged.
           No use of customer data &mdash; <strong>not even aggregate analytics</strong> &mdash; without written consent.
         </p>
       </article>
@@ -200,7 +207,8 @@
 
       <article class="connector-card">
         <div class="connector-head"><h3>14. Amendments</h3></div>
-        <p>Amendments are notified with [30 days'] notice via email/dashboard; non-acceptance allows termination with immediate effect within the notice period. Amendments do not retroactively affect ongoing contracts.</p>
+        <p>Amendments are notified with [30 days'] notice via email/dashboard; non-acceptance allows termination with immediate effect within the notice period. Amendments do not retroactively affect ongoing contracts.
+        Changes to the <a href="subprocessors.html">sub-processor list</a> are notified separately, at least 30 days in advance, with a right to object on data protection grounds.</p>
       </article>
 
       <article class="connector-card">
@@ -208,7 +216,7 @@
         <p>
           Italian law; courts of [Provider's registered office &mdash; to be completed], save the mandatory consumer forum.
           Precedence in case of conflict: <strong>DPA</strong> (data processing) &rarr; <strong>SLA</strong> (measurement and credits) &rarr; these Terms.
-          Annexes: <a href="sla.html">SLA</a>, <a href="privacy.html">Privacy Policy / DPA</a>.
+          Annexes: <a href="dpa.html">DPA</a>, <a href="sla.html">SLA</a>, <a href="privacy.html">Privacy Policy</a>, <a href="subprocessors.html">Sub-processors</a>.
         </p>
       </article>
     </section>

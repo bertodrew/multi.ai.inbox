@@ -37,7 +37,9 @@
         <a class="btn ghost" href="../index.html">Home</a>
         <a class="btn ghost" href="../webmail.html">Webmail</a>
         <a class="btn ghost" href="terms.html">Terms</a>
+        <a class="btn ghost" href="dpa.html">DPA</a>
         <a class="btn ghost" href="sla.html">SLA</a>
+        <a class="btn ghost" href="subprocessors.html">Sub-processors</a>
       </nav>
     </div>
   </header>
@@ -45,7 +47,7 @@
   <main id="main">
     <section class="wrap">
       <h1 class="page-title">Privacy Policy</h1>
-      <p class="lede small">What we process, why, with whom and for how long &mdash; under the GDPR (and the Swiss nLPD where applicable). Version 1.0-draft, updated 2026-10-19.</p>
+      <p class="lede small">What we process, why, with whom and for how long &mdash; under the GDPR (and the Swiss nLPD where applicable). Version 1.1-draft, updated 2026-10-23.</p>
 
       <p class="msg error"><strong>DRAFT</strong> &mdash; pending review by qualified legal counsel (IT/CH). Do not rely on this version before legal sign-off; fields marked [ ] are to be completed before publication.</p>
 
@@ -86,19 +88,28 @@
 
       <article class="connector-card">
         <div class="connector-head">
-          <h3>3. Cookies</h3>
+          <h3>3. Cookies and local storage</h3>
         </div>
-        <p>Only <strong>strictly necessary technical cookies</strong> &mdash; no profiling, no third-party trackers, therefore no banner.</p>
+        <p>
+          This website and the API set <strong>no cookie of their own</strong> and use no
+          <code>localStorage</code>, no analytics, no advertising or profiling tracker, and no third-party
+          CDN &mdash; therefore no consent banner is required. The only cookie you may receive comes from the
+          webmail application (SOGo), which issues its own session cookie when you sign in; it is strictly
+          necessary to keep the session alive and disappears when you sign out or the session expires.
+        </p>
         <table>
           <thead>
-            <tr><th>Cookie</th><th>Purpose</th><th>Duration</th></tr>
+            <tr><th>Cookie</th><th>Set by</th><th>Purpose</th><th>Duration</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>MULTIAI_LANDING</code></td><td>Landing session (login/connection) &mdash; HttpOnly, Secure, SameSite=Lax</td><td>Session</td></tr>
-            <tr><td>Panel auth session</td><td>Admin authentication</td><td>Session</td></tr>
-            <tr><td>Webmail session (SOGo)</td><td>Webmail authentication</td><td>Session</td></tr>
+            <tr><td><code>SOGo session cookie</code></td><td>The webmail application, on sign-in</td><td>Authenticated webmail session &mdash; HttpOnly, Secure, SameSite</td><td>Session</td></tr>
           </tbody>
         </table>
+        <p class="hint">
+          Verified against the code: the landing pages and the API contain no <code>document.cookie</code>,
+          no <code>Set-Cookie</code> and no client-side storage calls. If a cookie is ever added, it appears
+          in this table before it is set.
+        </p>
       </article>
 
       <article class="connector-card">
@@ -111,7 +122,7 @@
           </thead>
           <tbody>
             <tr><td>Hetzner Online GmbH</td><td>Germany (EU)</td><td>Processor &mdash; server hosting, database, backups (all data on the instance)</td><td>DPA Art. 28 &mdash; <strong>to be activated in the Hetzner account</strong> (does not conclude automatically)</td></tr>
-            <tr><td>Namecheap Inc.</td><td><strong>USA</strong> (extra-EEA)</td><td>Processor for domain/WHOIS management; independent controller for its own accounts</td><td>DPA with <strong>incorporated SCCs</strong> + documented <strong>TIA</strong>; EU representative (EDPO); <strong>not DPF-certified</strong></td></tr>
+            <tr><td>Namecheap Inc.</td><td><strong>USA</strong> (extra-EEA)</td><td>Processor for domain/WHOIS management; independent controller for its own accounts</td><td>DPA with <strong>incorporated SCCs</strong> + <strong>transfer impact assessment in preparation</strong> (see <a href="dpa.html">DPA</a>); EU representative (EDPO); <strong>not DPF-certified</strong></td></tr>
             <tr><td>Infomaniak</td><td><strong>Switzerland</strong> (planned)</td><td>Processor (when the connector is active)</td><td>EU&rarr;CH <strong>adequacy decision</strong> &mdash; no SCCs required</td></tr>
             <tr><td>Let's Encrypt (ISRG)</td><td>USA</td><td>Independent controller &mdash; TLS certificate issuance</td><td>Technical necessity (domain name)</td></tr>
             <tr><td>LLM provider (planned, only if AI agents read mailboxes)</td><td>To be defined</td><td>Processor &mdash; mail contents only where the flow requires it</td><td>DPA + SCC/DPF per vendor, or EU-based LLM &mdash; defined <strong>before</strong> activation</td></tr>
@@ -119,6 +130,10 @@
           </tbody>
         </table>
         <p class="hint">
+          The current, always-updated list is published at <a href="subprocessors.html">Sub-processors</a>:
+          provider, country, service, data and transfer safeguard. A new recipient is added there
+          <strong>before</strong> it processes any data, with 30 days notice to customers; the processor
+          terms are in the <a href="dpa.html">Data Processing Agreement</a>.
           Technical note: the server's egress IP is detected via an external public service (currently
           <code>api.ipify.org</code>, USA; server-related, not person-related).
         </p>
@@ -141,19 +156,21 @@
         </div>
         <table>
           <thead>
-            <tr><th>Data</th><th>Retention</th></tr>
+            <tr><th>Data</th><th>Retention</th><th>How it is enforced</th></tr>
           </thead>
           <tbody>
-            <tr><td>Mailbox contents (maildir)</td><td>While the mailbox is active; deleted on mailbox removal or termination</td></tr>
-            <tr><td>Backups (mailboxes + database)</td><td><strong>30-day</strong> rotation (planned)</td></tr>
-            <tr><td>System and audit logs (panel, MCP)</td><td><strong>90 days</strong> (planned)</td></tr>
-            <tr><td>Landing connection sessions</td><td>Session &mdash; <strong>8&ndash;12h TTL</strong> (to be set)</td></tr>
-            <tr><td>Billing and contact data</td><td><strong>10 years</strong> (tax, Italian law); contacts up to 12 months after termination</td></tr>
+            <tr><td>Mailbox contents (messages, attachments, drafts)</td><td>While the mailbox is active; erased when the mailbox or the organization is deleted</td><td>Cascading deletion plus a deletion queue for stored blobs, retried until the object is gone</td></tr>
+            <tr><td>Address of a deleted mailbox</td><td><strong>90 days</strong> (quarantine only: the address, not the content)</td><td>Scheduler purge; the address cannot be re-registered by anyone else during that window</td></tr>
+            <tr><td>Security and audit logs (panel, API, MCP)</td><td><strong>90 days</strong></td><td>Scheduler purge of entries older than 90 days; the customer can export the log at any time</td></tr>
+            <tr><td>Backups (mailboxes + database), encrypted</td><td><strong>30-day immutable lock</strong>, database dumps expire after <strong>45 days</strong></td><td>Bucket retention and lifecycle rules; deletion from backups is exhausted by rotation</td></tr>
+            <tr><td>Billing and contact data</td><td><strong>10 years</strong> (tax, Italian law); contacts up to 12 months after termination</td><td>Manual review after the term; card data never reaches us (Stripe)</td></tr>
           </tbody>
         </table>
         <p class="hint">
-          Values marked "planned/to be set" are <strong>targets</strong>: their technical enforcement is a <strong>precondition</strong> for publishing
-          this notice. Erasure in backups is exhausted by natural rotation (accepted practice).
+          Values in this table are the ones the platform actually enforces in code or in the storage
+          bucket &mdash; not targets. The one deliberate exception: message blobs copied into the immutable
+          backup bucket cannot be deleted before the lock expires; they are removed through a dedicated
+          procedure with the backup key.
         </p>
       </article>
 
@@ -193,9 +210,40 @@
           customer-controller (Art. 28(3)(e)). Complaint: <strong>Garante per la protezione dei dati personali</strong> (www.garanteprivacy.it),
           or the <strong>FDPIC</strong> in Switzerland, and in any case the controller.
         </p>
+        <table>
+          <thead><tr><th>Right</th><th>How it works today</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Access and portability (Art. 15, 20)</td>
+              <td>Self-service: <code>GET /v0/export</code> with a key holding <code>data_export</code> returns the
+              organization's settings, inboxes, domains, webhooks, key metadata and the full audit log as one JSON
+              file. Mailbox content is exported in full over IMAP, or message by message with the <code>raw</code> endpoint.</td>
+            </tr>
+            <tr>
+              <td>Erasure (Art. 17)</td>
+              <td>Self-service: <code>DELETE /v0/organization</code> with the exact organization name as confirmation
+              (permission <code>data_delete</code>, never implied by a full-access key). The response contains the export
+              taken immediately before deletion. Database rows go at once, stored blobs within minutes; addresses stay
+              quarantined for 90 days.</td>
+            </tr>
+            <tr>
+              <td>Rectification, restriction, objection</td>
+              <td>Write to <strong>[privacy email]</strong>; we answer within one month, or explain why an extension applies.</td>
+            </tr>
+            <tr>
+              <td>No automated decision</td>
+              <td>Account suspension or deletion is never decided by an algorithm alone; agent actions towards third
+              parties require human review.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          Requests that reach us and concern a customer's mailbox are forwarded to that customer, who is the
+          controller: we assist them but do not answer on their behalf.
+        </p>
       </article>
 
-      <p class="hint">This English page is a convenience translation; the Italian policy (<code>privacy-it.md</code>) is authentic. Changes are published on this page with an update date.</p>
+      <p class="hint">This English page is the reference version. An Italian translation is in preparation and will be published at <code>privacy-it.html</code>; until then the English text applies. Changes are published on this page with an update date.</p>
     </section>
   </main>
 
@@ -203,7 +251,7 @@
     <div class="wrap footer-inner">
       <span>AImulti.inbox &mdash; self-hosted mail platform</span>
       <span>API keys are stored server-side only &middot; no payment data is ever collected</span>
-      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html" aria-current="page">Privacy</a> &middot; <a href="sla.html">SLA</a></span>
+      <span><a href="terms.html">Terms</a> &middot; <a href="privacy.html" aria-current="page">Privacy</a> &middot; <a href="dpa.html">DPA</a> &middot; <a href="sla.html">SLA</a> &middot; <a href="subprocessors.html">Sub-processors</a></span>
     </div>
   </footer>
   <script src="../assets/nav.js"></script>
