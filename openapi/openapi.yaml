@@ -14,7 +14,9 @@ info:
     `message_release` releases a message held for review. Held messages are
     left out of every list and get; `include_review=true` (needs
     `message_review`) adds those held for review. Messages still pending
-    screening are never returned.
+    screening are never returned. `message_release` is never implied by a
+    full access key: only keys that list it hold it, and the first one is
+    issued by the operator (`mai admin key-create -permissions ...`).
 servers:
   - url: https://api.example.eu
 security:

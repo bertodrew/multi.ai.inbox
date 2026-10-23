@@ -41,6 +41,12 @@ var AllPermissions = []string{PermInboxRead, PermInboxWrite, PermMessageRead, Pe
 	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead,
 	PermMessageReview, PermMessageRelease}
 
+// ExplicitPermissions are never implied by a full access key (nil
+// permissions): a key holds them only when they are listed, so an agent with a
+// full key cannot approve the prompt injection it was screened from. Only the
+// operator (mai admin key-create -permissions) can issue them first.
+var ExplicitPermissions = []string{PermMessageRelease}
+
 // Principal is the authenticated caller of a request.
 type Principal struct {
 	Org         *Org
@@ -50,7 +56,10 @@ type Principal struct {
 }
 
 func (p *Principal) Can(perm string) bool {
-	return p.Permissions == nil || slices.Contains(p.Permissions, perm)
+	if p.Permissions == nil {
+		return !slices.Contains(ExplicitPermissions, perm)
+	}
+	return slices.Contains(p.Permissions, perm)
 }
 
 // Require returns a 403 missing_permission error when p lacks perm.
@@ -116,6 +125,22 @@ type CreatedKey = APIKey
 // CreateKey is the operator path: a key with every permission.
 func (s *Service) CreateKey(ctx context.Context, orgID, name string) (*APIKey, error) {
 	return s.insertKey(ctx, orgID, name, nil, nil, "")
+}
+
+// CreateOperatorKey is the operator path for a key with a fixed permission
+// list, the only way to issue the first key holding an explicit permission
+// such as message_release.
+func (s *Service) CreateOperatorKey(ctx context.Context, orgID, name string, perms []string) (*APIKey, error) {
+	if len(perms) == 0 {
+		return nil, Validation("permissions must not be empty")
+	}
+	for _, perm := range perms {
+		if !slices.Contains(AllPermissions, perm) {
+			return nil, Validation("unknown permission %q; valid: %s", perm, strings.Join(AllPermissions, ", "))
+		}
+	}
+	perms = append([]string{}, slices.Compact(slices.Sorted(slices.Values(perms)))...)
+	return s.insertKey(ctx, orgID, name, perms, nil, "")
 }
 
 type CreateKeyRequest struct {

@@ -17,7 +17,7 @@ const permissionMeaning: Record<string, string> = {
   api_key_write: "Create and revoke API keys, within the caller's own permissions.",
   audit_read: "Read the audit log.",
   message_review: "Read messages held for security review with `include_review=true`. For a human review console, not for agents.",
-  message_release: "Release a message held for review, which then fires `message.received`. Keep it away from the agent that reads the mail.",
+  message_release: "Release a message held for review, which then fires `message.received`. Keep it away from the agent that reads the mail. A full access key does not hold it: only keys that list it do, and the operator issues the first one.",
 };
 
 export const quickstart: DocPage = {

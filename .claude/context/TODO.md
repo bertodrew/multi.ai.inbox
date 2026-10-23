@@ -18,7 +18,7 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 ## Next (in order)
 1. Release workflow green on master (fix: Docker build context was missing openapi/).
 2. Ops agent: runbook steps 1 to 7 on the CX33 (snapshot, rebuild, firewall, PTR, bootstrap, smoke test). Before that, protect the Primary IP and enable Hetzner backups.
-3. Founder decisions still open: legal counsel; should full access keys hold `message_release` (the reference excludes it), and a tenant API to change `screen_before_notify` (new `organization_write` permission).
+3. Founder decisions still open: legal counsel; a tenant API to change `screen_before_notify` (new `organization_write` permission).
 4. Branding, then buy the domain: `mai admin domain-add`, update `deploy/k8s/staging` config, DNS records, PTR.
 5. Console (Next.js) and Stripe billing; drafts, WebSocket events; S3 blob store; pods; metrics.
 
@@ -27,6 +27,7 @@ Updated: 2026-10-22. Source of truth for priorities: `docs/agentmail-re/09-execu
 * Backup crypt keys: Doppler plus one offline copy; a cofounder gets a custody copy later.
 * Mail retention: kept until the customer deletes it; backups expire on their own schedule.
 * ClamAV (GPL, separate network service) approved.
+* `message_release` is explicit only: full access keys do not hold it; `mai admin key-create -permissions` issues the first release key.
 
 ## Known gaps in the MVP
 * Plan limits cover inboxes, domains, day and month sends; the 5 minute burst limit is not implemented.

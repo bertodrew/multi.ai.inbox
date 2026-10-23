@@ -73,7 +73,16 @@ func TestScreenBeforeNotify(t *testing.T) {
 		return client{t: t, base: httpSrv.URL, key: k["api_key"].(string)}
 	}
 	agent := newKey(core.PermInboxRead, core.PermMessageRead, core.PermMessageSend, core.PermAPIKeyWrite)
-	reviewer := newKey(core.PermMessageRead, core.PermMessageReview, core.PermMessageRelease)
+	// message_release is explicit only: the full owner key neither holds nor
+	// grants it, so the first release key comes from the operator.
+	if code, body := owner.do("POST", "/v0/api-keys", map[string]any{"permissions": []string{core.PermMessageRelease}}, nil); code != 403 || body["code"] != "permission_escalation" {
+		t.Fatalf("full key granting message_release: %d %v", code, body)
+	}
+	rk, err := svc.CreateOperatorKey(ctx, org.ID, "review console", []string{core.PermMessageRead, core.PermMessageReview, core.PermMessageRelease})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer := client{t: t, base: httpSrv.URL, key: rk.Key}
 
 	var hookMu sync.Mutex
 	var hooks []dispatcher.Envelope
@@ -288,6 +297,9 @@ func TestScreenBeforeNotify(t *testing.T) {
 	}
 
 	// 4. Release: needs message_release; fires message.received after security.review.
+	if code, body := owner.do("POST", inbox+"/messages/"+bad+"/release", nil, nil); code != 403 || body["code"] != "missing_permission" {
+		t.Fatalf("release with a full access key: %d %v", code, body)
+	}
 	if code, body := agent.do("POST", inbox+"/messages/"+bad+"/release", nil, nil); code != 403 || body["code"] != "missing_permission" {
 		t.Fatalf("release without permission: %d %v", code, body)
 	}

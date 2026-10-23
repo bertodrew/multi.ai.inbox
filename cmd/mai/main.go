@@ -320,6 +320,7 @@ func admin(ctx context.Context, cfg config, args []string) error {
 	on := fs.Bool("on", false, "org-screening: hold inbound mail until the gatekeeper verdict exists")
 	off := fs.Bool("off", false, "org-screening: notify message.received at ingest (not recommended)")
 	inbox := fs.String("inbox", "", "inbox address")
+	perms := fs.String("permissions", "", "key-create: comma separated permissions (empty: full access, which never includes message_release)")
 	_ = fs.Parse(args[1:])
 	return withDB(ctx, cfg, func(d *db.DB) error {
 		svc := service(d, cfg)
@@ -339,7 +340,11 @@ func admin(ctx context.Context, cfg config, args []string) error {
 			if *org == "" {
 				return errors.New("-org is required")
 			}
-			out, err = svc.CreateKey(ctx, *org, *name)
+			if *perms != "" {
+				out, err = svc.CreateOperatorKey(ctx, *org, *name, splitList(*perms))
+			} else {
+				out, err = svc.CreateKey(ctx, *org, *name)
+			}
 		case "domain-add":
 			out, err = svc.AddDomain(ctx, *org, *name)
 		case "inbox-resume":
