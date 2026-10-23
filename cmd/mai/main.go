@@ -61,6 +61,7 @@ type config struct {
 	RspamdURL      string
 	ClamdAddr      string
 	ClamdFailClose bool
+	DMARCEnforce   bool
 	GatekeeperBin  string
 	MaxMessage     int64
 	AllowHTTPHook  bool
@@ -107,6 +108,7 @@ func loadConfig() config {
 		RspamdURL:      os.Getenv("MAI_RSPAMD_URL"),
 		ClamdAddr:      os.Getenv("MAI_CLAMD_ADDR"),
 		ClamdFailClose: os.Getenv("MAI_CLAMD_FAIL_CLOSED") == "true",
+		DMARCEnforce:   os.Getenv("MAI_DMARC_ENFORCE") == "true",
 		GatekeeperBin:  os.Getenv("MAI_GATEKEEPER_BIN"),
 		MaxMessage:     maxMsg,
 		AllowHTTPHook:  os.Getenv("MAI_ALLOW_HTTP_WEBHOOKS") == "true",
@@ -250,7 +252,8 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 		}
 		if enabled["mx"] {
 			certs := &tlsx.Loader{CertGlob: cfg.TLSCert, KeyGlob: cfg.TLSKey, Hostname: cfg.Hostname}
-			backend := &mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL, ClamdFailClosed: cfg.ClamdFailClose}
+			backend := &mx.Backend{Svc: svc, Log: log, MaxBytes: cfg.MaxMessage, RspamdURL: cfg.RspamdURL, ClamdFailClosed: cfg.ClamdFailClose,
+				MailAuth: &mx.MailAuth{Enforce: cfg.DMARCEnforce}}
 			if cfg.ClamdAddr != "" {
 				backend.Clamd = &mx.Clamd{Addr: cfg.ClamdAddr}
 			} else {
@@ -273,7 +276,8 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			}()
 		}
 		if enabled["sender"] {
-			s := &sender.Sender{Svc: svc, Relay: cfg.Relay, HeloName: cfg.Hostname, Log: log}
+			s := &sender.Sender{Svc: svc, Relay: cfg.Relay, HeloName: cfg.Hostname, Log: log,
+				MTASTS: &sender.MTASTS{HTTP: dispatcher.SafeClient(), Log: log}}
 			wg.Add(1)
 			go func() { defer wg.Done(); s.Run(ctx) }()
 		}

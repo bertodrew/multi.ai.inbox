@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -393,11 +394,15 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 		return nil, err
 	}
 	var planName string
-	var sentToday, sentMonth int
+	var sentToday, sentMonth, sentBurst int
+	var burstWait float64 // seconds until the oldest send leaves the 5 minute window
 	if err := tx.QueryRow(ctx, `select o.plan,
 		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at > now() - interval '1 day'),
-		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at >= date_trunc('month', now()))
-		from organizations o where o.id = $1`, orgID).Scan(&planName, &sentToday, &sentMonth); err != nil {
+		(select count(*) from messages where org_id = o.id and direction = 'out' and created_at >= date_trunc('month', now())),
+		b.n, coalesce(extract(epoch from b.oldest + interval '5 minutes' - now()), 0)::float8
+		from organizations o, lateral (select count(*) as n, min(created_at) as oldest from messages
+			where org_id = o.id and direction = 'out' and created_at > now() - interval '5 minutes') b
+		where o.id = $1`, orgID).Scan(&planName, &sentToday, &sentMonth, &sentBurst, &burstWait); err != nil {
 		return nil, err
 	}
 	plan := planOf(planName)
@@ -406,6 +411,11 @@ func (s *Service) queue(ctx context.Context, tx pgx.Tx, orgID string, inbox *Inb
 	}
 	if sentMonth >= plan.SendsPerMonth {
 		return nil, errf(http.StatusTooManyRequests, "limit_exceeded", "monthly send limit of %d reached on the %s plan", plan.SendsPerMonth, plan.Name)
+	}
+	if sentBurst >= plan.SendsPer5Min {
+		e := errf(http.StatusTooManyRequests, "rate_limited", "send burst limit of %d per 5 minutes reached on the %s plan", plan.SendsPer5Min, plan.Name)
+		e.RetryAfter = max(1, int(math.Ceil(burstWait)))
+		return nil, e
 	}
 	if plan.Footer {
 		o.text += freeFooterText

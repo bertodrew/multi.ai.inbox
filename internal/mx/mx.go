@@ -12,12 +12,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/emersion/go-msgauth/dkim"
 	"github.com/emersion/go-smtp"
 
 	"github.com/bertodrew/multi.ai.inbox/internal/core"
+	"github.com/bertodrew/multi.ai.inbox/internal/mailauth"
 	"github.com/bertodrew/multi.ai.inbox/internal/mailx"
 )
 
@@ -33,6 +34,27 @@ type Backend struct {
 	// ClamdFailClosed is set (MAI_CLAMD_FAIL_CLOSED=true).
 	Clamd           *Clamd
 	ClamdFailClosed bool
+	// MailAuth evaluates SPF and DMARC when set (cmd/mai always sets it).
+	// DKIM is verified either way.
+	MailAuth *MailAuth
+	// DNS resolves SPF, DKIM and DMARC records; nil uses net.DefaultResolver.
+	DNS mailauth.Resolver
+}
+
+// MailAuth configures SPF and DMARC evaluation. Mail that fails DMARC gets
+// the dmarc-fail label; under p=quarantine or p=reject it is also labelled
+// spam. With Enforce (MAI_DMARC_ENFORCE=true) a failure under p=reject is
+// refused with 550 instead.
+type MailAuth struct {
+	Enforce bool
+	Sample  func() int // pct= sampling, tests only
+}
+
+func (b *Backend) resolver() mailauth.Resolver {
+	if b.DNS != nil {
+		return b.DNS
+	}
+	return net.DefaultResolver
 }
 
 // NewServer builds the SMTP edge. With tlsConfig set, STARTTLS is offered.
@@ -94,7 +116,10 @@ func (s *session) Data(r io.Reader) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	var labels []string
+	auth, labels, err := s.authenticate(ctx, raw)
+	if err != nil {
+		return err
+	}
 	antivirus := ""
 	if s.b.Clamd != nil {
 		res, err := s.b.Clamd.Scan(ctx, raw)
@@ -113,7 +138,6 @@ func (s *session) Data(r io.Reader) error {
 			antivirus = "clean"
 		}
 	}
-	auth := map[string]any{"dkim": verifyDKIM(raw, mailx.DomainOf(headerFrom(raw)))}
 	if antivirus != "" {
 		auth["antivirus"] = antivirus
 	}
@@ -139,14 +163,60 @@ func (s *session) Data(r io.Reader) error {
 	return nil
 }
 
-// verifyDKIM returns pass when a valid signature aligns with the From domain.
-func verifyDKIM(raw []byte, fromDomain string) string {
-	results, err := dkim.Verify(bytes.NewReader(raw))
-	if err != nil || len(results) == 0 {
+// authenticate verifies DKIM and, with MailAuth set, SPF and DMARC. It
+// returns the authentication results to store, labels for the message, and
+// an SMTP error when DMARC enforcement refuses the message.
+func (s *session) authenticate(ctx context.Context, raw []byte) (map[string]any, []string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	dns := s.b.resolver()
+	fromDomain := mailx.DomainOf(headerFrom(raw))
+	passed, signed := mailauth.VerifyDKIM(ctx, dns, raw)
+	auth := map[string]any{"dkim": dkimStatus(passed, signed, fromDomain)}
+	if s.b.MailAuth == nil {
+		return auth, nil, nil
+	}
+	var ip net.IP
+	if host, _, err := net.SplitHostPort(s.remote); err == nil {
+		ip = net.ParseIP(host)
+	}
+	spf := mailauth.CheckSPF(ctx, dns, ip, s.from, s.helo)
+	spfDomain := mailx.DomainOf(s.from)
+	if s.from == "" {
+		spfDomain = s.helo
+	}
+	v := mailauth.CheckDMARC(ctx, dns, mailauth.DMARCInput{FromDomain: fromDomain, DKIMPass: passed, SPF: spf, SPFDomain: spfDomain}, s.b.MailAuth.Sample)
+	auth["spf"] = string(spf)
+	auth["dmarc"] = v.Result
+	if v.Policy != "" {
+		auth["dmarc_policy"] = v.Policy
+	}
+	if v.Result != mailauth.DMARCFail {
+		return auth, nil, nil
+	}
+	labels := []string{"dmarc-fail"}
+	switch v.Policy {
+	case "reject":
+		if s.b.MailAuth.Enforce {
+			s.b.Log.Warn("dmarc reject", "from_domain", fromDomain, "remote", s.remote, "spf", spf)
+			return nil, nil, &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1},
+				Message: "Message rejected: DMARC policy of " + fromDomain + " (p=reject)"}
+		}
+		labels = append(labels, "spam")
+	case "quarantine":
+		labels = append(labels, "spam")
+	}
+	return auth, labels, nil
+}
+
+// dkimStatus returns pass when a valid signature aligns with the From domain.
+func dkimStatus(passed []string, signed bool, fromDomain string) string {
+	if !signed {
 		return "none"
 	}
-	for _, v := range results {
-		if v.Err == nil && (v.Domain == fromDomain || isSubdomain(fromDomain, v.Domain)) {
+	for _, d := range passed {
+		d = strings.ToLower(d)
+		if d == fromDomain || isSubdomain(fromDomain, d) {
 			return "pass"
 		}
 	}

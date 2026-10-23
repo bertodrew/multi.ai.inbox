@@ -107,6 +107,9 @@ paths:
         403 sending_paused when the bounce breaker paused the inbox or the
         organization (hard bounce rate above 5% over at least 20 sends in 24
         hours). Queued mail is held, not sent, until an operator resumes.
+        429 limit_exceeded when the plan's daily or monthly send limit is
+        reached; 429 rate_limited when the plan's 5 minute burst limit is
+        reached (free 10, builder 100, team 1,500), with Retry-After in seconds.
       requestBody:
         content:
           application/json:
@@ -148,6 +151,7 @@ paths:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }, { $ref: "#/components/parameters/idempotency_key" }]
     post:
       summary: Reply in the same thread
+      description: "Same send limits as a new message: 429 limit_exceeded or rate_limited."
       requestBody:
         content:
           application/json:
@@ -155,6 +159,7 @@ paths:
       responses:
         "200": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
         "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /v0/inboxes/{inbox}/messages/{message}/release:
     parameters: [{ $ref: "#/components/parameters/inbox" }, { $ref: "#/components/parameters/message" }]
     post:
@@ -282,7 +287,7 @@ components:
                 type: string
                 enum: [missing_authorization, unknown_api_key, validation_error, not_found, already_exists,
                        domain_not_verified, conflict, cannot_delete, limit_exceeded, rate_limit_exceeded,
-                       address_quarantined, sending_paused,
+                       rate_limited, address_quarantined, sending_paused,
                        missing_permission, permission_escalation, api_key_expired, not_held,
                        payload_too_large, internal_error]
               message: { type: string }
@@ -354,7 +359,18 @@ components:
         in_reply_to: { type: string }
         references: { type: array, items: { type: string } }
         status: { type: string, enum: [received, queued, sending, sent, failed] }
-        authentication_results: { type: object, description: "dkim, spam_score, spam_action" }
+        authentication_results:
+          type: object
+          description: "What the SMTP edge verified for inbound mail: dkim, spf, dmarc, dmarc_policy, antivirus, spam_score, spam_action. Mail failing DMARC is labelled dmarc-fail, and spam under p=quarantine or p=reject."
+          properties:
+            dkim: { type: string, enum: [pass, fail, none], description: "A valid signature aligned with the From domain" }
+            spf: { type: string, enum: [pass, fail, softfail, neutral, none, temperror, permerror], description: "RFC 7208 result for the MAIL FROM identity (HELO for a null sender)" }
+            dmarc: { type: string, enum: [pass, fail, none, temperror, permerror], description: "RFC 7489 result with relaxed or strict alignment as the record asks" }
+            dmarc_policy: { type: string, enum: [none, quarantine, reject], description: "Policy of the From domain after sp= and pct=, when a record exists" }
+            antivirus: { type: string, enum: [clean, unscanned] }
+            spam_score: { type: number }
+            spam_action: { type: string }
+            internal: { type: boolean, description: "Delivered between inboxes of this platform" }
         gatekeeper:
           type: object
           properties:

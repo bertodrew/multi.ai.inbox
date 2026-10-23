@@ -26,20 +26,22 @@ type Service struct {
 	Now               func() time.Time
 }
 
-// Plan holds the limits of a pricing plan (doc 01, section 7).
+// Plan holds the limits of a pricing plan (doc 01, section 7). The 5 minute
+// burst is 10% of the daily cap (doc 11, section 5.2).
 type Plan struct {
 	Name          string `json:"name"`
 	Inboxes       int    `json:"inboxes"`
 	Domains       int    `json:"domains"`
 	SendsPerDay   int    `json:"sends_per_day"`
 	SendsPerMonth int    `json:"sends_per_month"`
+	SendsPer5Min  int    `json:"sends_per_5_minutes"`
 	Footer        bool   `json:"footer"`
 }
 
 var Plans = map[string]Plan{
-	"free":    {Name: "free", Inboxes: 3, Domains: 1, SendsPerDay: 100, SendsPerMonth: 3000, Footer: true},
-	"builder": {Name: "builder", Inboxes: 10, Domains: 5, SendsPerDay: 1000, SendsPerMonth: 10000},
-	"team":    {Name: "team", Inboxes: 150, Domains: 50, SendsPerDay: 15000, SendsPerMonth: 150000},
+	"free":    {Name: "free", Inboxes: 3, Domains: 1, SendsPerDay: 100, SendsPerMonth: 3000, SendsPer5Min: 10, Footer: true},
+	"builder": {Name: "builder", Inboxes: 10, Domains: 5, SendsPerDay: 1000, SendsPerMonth: 10000, SendsPer5Min: 100},
+	"team":    {Name: "team", Inboxes: 150, Domains: 50, SendsPerDay: 15000, SendsPerMonth: 150000, SendsPer5Min: 1500},
 }
 
 func planOf(name string) Plan {
@@ -62,6 +64,8 @@ type Error struct {
 	Name    string `json:"name"`
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// RetryAfter, in seconds, sets the Retry-After header of a 429.
+	RetryAfter int `json:"-"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }

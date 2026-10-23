@@ -776,6 +776,11 @@ export const apiReference: ApiReference = {
           "code": "403",
           "description": "Error envelope",
           "schema": "Error"
+        },
+        {
+          "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
         }
       ]
     },
@@ -1582,7 +1587,7 @@ export const apiReference: ApiReference = {
           "name": "authentication_results",
           "type": "object",
           "required": false,
-          "description": "dkim, spam_score, spam_action",
+          "description": "What the SMTP edge verified for inbound mail: dkim, spf, dmarc, dmarc_policy, antivirus, spam_score, spam_action. Mail failing DMARC is labelled dmarc-fail, and spam under p=quarantine or p=reject.",
           "constraints": []
         },
         {
@@ -1902,7 +1907,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | payload_too_large | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | payload_too_large | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -1928,6 +1933,7 @@ export const apiReference: ApiReference = {
     "cannot_delete",
     "limit_exceeded",
     "rate_limit_exceeded",
+    "rate_limited",
     "address_quarantined",
     "sending_paused",
     "missing_permission",
