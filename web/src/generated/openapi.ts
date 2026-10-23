@@ -543,7 +543,17 @@ export const apiReference: ApiReference = {
           "schema": "Error"
         },
         {
+          "code": "422",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
           "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "503",
           "description": "Error envelope",
           "schema": "Error"
         }
@@ -774,6 +784,21 @@ export const apiReference: ApiReference = {
         },
         {
           "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "422",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "503",
           "description": "Error envelope",
           "schema": "Error"
         }
@@ -1671,6 +1696,185 @@ export const apiReference: ApiReference = {
           "schema": ""
         }
       ]
+    },
+    {
+      "id": "get-v0-billing",
+      "method": "GET",
+      "path": "/v0/billing",
+      "summary": "Plan and Stripe subscription state (requires billing_read)",
+      "params": [],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "Billing"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-billing-checkout",
+      "method": "POST",
+      "path": "/v0/billing/checkout",
+      "summary": "Start a Stripe Checkout for a paid plan (requires billing_write, audited)",
+      "params": [],
+      "body": {
+        "schema": "Checkout",
+        "fields": [
+          {
+            "name": "plan",
+            "type": "builder | growth | team",
+            "required": true,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "interval",
+            "type": "monthly | yearly",
+            "required": false,
+            "description": "",
+            "constraints": [
+              "default monthly"
+            ]
+          },
+          {
+            "name": "success_url",
+            "type": "string (uri)",
+            "required": false,
+            "description": "Defaults to the deployment's MAI_BILLING_RETURN_URL",
+            "constraints": []
+          },
+          {
+            "name": "cancel_url",
+            "type": "string (uri)",
+            "required": false,
+            "description": "Defaults to the deployment's MAI_BILLING_RETURN_URL",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "BillingSession"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "502",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-billing-portal",
+      "method": "POST",
+      "path": "/v0/billing/portal",
+      "summary": "Open the Stripe customer portal (requires billing_write, audited)",
+      "params": [],
+      "body": {
+        "schema": "",
+        "fields": [
+          {
+            "name": "return_url",
+            "type": "string (uri)",
+            "required": false,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "BillingSession"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "502",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-stripe-webhook",
+      "method": "POST",
+      "path": "/stripe/webhook",
+      "summary": "Stripe webhook endpoint (public, Stripe-Signature verified)",
+      "params": [
+        {
+          "name": "Stripe-Signature",
+          "in": "header",
+          "required": true,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "Received; outcome is applied, duplicate, stale or ignored",
+          "schema": ""
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
     }
   ],
   "schemas": [
@@ -1693,7 +1897,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "plan",
-          "type": "string",
+          "type": "free | builder | growth | team",
           "required": false,
           "description": "",
           "constraints": []
@@ -2053,7 +2257,7 @@ export const apiReference: ApiReference = {
           "name": "authentication_results",
           "type": "object",
           "required": false,
-          "description": "dkim, spam_score, spam_action",
+          "description": "What the SMTP edge verified for inbound mail: dkim, spf, dmarc, dmarc_policy, antivirus, spam_score, spam_action. Mail failing DMARC is labelled dmarc-fail, and spam under p=quarantine or p=reject.",
           "constraints": []
         },
         {
@@ -2669,6 +2873,114 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "name": "Checkout",
+      "fields": [
+        {
+          "name": "plan",
+          "type": "builder | growth | team",
+          "required": true,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "interval",
+          "type": "monthly | yearly",
+          "required": false,
+          "description": "",
+          "constraints": [
+            "default monthly"
+          ]
+        },
+        {
+          "name": "success_url",
+          "type": "string (uri)",
+          "required": false,
+          "description": "Defaults to the deployment's MAI_BILLING_RETURN_URL",
+          "constraints": []
+        },
+        {
+          "name": "cancel_url",
+          "type": "string (uri)",
+          "required": false,
+          "description": "Defaults to the deployment's MAI_BILLING_RETURN_URL",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "BillingSession",
+      "fields": [
+        {
+          "name": "session_id",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "url",
+          "type": "string (uri)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "Billing",
+      "fields": [
+        {
+          "name": "plan",
+          "type": "free | builder | growth | team",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "status",
+          "type": "none | incomplete | incomplete_expired | trialing | active | past_due | unpaid | canceled | paused",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "interval",
+          "type": "monthly | yearly",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "current_period_end",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "cancel_at_period_end",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "past_due_since",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "grace_period_ends_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "Set while past_due or unpaid; the plan drops to free after it",
+          "constraints": []
+        }
+      ]
+    },
+    {
       "name": "Error",
       "fields": [
         {
@@ -2680,7 +2992,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | too_many_streams | payload_too_large | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | internal_error",
           "required": true,
           "description": "",
           "constraints": []
@@ -2706,14 +3018,22 @@ export const apiReference: ApiReference = {
     "cannot_delete",
     "limit_exceeded",
     "rate_limit_exceeded",
+    "rate_limited",
     "address_quarantined",
     "sending_paused",
     "missing_permission",
     "permission_escalation",
     "api_key_expired",
     "not_held",
+    "billing_disabled",
+    "billing_provider_error",
+    "already_subscribed",
+    "no_billing_account",
+    "invalid_signature",
     "too_many_streams",
     "payload_too_large",
+    "attachment_infected",
+    "antivirus_unavailable",
     "internal_error"
   ],
   "eventTypes": [
@@ -2722,6 +3042,7 @@ export const apiReference: ApiReference = {
     "message.sent",
     "message.failed",
     "message.bounced",
+    "message.complained",
     "message.security.completed",
     "message.security.review",
     "domain.verified",
@@ -2729,7 +3050,8 @@ export const apiReference: ApiReference = {
     "inbox.sending.paused",
     "inbox.sending.resumed",
     "organization.sending.paused",
-    "organization.sending.resumed"
+    "organization.sending.resumed",
+    "security.av_unavailable"
   ],
   "permissions": [
     "inbox_read",
@@ -2745,6 +3067,8 @@ export const apiReference: ApiReference = {
     "api_key_write",
     "audit_read",
     "message_review",
-    "message_release"
+    "message_release",
+    "billing_read",
+    "billing_write"
   ]
 };

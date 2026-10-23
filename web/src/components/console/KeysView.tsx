@@ -23,6 +23,8 @@ const meaning: Record<Permission, string> = {
   audit_read: "Read the audit log",
   message_review: "Read mail held for review",
   message_release: "Release mail held for review; only a key that lists it can grant it",
+  billing_read: "See the plan, billing status and renewal date",
+  billing_write: "Open Stripe checkout and the billing portal",
 };
 
 export function KeysView() {

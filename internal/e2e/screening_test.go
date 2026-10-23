@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -75,6 +76,9 @@ func TestScreenBeforeNotify(t *testing.T) {
 	agent := newKey(core.PermInboxRead, core.PermMessageRead, core.PermMessageSend, core.PermAPIKeyWrite)
 	// message_release is explicit only: the full owner key neither holds nor
 	// grants it, so the first release key comes from the operator.
+	if _, me := owner.do("GET", "/v0/auth/me", nil, nil); slices.Contains(toStrings(me["permissions"]), core.PermMessageRelease) {
+		t.Fatalf("auth/me lists message_release for a full access key: %v", me["permissions"])
+	}
 	if code, body := owner.do("POST", "/v0/api-keys", map[string]any{"permissions": []string{core.PermMessageRelease}}, nil); code != 403 || body["code"] != "permission_escalation" {
 		t.Fatalf("full key granting message_release: %d %v", code, body)
 	}
@@ -373,4 +377,15 @@ func TestScreenBeforeNotify(t *testing.T) {
 	if code, m := agent.do("GET", inbox+"/messages/"+monitor, nil, nil); code != 200 || m["screening"] != nil {
 		t.Fatalf("monitor mode message: %d %v", code, m)
 	}
+}
+
+func toStrings(v any) []string {
+	list, _ := v.([]any)
+	out := make([]string, 0, len(list))
+	for _, x := range list {
+		if str, ok := x.(string); ok {
+			out = append(out, str)
+		}
+	}
+	return out
 }

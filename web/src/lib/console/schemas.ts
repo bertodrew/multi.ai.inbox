@@ -30,6 +30,8 @@ export const PERMISSIONS = [
   "audit_read",
   "message_review",
   "message_release",
+  "billing_read",
+  "billing_write",
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;
@@ -40,13 +42,16 @@ export const EVENT_TYPES = [
   "message.sent",
   "message.failed",
   "message.bounced",
+  "message.complained",
   "message.security.completed",
   "message.security.review",
   "domain.verified",
+  "draft.created",
   "inbox.sending.paused",
   "inbox.sending.resumed",
   "organization.sending.paused",
   "organization.sending.resumed",
+  "security.av_unavailable",
 ] as const;
 export const EventType = z.enum(EVENT_TYPES);
 export type EventType = z.infer<typeof EventType>;

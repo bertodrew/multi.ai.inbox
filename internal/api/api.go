@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -248,7 +249,10 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
 	perms := p.Permissions
 	if perms == nil {
-		perms = core.AllPermissions
+		// A full access key holds every permission except the explicit ones.
+		perms = slices.DeleteFunc(slices.Clone(core.AllPermissions), func(perm string) bool {
+			return slices.Contains(core.ExplicitPermissions, perm)
+		})
 	}
 	s.ok(w, http.StatusOK, map[string]any{"organization_id": p.Org.ID, "name": p.Org.Name, "plan": p.Org.Plan,
 		"screen_before_notify": p.Org.ScreenBeforeNotify, "api_key_id": p.KeyID, "permissions": perms, "expires_at": p.ExpiresAt})
