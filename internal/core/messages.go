@@ -375,24 +375,32 @@ func (s *Service) Reply(ctx context.Context, orgID, address, id string, req Repl
 		if err != nil {
 			return nil, err
 		}
-		target := parent.From
-		if parent.Direction == "out" && len(parent.To) > 0 {
-			target = parent.To[0]
-		}
-		o := outbound{to: []string{target}, subject: mailx.ReplySubject(parent.Subject), text: req.Text, html: req.HTML,
-			labels: labels, attachments: atts, threadID: parent.ThreadID, inReplyTo: parent.MessageID,
-			references: append(append([]string{}, parent.References...), parent.MessageID), unscanned: unscanned}
-		if req.ReplyAll {
-			seen := map[string]bool{inbox.InboxID: true, target: true}
-			for _, a := range append(append([]string{}, parent.To...), parent.Cc...) {
-				if !seen[a] {
-					seen[a] = true
-					o.cc = append(o.cc, a)
-				}
-			}
-		}
+		o := replyOutbound(inbox, parent, req.ReplyAll)
+		o.text, o.html, o.labels, o.attachments = req.Text, req.HTML, labels, atts
+		o.unscanned = unscanned
 		return s.queue(ctx, tx, orgID, inbox, o)
 	})
+}
+
+// replyOutbound addresses a reply to parent and sets its threading headers.
+// Reply all copies the other recipients of parent, never the inbox itself.
+func replyOutbound(inbox *Inbox, parent *Message, replyAll bool) outbound {
+	target := parent.From
+	if parent.Direction == "out" && len(parent.To) > 0 {
+		target = parent.To[0]
+	}
+	o := outbound{to: []string{target}, subject: mailx.ReplySubject(parent.Subject), threadID: parent.ThreadID,
+		inReplyTo: parent.MessageID, references: append(append([]string{}, parent.References...), parent.MessageID)}
+	if replyAll {
+		seen := map[string]bool{inbox.InboxID: true, target: true}
+		for _, a := range append(append([]string{}, parent.To...), parent.Cc...) {
+			if !seen[a] {
+				seen[a] = true
+				o.cc = append(o.cc, a)
+			}
+		}
+	}
+	return o
 }
 
 // queue renders the MIME, stores it and inserts an outbound message for the sender worker.

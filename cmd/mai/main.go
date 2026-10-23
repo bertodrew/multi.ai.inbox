@@ -323,6 +323,7 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			} else {
 				log.Info("billing enabled", "prices", len(cfg.Billing.Prices))
 			}
+			srv.Done = ctx.Done() // open event streams end so shutdown does not wait for them
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			wg.Add(1)
 			go func() {

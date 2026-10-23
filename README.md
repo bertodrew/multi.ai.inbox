@@ -86,8 +86,10 @@ REST under `/v0` (contract in `openapi/openapi.yaml`), same capabilities as MCP 
 | Inboxes | `POST/GET /v0/inboxes`, `GET/PATCH/DELETE /v0/inboxes/{inbox}` (delete removes the mail and its stored files; the address is quarantined for 90 days, `409 address_quarantined`) |
 | Threads | `GET /v0/inboxes/{inbox}/threads`, `GET /v0/threads`, `GET /v0/threads/{id}` |
 | Messages | list, get, raw, labels (`PATCH`), `messages/send`, `{message}/reply` (both `403 sending_paused` while the bounce breaker holds the inbox or organization), `{message}/attachments/{id}`, `POST {message}/release` (needs `message_release`, audited) |
+| Drafts | `POST/GET /v0/inboxes/{inbox}/drafts`, `GET/PATCH/DELETE .../drafts/{draft}`, `POST .../drafts/{draft}/send` (send path rules and `Idempotency-Key`; optional `send_at` sent by the scheduler; reply drafts with `in_reply_to` keep the thread) |
 | Domains | `POST/GET /v0/domains`, `GET/DELETE /v0/domains/{domain}`, `POST /v0/domains/{domain}/verify` |
 | Webhooks | `POST/GET /v0/webhooks`, `DELETE /v0/webhooks/{id}` |
+| Events | `GET /v0/events/stream`: Server Sent Events with the webhook payloads (held mail redacted), `?types=`, `?inbox=`, resume with `Last-Event-ID`, 5 streams per key |
 | Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
 | Billing | `GET /v0/billing` (`billing_read`), `POST /v0/billing/checkout`, `POST /v0/billing/portal` (`billing_write`, audited), `POST /stripe/webhook` (public, Stripe-Signature verified); all `501 billing_disabled` without Stripe settings |
 | Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml`; `GET /metrics` on its own address (below) |
