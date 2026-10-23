@@ -9,8 +9,10 @@ import {
   ErrorEnvelope,
   type CreateInboxBody,
   type CreateKeyBody,
+  type CreateTicketBody,
   type CreateWebhookBody,
   type ReplyBody,
+  type UpdateTicketBody,
   type SendBody,
 } from "./schemas";
 import type { ConsoleSession } from "./session";
@@ -24,6 +26,11 @@ type Bodies = {
   "POST /v0/api-keys": CreateKeyBody;
   "POST /v0/webhooks": CreateWebhookBody;
   "POST /v0/domains": { domain: string };
+  "PATCH /v0/inboxes/{inbox}": { display_name?: string; ticket_intake?: boolean };
+  "POST /v0/tickets": CreateTicketBody;
+  "PATCH /v0/tickets/{ticket}": UpdateTicketBody;
+  "POST /v0/tickets/{ticket}/notes": { body: string };
+  "POST /v0/tickets/{ticket}/reply": ReplyBody;
 };
 type BodyOf<E extends Endpoint> = E extends keyof Bodies ? Bodies[E] : never;
 

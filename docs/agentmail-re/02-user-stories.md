@@ -132,3 +132,29 @@ AC: daily aggregates; alert emails at 80% and 100%.
 **E10.1** As AGT, I want a calendar per inbox that fills from emailed invitations, so that I can coordinate schedules.
 **E10.2** As AGT, I want to accept or decline iMIP invitations by API.
 **E10.3** As AGT, I want to sign in to third party apps with an agent identity, so that I can create accounts without a human.
+
+## Epic E11 · Tickets, the human side of an inbox
+
+Detailed design: [15-ticketing.md](15-ticketing.md). Tickets are opt-in per inbox and never
+copy the message body: a ticket is a thread with state.
+
+**E11.1 (P1)** As HUM, I want to mark an inbox as support intake, so that new threads become tickets automatically.
+AC: `inboxes.ticket_intake`; a new inbound thread creates a ticket with state `new` and number `T-<n>`; an inbox without the flag is unchanged.
+
+**E11.2 (P1)** As HUM, I want a queue with state, priority, assignee and SLA countdown, so that I know what to answer next.
+AC: `/console/tickets`; filters state, assignee, priority, text; saved views `assigned to me`, `unassigned`, `breaching`; counts per state.
+
+**E11.3 (P1)** As AGT, I want to open, list, assign and update tickets over MCP, so that I can triage without a human in the loop.
+AC: tools `create_ticket`, `list_tickets`, `get_ticket`, `update_ticket`, `assign_ticket`, `add_ticket_note`, `reply_ticket`; every call writes a `ticket_events` row with the key id.
+
+**E11.4 (P1)** As AGT, I want to leave an internal note the customer can never receive, so that I can explain my reasoning to the human.
+AC: notes live in `ticket_notes`; no code path from notes to the sender; a test proves the sender never reads them.
+
+**E11.5 (P2)** As HUM, I want SLA targets per plan with a breach event and an alert, so that a promise in the contract is measurable.
+AC: policy per plan in code; business hours Mon to Fri 09:00 to 18:00 CET; scheduler marks `sla_breach` once per due date; the existing healthcheck receives the alert.
+
+**E11.6 (P2)** As HUM, I want to create a ticket from any thread, so that a conversation that turns into a request does not get lost.
+AC: action in the thread reader; the ticket reuses the thread id; a second ticket on the same thread is refused.
+
+**E11.7 (P3)** As customer, I want a public form that opens a ticket without an account, so that I can write without email.
+AC: rate limited per IP, honeypot field, message lands in the intake inbox, confirmation page with the ticket number.

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -58,19 +59,56 @@ type ExportAPIKey struct {
 	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
 }
 
+// ExportTicket is one ticket as the tenant sees it. The message body stays in
+// messages: the export points at the thread through the subject and number.
+type ExportTicket struct {
+	Number       int64      `json:"number"`
+	Subject      string     `json:"subject"`
+	Requester    string     `json:"requester"`
+	State        string     `json:"state"`
+	Priority     string     `json:"priority"`
+	Assignee     string     `json:"assignee,omitempty"`
+	SLAPolicy    string     `json:"sla_policy,omitempty"`
+	Tags         []string   `json:"tags"`
+	CreatedAt    time.Time  `json:"created_at"`
+	FirstReplyAt *time.Time `json:"first_reply_at,omitempty"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	ClosedAt     *time.Time `json:"closed_at,omitempty"`
+}
+
+// ExportTicketNote is an internal note. It is part of the tenant's data, so it
+// is exported even though it never reached the customer.
+type ExportTicketNote struct {
+	TicketNumber int64     `json:"ticket_number"`
+	Author       string    `json:"author"`
+	Body         string    `json:"body"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type ExportTicketEvent struct {
+	TicketNumber int64           `json:"ticket_number"`
+	Kind         string          `json:"kind"`
+	Actor        string          `json:"actor"`
+	Detail       json.RawMessage `json:"detail"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
 // OrgExport is the answer to GET /v0/export: everything the platform holds
 // about the organization as a tenant, in one JSON document.
 type OrgExport struct {
-	Format       string          `json:"format"`
-	GeneratedAt  time.Time       `json:"generated_at"`
-	Organization *Org            `json:"organization"`
-	Inboxes      []ExportInbox   `json:"inboxes"`
-	Domains      []ExportDomain  `json:"domains"`
-	Webhooks     []ExportWebhook `json:"webhooks"`
-	APIKeys      []ExportAPIKey  `json:"api_keys"`
-	Counts       map[string]int  `json:"counts"`
-	AuditLog     []*AuditEntry   `json:"audit_log"`
-	Notice       string          `json:"notice"`
+	Format       string              `json:"format"`
+	GeneratedAt  time.Time           `json:"generated_at"`
+	Organization *Org                `json:"organization"`
+	Inboxes      []ExportInbox       `json:"inboxes"`
+	Domains      []ExportDomain      `json:"domains"`
+	Webhooks     []ExportWebhook     `json:"webhooks"`
+	APIKeys      []ExportAPIKey      `json:"api_keys"`
+	Tickets      []ExportTicket      `json:"tickets"`
+	TicketNotes  []ExportTicketNote  `json:"ticket_notes"`
+	TicketEvents []ExportTicketEvent `json:"ticket_events"`
+	Counts       map[string]int      `json:"counts"`
+	AuditLog     []*AuditEntry       `json:"audit_log"`
+	Notice       string              `json:"notice"`
 }
 
 // ExportOrg reads the organization's own data for a portability request
@@ -84,7 +122,8 @@ func (s *Service) ExportOrg(ctx context.Context, p *Principal) (*OrgExport, erro
 	out := &OrgExport{
 		Format: ExportFormat, GeneratedAt: s.now().UTC(), Organization: &Org{},
 		Inboxes: []ExportInbox{}, Domains: []ExportDomain{}, Webhooks: []ExportWebhook{},
-		APIKeys: []ExportAPIKey{}, Counts: map[string]int{}, AuditLog: []*AuditEntry{},
+		APIKeys: []ExportAPIKey{}, Tickets: []ExportTicket{}, TicketNotes: []ExportTicketNote{},
+		TicketEvents: []ExportTicketEvent{}, Counts: map[string]int{}, AuditLog: []*AuditEntry{},
 		Notice: ExportNotice,
 	}
 	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
@@ -166,7 +205,75 @@ func (s *Service) ExportOrg(ctx context.Context, p *Principal) (*OrgExport, erro
 			return err
 		}
 
-		for _, t := range []string{"threads", "messages", "attachments", "drafts", "events", "webhooks", "api_keys"} {
+		// Tickets, internal notes and their timeline: personal data like any
+		// other, so a portability or access request must include them.
+		trows, err := tx.Query(ctx, `select number, subject, requester, state, priority,
+			coalesce(assignee_user::text,''), coalesce(assignee_key::text,''), coalesce(sla_policy,''),
+			tags, created_at, first_reply_at, resolved_at, closed_at
+			from tickets where org_id = $1 order by number`, orgID)
+		if err != nil {
+			return err
+		}
+		for trows.Next() {
+			var t ExportTicket
+			var user, key string
+			if err := trows.Scan(&t.Number, &t.Subject, &t.Requester, &t.State, &t.Priority, &user, &key,
+				&t.SLAPolicy, &t.Tags, &t.CreatedAt, &t.FirstReplyAt, &t.ResolvedAt, &t.ClosedAt); err != nil {
+				trows.Close()
+				return err
+			}
+			t.Assignee = ticketActor(user, key)
+			out.Tickets = append(out.Tickets, t)
+		}
+		trows.Close()
+		if err := trows.Err(); err != nil {
+			return err
+		}
+
+		nrows, err := tx.Query(ctx, `select t.number, coalesce(n.author_user::text,''), coalesce(n.author_key::text,''),
+			n.body, n.created_at from ticket_notes n join tickets t on t.id = n.ticket_id
+			where n.org_id = $1 order by n.created_at`, orgID)
+		if err != nil {
+			return err
+		}
+		for nrows.Next() {
+			var n ExportTicketNote
+			var user, key string
+			if err := nrows.Scan(&n.TicketNumber, &user, &key, &n.Body, &n.CreatedAt); err != nil {
+				nrows.Close()
+				return err
+			}
+			n.Author = ticketActor(user, key)
+			out.TicketNotes = append(out.TicketNotes, n)
+		}
+		nrows.Close()
+		if err := nrows.Err(); err != nil {
+			return err
+		}
+
+		erows, err := tx.Query(ctx, `select t.number, e.kind, coalesce(e.actor_user::text,''), coalesce(e.actor_key::text,''),
+			e.detail, e.created_at from ticket_events e join tickets t on t.id = e.ticket_id
+			where e.org_id = $1 order by e.id`, orgID)
+		if err != nil {
+			return err
+		}
+		for erows.Next() {
+			var e ExportTicketEvent
+			var user, key string
+			if err := erows.Scan(&e.TicketNumber, &e.Kind, &user, &key, &e.Detail, &e.CreatedAt); err != nil {
+				erows.Close()
+				return err
+			}
+			e.Actor = ticketActor(user, key)
+			out.TicketEvents = append(out.TicketEvents, e)
+		}
+		erows.Close()
+		if err := erows.Err(); err != nil {
+			return err
+		}
+
+		for _, t := range []string{"threads", "messages", "attachments", "drafts", "events", "webhooks", "api_keys",
+			"tickets", "ticket_notes", "ticket_events"} {
 			var n int
 			if err := tx.QueryRow(ctx, "select count(*) from "+t+" where org_id = $1", orgID).Scan(&n); err != nil {
 				return err

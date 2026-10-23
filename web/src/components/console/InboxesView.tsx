@@ -34,6 +34,22 @@ export function InboxesView() {
     }
   };
 
+  const toggleIntake = async (inbox: Inbox) => {
+    const out = await action.run(
+      `intake:${inbox.inbox_id}`,
+      () =>
+        call(session, "PATCH /v0/inboxes/{inbox}", {
+          params: { inbox: inbox.inbox_id },
+          body: { ticket_intake: !inbox.ticket_intake },
+        }, Inbox),
+      {
+        success: inbox.ticket_intake ? "Support intake off" : "Support intake on",
+        failure: `Could not change ${inbox.inbox_id}`,
+      },
+    );
+    if (out.ok) list.reload();
+  };
+
   const remove = async (inbox: Inbox): Promise<boolean> => {
     const out = await action.run(
       `delete:${inbox.inbox_id}`,
@@ -99,6 +115,14 @@ export function InboxesView() {
                     >
                       Compose
                     </Link>
+                    {inbox.ticket_intake ? (
+                      <Badge tone="good">support queue</Badge>
+                    ) : null}
+                    {can("inbox_write") ? (
+                      <Button busy={action.busy === `intake:${inbox.inbox_id}`} onClick={() => toggleIntake(inbox)}>
+                        {inbox.ticket_intake ? "Intake off" : "Intake on"}
+                      </Button>
+                    ) : null}
                     {can("inbox_write") ? (
                       <ConfirmButton
                         label="Delete"

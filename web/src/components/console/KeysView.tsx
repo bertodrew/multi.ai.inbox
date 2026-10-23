@@ -27,6 +27,8 @@ const meaning: Record<Permission, string> = {
   billing_write: "Open Stripe checkout and the billing portal",
   data_export: "Export all organization data (GDPR Art. 15/20)",
   data_delete: "Delete the organization and its data (GDPR Art. 17)",
+  ticket_read: "Read the support queue (tickets and their timeline)",
+  ticket_write: "Change ticket state, priority, tags and assignment",
 };
 
 export function KeysView() {

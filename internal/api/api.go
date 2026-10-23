@@ -118,6 +118,15 @@ func (s *Server) Handler() http.Handler {
 	// to. Deletion needs data_delete, which a full key never implies.
 	route("GET /v0/export", core.PermDataExport, s.exportOrganization)
 	route("DELETE /v0/organization", core.PermDataDelete, s.deleteOrganization)
+	// Tickets: a thread with state. Reading the queue is ticket_read; changing
+	// it is ticket_write, which never grants the ability to email a customer.
+	route("GET /v0/tickets", core.PermTicketRead, s.listTickets)
+	route("POST /v0/tickets", core.PermTicketWrite, s.createTicket)
+	route("GET /v0/tickets/stats", core.PermTicketRead, s.ticketStats)
+	route("GET /v0/tickets/{ticket}", core.PermTicketRead, s.getTicket)
+	route("PATCH /v0/tickets/{ticket}", core.PermTicketWrite, s.updateTicket)
+	route("POST /v0/tickets/{ticket}/notes", core.PermTicketWrite, s.addTicketNote)
+	route("POST /v0/tickets/{ticket}/reply", core.PermMessageSend, s.replyTicket)
 	if s.MCP != nil {
 		auth.Handle("/mcp", s.MCP)
 	}
@@ -367,13 +376,15 @@ func (s *Server) getInbox(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateInbox(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		DisplayName *string `json:"display_name"`
+		DisplayName  *string `json:"display_name"`
+		TicketIntake *bool   `json:"ticket_intake"`
 	}
 	if err := decode(r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}
-	inbox, err := s.Svc.UpdateInbox(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"), req.DisplayName)
+	inbox, err := s.Svc.UpdateInbox(r.Context(), OrgFrom(r.Context()).ID, r.PathValue("inbox"),
+		req.DisplayName, req.TicketIntake)
 	if err != nil {
 		s.fail(w, err)
 		return

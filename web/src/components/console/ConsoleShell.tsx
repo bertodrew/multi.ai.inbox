@@ -29,6 +29,7 @@ const nav = [
   { href: "/console/", label: "Inboxes" },
   { href: "/console/compose/", label: "Compose" },
   { href: "/console/review/", label: "Review queue" },
+  { href: "/console/tickets/", label: "Tickets" },
   { href: "/console/keys/", label: "API keys" },
   { href: "/console/webhooks/", label: "Webhooks" },
   { href: "/console/domains/", label: "Domains" },

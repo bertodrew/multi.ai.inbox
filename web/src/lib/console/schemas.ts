@@ -34,6 +34,8 @@ export const PERMISSIONS = [
   "billing_write",
   "data_export",
   "data_delete",
+  "ticket_read",
+  "ticket_write",
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;
@@ -82,6 +84,7 @@ export const Inbox = z.object({
   email: z.string(),
   display_name: z.string(),
   client_id: z.string().nullish(),
+  ticket_intake: z.boolean().optional(),
   sending_paused_at: timestamp.nullish(),
   sending_paused_reason: z.string().nullish(),
   created_at: timestamp,
@@ -334,3 +337,70 @@ export const DomainInput = z
   .trim()
   .toLowerCase()
   .regex(/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, "Enter a domain such as mail.example.com");
+
+// Tickets: a thread with state. The console never copies a message body, it
+// reads the thread, so the queue and the mailbox cannot disagree.
+export const TicketState = z.enum(["new", "open", "pending", "resolved", "closed"]);
+export const TicketPriority = z.enum(["low", "normal", "high", "urgent"]);
+export const Ticket = z.object({
+  id: z.string(),
+  number: z.number().int(),
+  inbox_id: z.string(),
+  thread_id: z.string(),
+  subject: z.string(),
+  requester: z.string(),
+  state: TicketState,
+  priority: TicketPriority,
+  assignee_user: z.string().optional(),
+  assignee_key: z.string().optional(),
+  sla_policy: z.string().optional(),
+  due_first_reply: z.string().nullable().optional(),
+  due_resolution: z.string().nullable().optional(),
+  first_reply_at: z.string().nullable().optional(),
+  resolved_at: z.string().nullable().optional(),
+  closed_at: z.string().nullable().optional(),
+  tags: z.array(z.string()),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export const TicketList = z.object({ count: z.number().int(), next_page_token: z.string().optional(), tickets: list(Ticket) });
+export const TicketEvent = z.object({
+  id: z.number().int(),
+  kind: z.string(),
+  actor: z.string(),
+  detail: z.unknown(),
+  created_at: z.string(),
+});
+export const TicketNote = z.object({ id: z.string(), author: z.string(), body: z.string(), created_at: z.string() });
+export const TicketDetail = z.object({
+  ticket: Ticket,
+  events: list(TicketEvent),
+  notes: list(TicketNote),
+});
+export const TicketStats = z.object({
+  by_state: z.record(z.string(), z.number().int()),
+  open: z.number().int(),
+  breaching: z.number().int(),
+  unassigned: z.number().int(),
+  median_first_reply_seconds: z.number().int(),
+});
+export type Ticket = z.infer<typeof Ticket>;
+export type TicketState = z.infer<typeof TicketState>;
+export type TicketPriority = z.infer<typeof TicketPriority>;
+export type TicketDetail = z.infer<typeof TicketDetail>;
+export type TicketStats = z.infer<typeof TicketStats>;
+
+export type CreateTicketBody = {
+  thread_id: string;
+  priority?: TicketPriority;
+  tags?: string[];
+  assignee_user?: string;
+  assignee_key?: string;
+};
+export type UpdateTicketBody = {
+  state?: TicketState;
+  priority?: TicketPriority;
+  tags?: string[];
+  assignee_user?: string;
+  assignee_key?: string;
+};

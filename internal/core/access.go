@@ -46,11 +46,16 @@ const (
 	// (DELETE /v0/organization). Never implied by a full access key: erasing a
 	// tenant is a human decision, so the operator issues the key explicitly.
 	PermDataDelete = "data_delete"
+	// PermTicketRead reads the support queue; PermTicketWrite changes state,
+	// priority, tags and assignment. Neither lets a key email a customer: a
+	// reply also needs message_send.
+	PermTicketRead  = "ticket_read"
+	PermTicketWrite = "ticket_write"
 )
 
 var AllPermissions = []string{PermInboxRead, PermInboxWrite, PermMessageRead, PermMessageSend, PermMessageUpdate,
 	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead,
-	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite, PermDataExport}
+	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite, PermDataExport, PermTicketRead, PermTicketWrite}
 
 // ExplicitPermissions are never implied by a full access key (nil
 // permissions): a key holds them only when they are listed, so an agent with a

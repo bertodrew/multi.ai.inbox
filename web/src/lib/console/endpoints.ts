@@ -7,6 +7,7 @@ export const CONSOLE_ENDPOINTS = [
   "POST /v0/inboxes",
   "DELETE /v0/inboxes/{inbox}",
   "GET /v0/inboxes/{inbox}",
+  "PATCH /v0/inboxes/{inbox}",
   "GET /v0/inboxes/{inbox}/threads",
   "GET /v0/threads/{thread}",
   "GET /v0/inboxes/{inbox}/messages",
@@ -24,6 +25,13 @@ export const CONSOLE_ENDPOINTS = [
   "POST /v0/domains",
   "POST /v0/domains/{domain}/verify",
   "GET /v0/audit-logs",
+  "GET /v0/tickets",
+  "POST /v0/tickets",
+  "GET /v0/tickets/stats",
+  "GET /v0/tickets/{ticket}",
+  "PATCH /v0/tickets/{ticket}",
+  "POST /v0/tickets/{ticket}/notes",
+  "POST /v0/tickets/{ticket}/reply",
 ] as const;
 
 export type Endpoint = (typeof CONSOLE_ENDPOINTS)[number];

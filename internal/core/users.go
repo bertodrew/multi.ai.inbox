@@ -44,7 +44,7 @@ func PermissionsForRole(role string) []string {
 		return sortedUnique(perms)
 	default: // member, and anything unknown, gets the smallest useful set
 		return sortedUnique([]string{PermInboxRead, PermMessageRead, PermMessageSend, PermMessageUpdate,
-			PermDomainRead, PermWebhookRead, PermAPIKeyRead, PermBillingRead})
+			PermDomainRead, PermWebhookRead, PermAPIKeyRead, PermBillingRead, PermTicketRead})
 	}
 }
 

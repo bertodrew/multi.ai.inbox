@@ -21,6 +21,8 @@ type Inbox struct {
 	Email       string  `json:"email"`
 	DisplayName string  `json:"display_name"`
 	ClientID    *string `json:"client_id,omitempty"`
+	// TicketIntake marks a support inbox: new threads on it become tickets.
+	TicketIntake bool `json:"ticket_intake"`
 	// Set when the bounce breaker paused sending; an operator resumes it.
 	SendingPausedAt     *time.Time `json:"sending_paused_at,omitempty"`
 	SendingPausedReason *string    `json:"sending_paused_reason,omitempty"`
@@ -40,11 +42,11 @@ var (
 	clientIDRe = regexp.MustCompile(`^[A-Za-z0-9._~-]{1,256}$`)
 )
 
-const inboxCols = "id, address, display_name, client_id, sending_paused_at, sending_paused_reason, created_at, updated_at"
+const inboxCols = "id, address, display_name, client_id, ticket_intake, sending_paused_at, sending_paused_reason, created_at, updated_at"
 
 func scanInbox(row pgx.Row) (*Inbox, error) {
 	i := &Inbox{}
-	if err := row.Scan(&i.ID, &i.InboxID, &i.DisplayName, &i.ClientID, &i.SendingPausedAt, &i.SendingPausedReason, &i.CreatedAt, &i.UpdatedAt); err != nil {
+	if err := row.Scan(&i.ID, &i.InboxID, &i.DisplayName, &i.ClientID, &i.TicketIntake, &i.SendingPausedAt, &i.SendingPausedReason, &i.CreatedAt, &i.UpdatedAt); err != nil {
 		return nil, err
 	}
 	i.Email = i.InboxID
@@ -185,15 +187,16 @@ func (s *Service) inboxTx(ctx context.Context, tx pgx.Tx, address string) (*Inbo
 	return i, err
 }
 
-func (s *Service) UpdateInbox(ctx context.Context, orgID, address string, displayName *string) (*Inbox, error) {
+func (s *Service) UpdateInbox(ctx context.Context, orgID, address string, displayName *string, ticketIntake *bool) (*Inbox, error) {
 	if displayName != nil && len(*displayName) > 200 {
 		return nil, Validation("display_name is longer than 200 characters")
 	}
 	var out *Inbox
 	err := s.DB.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		var err error
-		out, err = scanInbox(tx.QueryRow(ctx, `update inboxes set display_name = coalesce($2, display_name), updated_at = now()
-			where address = $1 returning `+inboxCols, strings.ToLower(address), displayName))
+		out, err = scanInbox(tx.QueryRow(ctx, `update inboxes set display_name = coalesce($2, display_name),
+			ticket_intake = coalesce($3, ticket_intake), updated_at = now()
+			where address = $1 returning `+inboxCols, strings.ToLower(address), displayName, ticketIntake))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return NotFound("inbox")
 		}

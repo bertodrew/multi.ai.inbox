@@ -4,6 +4,8 @@ Email inboxes for AI agents, hosted in the EU. Agent native, written in Go (conn
 
 An inbox is a database row, mail is an event. Agents create inboxes with one API call, receive mail as parsed threads, get signed webhooks, reply with correct threading, and use the same capabilities as MCP tools from Claude Code, Cursor or Codex.
 
+The human side is the same thread, not a second system: an inbox can be marked as support intake and its threads become tickets with state, priority, assignee (a person or an agent key), SLA and internal notes that can never be emailed. Design: [`docs/agentmail-re/15-ticketing.md`](docs/agentmail-re/15-ticketing.md).
+
 Design and research: [`docs/agentmail-re/`](docs/agentmail-re/README.md) (PRD, API spec, architecture, [ADR 10](docs/agentmail-re/10-native-platform.md)).
 
 ## What runs

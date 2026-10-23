@@ -155,3 +155,27 @@ Content-Type: application/json
 
 ### B.4 Validation
 OpenAPI 3.1 in `packages/openapi` is the single source. Go handlers validate with generated types plus explicit checks; the web BFF and SDK use Zod schemas generated from the same file, so client, server and MCP tool inputs share one definition (founder rule: Zod on every input).
+
+### B.5 Tickets [decision]
+
+Design and rationale: [15-ticketing.md](15-ticketing.md). A ticket is a thread with state; the
+message body is never copied.
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/v0/tickets` | `ticket_read` |
+| POST | `/v0/tickets` | `ticket_write` |
+| GET | `/v0/tickets/{id}` | `ticket_read` |
+| PATCH | `/v0/tickets/{id}` | `ticket_write` |
+| POST | `/v0/tickets/{id}/notes` | `ticket_write` |
+| POST | `/v0/tickets/{id}/reply` | `message_send` |
+| GET | `/v0/tickets/stats` | `ticket_read` |
+
+States: `new`, `open`, `pending`, `resolved`, `closed`. Reopening is allowed; a closed ticket
+that receives a new message yields a new ticket number on the same thread.
+
+MCP mirrors the same operations: `create_ticket`, `list_tickets`, `get_ticket`,
+`update_ticket`, `assign_ticket`, `add_ticket_note`, `reply_ticket`.
+
+Internal notes live in `ticket_notes` and have no path to the sender: a note can never be
+emailed by mistake.

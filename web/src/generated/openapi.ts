@@ -439,7 +439,7 @@ export const apiReference: ApiReference = {
       "id": "patch-v0-inboxes-inbox",
       "method": "PATCH",
       "path": "/v0/inboxes/{inbox}",
-      "summary": "Update display name",
+      "summary": "Update display name, or turn the inbox into a support intake",
       "params": [
         {
           "name": "inbox",
@@ -461,6 +461,13 @@ export const apiReference: ApiReference = {
             "constraints": [
               "max length 200"
             ]
+          },
+          {
+            "name": "ticket_intake",
+            "type": "boolean",
+            "required": false,
+            "description": "New threads on this inbox become tickets in the support queue.",
+            "constraints": []
           }
         ]
       },
@@ -2174,6 +2181,401 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "id": "get-v0-tickets",
+      "method": "GET",
+      "path": "/v0/tickets",
+      "summary": "List tickets, newest activity first",
+      "params": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "integer",
+          "description": "",
+          "constraints": [
+            "min 1",
+            "max 100",
+            "default 20"
+          ]
+        },
+        {
+          "name": "page_token",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "state",
+          "in": "query",
+          "required": false,
+          "type": "TicketState",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "priority",
+          "in": "query",
+          "required": false,
+          "type": "TicketPriority",
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "user id, API key id, or none",
+          "constraints": []
+        },
+        {
+          "name": "inbox",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "inbox address",
+          "constraints": []
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "case insensitive over subject and requester",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "TicketList"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-tickets",
+      "method": "POST",
+      "path": "/v0/tickets",
+      "summary": "Open a ticket on an existing thread (requires ticket_write, audited)",
+      "params": [],
+      "body": {
+        "schema": "CreateTicket",
+        "fields": [
+          {
+            "name": "thread_id",
+            "type": "string",
+            "required": true,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "priority",
+            "type": "TicketPriority",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "tags",
+            "type": "string[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "assignee_user",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "assignee_key",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "201",
+          "description": "Created",
+          "schema": "Ticket"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-tickets-stats",
+      "method": "GET",
+      "path": "/v0/tickets/stats",
+      "summary": "Queue counters and median first reply",
+      "params": [],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "TicketStats"
+        }
+      ]
+    },
+    {
+      "id": "get-v0-tickets-ticket",
+      "method": "GET",
+      "path": "/v0/tickets/{ticket}",
+      "summary": "Read one ticket with its timeline and internal notes",
+      "params": [
+        {
+          "name": "ticket",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "TicketDetail"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "patch-v0-tickets-ticket",
+      "method": "PATCH",
+      "path": "/v0/tickets/{ticket}",
+      "summary": "Change state, priority, tags or assignment (requires ticket_write, audited)",
+      "params": [
+        {
+          "name": "ticket",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": {
+        "schema": "UpdateTicket",
+        "fields": [
+          {
+            "name": "state",
+            "type": "TicketState",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "priority",
+            "type": "TicketPriority",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "tags",
+            "type": "string[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "assignee_user",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "assignee_key",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "Ticket"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-tickets-ticket-notes",
+      "method": "POST",
+      "path": "/v0/tickets/{ticket}/notes",
+      "summary": "Add an internal note (requires ticket_write, audited)",
+      "params": [
+        {
+          "name": "ticket",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": {
+        "schema": "",
+        "fields": [
+          {
+            "name": "body",
+            "type": "string",
+            "required": true,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "201",
+          "description": "Created",
+          "schema": "TicketNote"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-tickets-ticket-reply",
+      "method": "POST",
+      "path": "/v0/tickets/{ticket}/reply",
+      "summary": "Reply to the customer on the ticket thread (requires message_send, audited)",
+      "params": [
+        {
+          "name": "ticket",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": {
+        "schema": "Reply",
+        "fields": [
+          {
+            "name": "text",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "html",
+            "type": "string",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "reply_all",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "labels",
+            "type": "string[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "attachments",
+            "type": "Attachment[]",
+            "required": false,
+            "description": "",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "200",
+          "description": "Sent",
+          "schema": "SendResult"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
       "id": "post-stripe-webhook",
       "method": "POST",
       "path": "/stripe/webhook",
@@ -2554,6 +2956,13 @@ export const apiReference: ApiReference = {
           "type": "string",
           "required": false,
           "description": "",
+          "constraints": []
+        },
+        {
+          "name": "ticket_intake",
+          "type": "boolean",
+          "required": false,
+          "description": "New threads on this inbox become tickets.",
           "constraints": []
         },
         {
@@ -3441,6 +3850,389 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "name": "Ticket",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "number",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "inbox_id",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "thread_id",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "requester",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "state",
+          "type": "TicketState",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "priority",
+          "type": "TicketPriority",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee_user",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee_key",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "sla_policy",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "due_first_reply",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "due_resolution",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "first_reply_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "resolved_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "closed_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "tags",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "created_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "updated_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "TicketList",
+      "fields": [
+        {
+          "name": "count",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "next_page_token",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "tickets",
+          "type": "Ticket[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "TicketEvent",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "actor",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "detail",
+          "type": "object",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "created_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "TicketNote",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "author",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "created_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "TicketDetail",
+      "fields": [
+        {
+          "name": "ticket",
+          "type": "Ticket",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "events",
+          "type": "TicketEvent[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "notes",
+          "type": "TicketNote[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "TicketStats",
+      "fields": [
+        {
+          "name": "by_state",
+          "type": "object",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "open",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "breaching",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "unassigned",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "median_first_reply_seconds",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "CreateTicket",
+      "fields": [
+        {
+          "name": "thread_id",
+          "type": "string",
+          "required": true,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "priority",
+          "type": "TicketPriority",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "tags",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee_user",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee_key",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "UpdateTicket",
+      "fields": [
+        {
+          "name": "state",
+          "type": "TicketState",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "priority",
+          "type": "TicketPriority",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "tags",
+          "type": "string[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee_user",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "assignee_key",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
       "name": "Checkout",
       "fields": [
         {
@@ -3727,6 +4519,8 @@ export const apiReference: ApiReference = {
     "billing_read",
     "billing_write",
     "data_export",
-    "data_delete"
+    "data_delete",
+    "ticket_read",
+    "ticket_write"
   ]
 };

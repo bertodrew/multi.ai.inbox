@@ -242,6 +242,13 @@ export const mcp: DocPage = {
         ["`get_attachment`", "Download an attachment: text files as text, others as base64 (max 5 MB)."],
         ["`list_domains`", "List domains usable for inboxes, with DNS records and verification status."],
         ["`release_message`", "Release a message held for security review. Needs `message_release`; meant for a human reviewer, not the agent."],
+        ["`create_ticket`", "Open a ticket on a thread so a human follows up. Needs `ticket_write`."],
+        ["`list_tickets`", "List the support queue, newest activity first. Filter by state, priority, assignee or text."],
+        ["`get_ticket`", "Read one ticket with its timeline and internal notes."],
+        ["`update_ticket`", "Change state, priority or tags. Needs `ticket_write`; refusals are explicit."],
+        ["`assign_ticket`", "Take a ticket or hand it to a person. Needs `ticket_write`."],
+        ["`add_ticket_note`", "Leave an internal note for the human. It can never be emailed to the customer."],
+        ["`reply_ticket`", "Answer the customer on the ticket thread. Needs `message_send`, as any reply does."],
       ],
     },
     {

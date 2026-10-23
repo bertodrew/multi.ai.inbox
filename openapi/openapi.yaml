@@ -147,11 +147,18 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
         "404": { $ref: "#/components/responses/Error" }
     patch:
-      summary: Update display name
+      summary: Update display name, or turn the inbox into a support intake
       requestBody:
         content:
           application/json:
-            schema: { type: object, additionalProperties: false, properties: { display_name: { type: string, maxLength: 200 } } }
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                display_name: { type: string, maxLength: 200 }
+                ticket_intake:
+                  type: boolean
+                  description: New threads on this inbox become tickets in the support queue.
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Inbox" } } } }
     delete:
@@ -549,6 +556,101 @@ paths:
                   export_before_deletion: { $ref: "#/components/schemas/OrgExport" }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /v0/tickets:
+    get:
+      summary: List tickets, newest activity first
+      description: |
+        The support queue. A ticket is a thread with state: the message body is
+        not copied, so reading a ticket and reading the mailbox can never
+        disagree. Filters combine.
+      parameters:
+        - { $ref: "#/components/parameters/limit" }
+        - { $ref: "#/components/parameters/page_token" }
+        - { name: state, in: query, schema: { $ref: "#/components/schemas/TicketState" } }
+        - { name: priority, in: query, schema: { $ref: "#/components/schemas/TicketPriority" } }
+        - { name: assignee, in: query, schema: { type: string }, description: "user id, API key id, or none" }
+        - { name: inbox, in: query, schema: { type: string }, description: "inbox address" }
+        - { name: q, in: query, schema: { type: string }, description: "case insensitive over subject and requester" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TicketList" } } } }
+    post:
+      summary: Open a ticket on an existing thread (requires ticket_write, audited)
+      description: |
+        409 ticket_exists when the thread already has a ticket. The number is
+        allocated per organization under a lock and is what a customer quotes.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTicket" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Ticket" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /v0/tickets/stats:
+    get:
+      summary: Queue counters and median first reply
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TicketStats" } } } }
+  /v0/tickets/{ticket}:
+    get:
+      summary: Read one ticket with its timeline and internal notes
+      parameters: [{ name: ticket, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TicketDetail" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Change state, priority, tags or assignment (requires ticket_write, audited)
+      description: |
+        Transitions are explicit and refused when they are not in the state
+        machine (409 invalid_transition). A priority change recomputes the SLA
+        from now.
+      parameters: [{ name: ticket, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTicket" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Ticket" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /v0/tickets/{ticket}/notes:
+    post:
+      summary: Add an internal note (requires ticket_write, audited)
+      description: |
+        Notes live in their own table and have no path to the sender: a note can
+        never be emailed to the customer by mistake.
+      parameters: [{ name: ticket, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties: { body: { type: string } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/TicketNote" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v0/tickets/{ticket}/reply:
+    post:
+      summary: Reply to the customer on the ticket thread (requires message_send, audited)
+      description: |
+        Sends through the normal reply path, so threading and the gatekeeper
+        behave exactly as for any other reply. The first reply stamps the SLA.
+      parameters: [{ name: ticket, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Reply" }
+      responses:
+        "200": { description: Sent, content: { application/json: { schema: { $ref: "#/components/schemas/SendResult" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /stripe/webhook:
     post:
       summary: Stripe webhook endpoint (public, Stripe-Signature verified)
@@ -666,6 +768,7 @@ components:
         email: { type: string, format: email }
         display_name: { type: string }
         client_id: { type: string }
+        ticket_intake: { type: boolean, description: New threads on this inbox become tickets. }
         sending_paused_at:
           type: string
           format: date-time
@@ -856,7 +959,87 @@ components:
       type: string
       enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
              webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release,
-             billing_read, billing_write, data_export, data_delete]
+             billing_read, billing_write, data_export, data_delete, ticket_read, ticket_write]
+    TicketState:
+      type: string
+      enum: [new, open, pending, resolved, closed]
+    TicketPriority:
+      type: string
+      enum: [low, normal, high, urgent]
+    Ticket:
+      type: object
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        number: { type: integer }
+        inbox_id: { type: string }
+        thread_id: { type: string }
+        subject: { type: string }
+        requester: { type: string }
+        state: { $ref: "#/components/schemas/TicketState" }
+        priority: { $ref: "#/components/schemas/TicketPriority" }
+        assignee_user: { type: string }
+        assignee_key: { type: string }
+        sla_policy: { type: string }
+        due_first_reply: { type: string, format: date-time }
+        due_resolution: { type: string, format: date-time }
+        first_reply_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time }
+        closed_at: { type: string, format: date-time }
+        tags: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    TicketList:
+      type: object
+      properties: { count: { type: integer }, next_page_token: { type: string }, tickets: { type: array, items: { $ref: "#/components/schemas/Ticket" } } }
+    TicketEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string }
+        actor: { type: string }
+        detail: { type: object }
+        created_at: { type: string, format: date-time }
+    TicketNote:
+      type: object
+      properties:
+        id: { type: string }
+        author: { type: string }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+    TicketDetail:
+      type: object
+      properties:
+        ticket: { $ref: "#/components/schemas/Ticket" }
+        events: { type: array, items: { $ref: "#/components/schemas/TicketEvent" } }
+        notes: { type: array, items: { $ref: "#/components/schemas/TicketNote" } }
+    TicketStats:
+      type: object
+      properties:
+        by_state: { type: object, additionalProperties: { type: integer } }
+        open: { type: integer }
+        breaching: { type: integer }
+        unassigned: { type: integer }
+        median_first_reply_seconds: { type: integer }
+    CreateTicket:
+      type: object
+      additionalProperties: false
+      required: [thread_id]
+      properties:
+        thread_id: { type: string }
+        priority: { $ref: "#/components/schemas/TicketPriority" }
+        tags: { type: array, items: { type: string } }
+        assignee_user: { type: string }
+        assignee_key: { type: string }
+    UpdateTicket:
+      type: object
+      additionalProperties: false
+      properties:
+        state: { $ref: "#/components/schemas/TicketState" }
+        priority: { $ref: "#/components/schemas/TicketPriority" }
+        tags: { type: array, items: { type: string } }
+        assignee_user: { type: string }
+        assignee_key: { type: string }
     Checkout:
       type: object
       additionalProperties: false

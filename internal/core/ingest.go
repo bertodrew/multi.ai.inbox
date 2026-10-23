@@ -89,9 +89,18 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 			}
 			preview := mailx.Preview(parsed.Text, 200)
 			labels := uniqueLabels(append([]string{"received", "unread"}, meta.Labels...))
-			if threadID == "" {
+			newThread := threadID == ""
+			if newThread {
 				if err := tx.QueryRow(ctx, "insert into threads (org_id, inbox_id, subject, preview) values ($1, $2, $3, $4) returning id",
 					rc.OrgID, rc.InboxID, parsed.Subject, preview).Scan(&threadID); err != nil {
+					return err
+				}
+			}
+			// A thread that opens in an intake inbox becomes a ticket in the same
+			// transaction, so the queue and the mailbox cannot disagree.
+			if newThread {
+				if err := s.IntakeTicket(ctx, tx, rc.OrgID, rc.InboxID, threadID, parsed.Subject,
+					strings.ToLower(parsed.From)); err != nil {
 					return err
 				}
 			}

@@ -33,6 +33,8 @@ No private endpoint was probed, no account was created and no authenticated cons
 | 08 | [Security and compliance](08-security-compliance.md) | CTO | Threat model, Agent Armor equivalent, RLS, abuse prevention, GDPR |
 | 09 | [Execution plan](09-execution-plan.md) | CPO + CTO | Phased roadmap, milestones, team of one, risks, decisions to take |
 | 10 | [ADR: native platform](10-native-platform.md) | CTO | Remove mailcow PHP, Go and Rust agent native platform on Hetzner, migration steps M0 to M8 |
+| 15 | [Ticketing](15-ticketing.md) | CPO + CTO | In-house ticket layer on threads: model, state machine, SLA, API, MCP tools, phases |
+| 16 | [Ticketing review](16-ticketing-review.md) | CEO, CPO, CTO, CISO | Four-hat review, verdicts and the conditions attached to them |
 
 ## Finding ledger (summary)
 

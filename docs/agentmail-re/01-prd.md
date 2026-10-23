@@ -85,6 +85,7 @@ Conclusion [inferred]: demand is real and dominated by AI native startups that p
 | MCP server | Hosted MCP for Claude, ChatGPT, Cursor | observed |
 | SDKs | TypeScript and Python generated from OpenAPI; CLI | observed |
 | Agent self sign up | An agent creates its own account; limited until a human claims it | observed |
+| **Tickets (human side)** | An inbox marked as support intake turns threads into tickets: state, priority, assignment to a human or an agent key, SLA, internal notes. Same thread, no mirror. See [15](15-ticketing.md) | decision |
 
 ### 6.3 Scale (could have, V2)
 | Capability | Description | Reference |

@@ -350,5 +350,6 @@ func newServer(g *gate, version string) *mcp.Server {
 			items, err := svc.ListDomains(ctx, org)
 			return nil, listOut("domains", items, ""), err
 		})
+	addTicketTools(s, g)
 	return s
 }
