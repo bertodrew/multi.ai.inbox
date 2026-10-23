@@ -56,6 +56,27 @@ data:
     (static_site) {
       import site_headers
       encode zstd gzip
+      # The console is served from this origin and calls the API from the same
+      # origin, so the strict connect-src 'self' policy holds and no CORS
+      # preflight is needed. The api.<host> name keeps working for API clients.
+      @sse path /v0/events/stream /v1/events/stream
+      handle @sse {
+        reverse_proxy mai-http:8080 {
+          flush_interval -1
+        }
+      }
+      handle /v0/* {
+        reverse_proxy mai-http:8080
+      }
+      handle /v1/* {
+        reverse_proxy mai-http:8080
+      }
+      handle /mcp* {
+        reverse_proxy mai-http:8080
+      }
+      handle /openapi.yaml {
+        reverse_proxy mai-http:8080
+      }
       root * /srv
       @markdown path *.md /llms.txt
       header @markdown Content-Type "text/markdown; charset=utf-8"

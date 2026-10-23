@@ -82,7 +82,10 @@ export function defaultApiBase(): string {
   const fromEnv = process.env.NEXT_PUBLIC_MAI_API_URL;
   if (fromEnv) return fromEnv.replace(/\/+$/, "");
   if (typeof window === "undefined") return API_URL;
-  const { protocol, hostname } = window.location;
+  const { hostname, origin } = window.location;
   if (hostname === "localhost" || hostname === "127.0.0.1" || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return API_URL;
-  return `${protocol}//api.${hostname.replace(/^www\./, "")}`;
+  // Caddy proxies /v0, /v1, /mcp and /openapi.yaml from the site origin to the
+  // API, so the console talks to its own origin: the connect-src 'self' policy
+  // holds and there is no CORS to configure.
+  return origin;
 }
