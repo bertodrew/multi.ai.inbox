@@ -236,6 +236,7 @@ const errorMeaning: Record<string, [string, string]> = {
   cannot_delete: ["409", "The domain still has inboxes."],
   limit_exceeded: ["403 or 429", "A plan limit: inboxes or domains (403), daily or monthly sends (429)."],
   rate_limit_exceeded: ["429", "Too many requests. Wait for the `Retry-After` header."],
+  rate_limited: ["429", "The plan's 5 minute send burst limit is reached. Retry after the `Retry-After` seconds."],
   address_quarantined: ["409", "The address belonged to an inbox deleted less than 90 days ago; it is reserved until the date in the message."],
   sending_paused: ["403", "Sending from the inbox or organization is paused because too many recent sends hard bounced. Contact support."],
   missing_permission: ["403", "The API key is scoped and lacks the permission this endpoint needs."],
@@ -315,6 +316,7 @@ export const limits: DocPage = {
       head: ["Limit", "Value"],
       rows: [
         ["API requests", "Per organization token bucket, 20 requests per second with bursts up to 40 by default. Over the limit: `429 rate_limit_exceeded` with `Retry-After`."],
+        ["Send burst", "10% of the daily send limit per 5 minutes: Free 10, Builder 100, Team 1,500. Over the limit: `429 rate_limited` with `Retry-After`."],
         ["Failed authentications", "Throttled per client address."],
         ["JSON request body", "8 MB"],
         ["Attachments per sent message", "6 MB in total"],

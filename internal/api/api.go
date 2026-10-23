@@ -175,7 +175,10 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	}
 	if e.Status == http.StatusTooManyRequests {
 		retry := "60"
-		if e.Code == "rate_limit_exceeded" {
+		switch {
+		case e.RetryAfter > 0:
+			retry = strconv.Itoa(e.RetryAfter)
+		case e.Code == "rate_limit_exceeded":
 			retry = "1"
 		}
 		w.Header().Set("Retry-After", retry)

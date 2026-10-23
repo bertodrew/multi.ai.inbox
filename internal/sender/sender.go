@@ -35,6 +35,15 @@ type Sender struct {
 	Log      *slog.Logger
 	// TLSConfig overrides TLS settings (tests use a self signed relay).
 	TLSConfig *tls.Config
+	// MTASTS applies recipient domains' MTA-STS policies to direct delivery
+	// (cmd/mai always sets it); nil means opportunistic TLS only.
+	MTASTS *MTASTS
+	// DNS looks up MX records; nil uses net.DefaultResolver.
+	DNS interface {
+		LookupMX(ctx context.Context, name string) ([]*net.MX, error)
+	}
+	// Dial opens SMTP connections; nil dials TCP with a 30 second timeout.
+	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 func (s *Sender) Run(ctx context.Context) {
@@ -168,23 +177,50 @@ func (s *Sender) viaRelay(raw []byte, from string, rcpts []string) error {
 	return transmit(c, raw, from, rcpts)
 }
 
-// direct delivers to each recipient domain's MX with opportunistic STARTTLS.
+// direct delivers to each recipient domain's MX with opportunistic STARTTLS,
+// or with authenticated TLS to policy matching MX hosts when the domain
+// publishes an MTA-STS policy in enforce mode. In testing mode violations
+// are only logged.
 func (s *Sender) direct(ctx context.Context, raw []byte, from string, rcpts []string) error {
 	byDomain := map[string][]string{}
 	for _, r := range rcpts {
 		d := mailx.DomainOf(r)
 		byDomain[d] = append(byDomain[d], r)
 	}
+	var resolver interface {
+		LookupMX(ctx context.Context, name string) ([]*net.MX, error)
+	} = net.DefaultResolver
+	if s.DNS != nil {
+		resolver = s.DNS
+	}
 	for domain, list := range byDomain {
-		mxs, err := net.DefaultResolver.LookupMX(ctx, domain)
+		mxs, err := resolver.LookupMX(ctx, domain)
 		if err != nil || len(mxs) == 0 {
 			mxs = []*net.MX{{Host: domain, Pref: 0}} // implicit MX (RFC 5321 5.1)
 		}
 		sort.Slice(mxs, func(a, b int) bool { return mxs[a].Pref < mxs[b].Pref })
+		var policy *STSPolicy
+		if s.MTASTS != nil {
+			if policy = s.MTASTS.Policy(ctx, domain); policy != nil && policy.Mode == stsNone {
+				policy = nil
+			}
+		}
 		var lastErr error
 		for _, mx := range mxs {
 			host := strings.TrimSuffix(mx.Host, ".")
-			lastErr = s.deliverTo(host, raw, from, list)
+			mode := ""
+			if policy != nil {
+				mode = policy.Mode
+				if !policy.Matches(host) {
+					if mode == stsEnforce {
+						s.Log.Warn("mta-sts: skipping MX not listed in the policy", "domain", domain, "mx", host)
+						lastErr = fmt.Errorf("mta-sts: MX %s does not match the policy", host)
+						continue
+					}
+					s.Log.Warn("mta-sts testing: MX not listed in the policy", "domain", domain, "mx", host)
+				}
+			}
+			lastErr = s.deliverTo(ctx, host, raw, from, list, mode)
 			if lastErr == nil || errors.Is(lastErr, core.ErrPermanent) {
 				break
 			}
@@ -196,21 +232,46 @@ func (s *Sender) direct(ctx context.Context, raw []byte, from string, rcpts []st
 	return nil
 }
 
-func (s *Sender) deliverTo(host string, raw []byte, from string, rcpts []string) error {
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, "25"), 30*time.Second)
+// deliverTo sends to one MX. stsMode is "" (opportunistic TLS), testing
+// (verify and log) or enforce (STARTTLS with a valid certificate required).
+func (s *Sender) deliverTo(ctx context.Context, host string, raw []byte, from string, rcpts []string, stsMode string) error {
+	dial := s.Dial
+	if dial == nil {
+		d := &net.Dialer{Timeout: 30 * time.Second}
+		dial = d.DialContext
+	}
+	conn, err := dial(ctx, "tcp", net.JoinHostPort(host, "25"))
 	if err != nil {
 		return err
 	}
 	// Opportunistic TLS (RFC 7435): encrypt whenever offered; most MX
-	// certificates do not match their hostname. MTA-STS and DANE add
-	// authenticated TLS per domain in a later step.
+	// certificates do not match their hostname. An MTA-STS policy in
+	// enforce mode turns certificate validation on (RFC 8461 section 4.2).
 	cfg := s.tls(host)
-	if s.TLSConfig == nil {
-		cfg.InsecureSkipVerify = true //nolint:gosec // opportunistic SMTP TLS, see comment above
+	switch stsMode {
+	case stsEnforce:
+	case stsTesting:
+		verify := s.tls(host)
+		cfg.InsecureSkipVerify = true //nolint:gosec // verified below, failures only logged in testing mode
+		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if err := verifyPeer(cs, host, verify.RootCAs); err != nil {
+				s.Log.Warn("mta-sts testing: certificate would fail validation", "mx", host, "err", err)
+			}
+			return nil
+		}
+	default:
+		if s.TLSConfig == nil {
+			cfg.InsecureSkipVerify = true //nolint:gosec // opportunistic SMTP TLS, see comment above
+		}
 	}
-	conn, err = startTLS(conn, s.HeloName, cfg)
+	conn, err = startTLS(conn, s.HeloName, cfg, stsMode == stsEnforce)
 	if err != nil {
 		return err
+	}
+	if stsMode == stsTesting {
+		if g, ok := conn.(greeted); ok && !isTLS(g.Conn) {
+			s.Log.Warn("mta-sts testing: MX does not offer STARTTLS", "mx", host)
+		}
 	}
 	c := smtp.NewClient(conn)
 	defer c.Close()
@@ -220,11 +281,29 @@ func (s *Sender) deliverTo(host string, raw []byte, from string, rcpts []string)
 	return transmit(c, raw, from, rcpts)
 }
 
+func isTLS(c net.Conn) bool {
+	_, ok := c.(*tls.Conn)
+	return ok
+}
+
+func verifyPeer(cs tls.ConnectionState, host string, roots *x509.CertPool) error {
+	if len(cs.PeerCertificates) == 0 {
+		return errors.New("no peer certificate")
+	}
+	inter := x509.NewCertPool()
+	for _, c := range cs.PeerCertificates[1:] {
+		inter.AddCert(c)
+	}
+	_, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{DNSName: host, Roots: roots, Intermediates: inter})
+	return err
+}
+
 // startTLS negotiates STARTTLS when the server offers it, using our HELO
 // name (go-smtp only exposes STARTTLS with a default "localhost" EHLO). The
 // returned connection replays a greeting so the SMTP client can EHLO again,
 // as RFC 3207 requires after TLS starts.
-func startTLS(conn net.Conn, helo string, cfg *tls.Config) (net.Conn, error) {
+// With require set, a server that does not offer STARTTLS is an error.
+func startTLS(conn net.Conn, helo string, cfg *tls.Config, require bool) (net.Conn, error) {
 	_ = conn.SetDeadline(time.Now().Add(60 * time.Second))
 	defer conn.SetDeadline(time.Time{}) //nolint:errcheck // best effort reset
 	tp := textproto.NewReader(bufio.NewReader(conn))
@@ -242,6 +321,10 @@ func startTLS(conn net.Conn, helo string, cfg *tls.Config) (net.Conn, error) {
 		return nil, classify(err)
 	}
 	if !strings.Contains(strings.ToUpper(ext), "STARTTLS") {
+		if require {
+			conn.Close()
+			return nil, errors.New("mta-sts: MX does not offer STARTTLS")
+		}
 		return greeted{Conn: conn, r: io.MultiReader(strings.NewReader("220 resumed\r\n"), conn)}, nil
 	}
 	if _, err := io.WriteString(conn, "STARTTLS\r\n"); err != nil {
