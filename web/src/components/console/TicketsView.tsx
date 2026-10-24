@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { call } from "@/lib/console/client";
-import { TicketDetail, TicketList, TicketNote, TicketStats } from "@/lib/console/schemas";
+import { SendResult, TicketDetail, TicketList, TicketNote, TicketStats } from "@/lib/console/schemas";
 import type { Ticket, TicketPriority, TicketState, UpdateTicketBody } from "@/lib/console/schemas";
 import { useAction, useResource } from "@/lib/console/use-resource";
 import { useConsole } from "./ConsoleShell";
@@ -264,7 +264,7 @@ function TicketPane({ id, onChanged }: { id: string | null; onChanged: () => voi
     if (!text) return;
     const out = await action.run(
       "reply",
-      () => call(session, "POST /v0/tickets/{ticket}/reply", { params: { ticket: t.id }, body: { text, reply_all: false } }, TicketDetail.shape.ticket),
+      () => call(session, "POST /v0/tickets/{ticket}/reply", { params: { ticket: t.id }, body: { text, reply_all: false } }, SendResult),
       { success: "Reply sent", failure: "Could not send the reply" },
     );
     if (out.ok) {

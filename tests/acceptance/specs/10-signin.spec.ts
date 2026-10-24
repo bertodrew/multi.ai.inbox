@@ -5,8 +5,10 @@ import { test } from "../lib/evidence";
 import { BASE_URL } from "../lib/env";
 
 function originOf(url: string): string {
+  // A relative action is the better shape here, because it follows whichever
+  // host served the page. It resolves against the site, not against nothing.
   try {
-    return new URL(url).origin;
+    return new URL(url, BASE_URL).origin;
   } catch {
     return url;
   }
@@ -37,6 +39,13 @@ test.describe("sign in", () => {
     await probe.check("the submission is not refused by the content security policy", !refused, probe.consoleErrors.join(" | "));
 
     const navigated = page.url() !== before;
+    // A deployment without MAI_AUTH_SECRET answers auth_disabled. That is a
+    // configuration gap recorded in docs/qa/production-readiness.md, not a
+    // browser defect, so it is reported as such and not as a pass.
+    const authDisabled = /auth_disabled/.test(page.url());
+    if (authDisabled && !refused) {
+      test.skip(true, "user authentication is disabled on this deployment (no MAI_AUTH_SECRET): the form is allowed, the endpoint says auth_disabled");
+    }
     const confirmation = await page.getByText(/check your inbox|link is on its way|sent/i).count();
     await probe.check(
       "submitting the form does something visible: a navigation or a confirmation",
