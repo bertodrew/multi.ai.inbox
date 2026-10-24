@@ -4427,7 +4427,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | auth_disabled | provider_not_configured | invalid_magic_link | invalid_state | code_rejected | email_not_verified | provider_unavailable | email_delivery_failed | invalid_refresh_token | token_expired | unknown_token | session_revoked | access_denied | internal_error",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | auth_disabled | provider_not_configured | invalid_magic_link | invalid_state | code_rejected | email_not_verified | provider_unavailable | email_delivery_failed | invalid_refresh_token | token_expired | unknown_token | session_revoked | access_denied | internal_error | thread_required | thread_not_found | ticket_not_found | ticket_exists | invalid_transition | invalid_priority | note_required | no_inbound_message",
           "required": true,
           "description": "",
           "constraints": []
@@ -4482,7 +4482,15 @@ export const apiReference: ApiReference = {
     "unknown_token",
     "session_revoked",
     "access_denied",
-    "internal_error"
+    "internal_error",
+    "thread_required",
+    "thread_not_found",
+    "ticket_not_found",
+    "ticket_exists",
+    "invalid_transition",
+    "invalid_priority",
+    "note_required",
+    "no_inbound_message"
   ],
   "eventTypes": [
     "message.received",

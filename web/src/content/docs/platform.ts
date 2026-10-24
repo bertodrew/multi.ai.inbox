@@ -280,6 +280,14 @@ const errorMeaning: Record<string, [string, string]> = {
   not_held: ["409", "Release of a message that is not held for review (still pending screening, clean or already released)."],
   payload_too_large: ["413", "Attachments or request body too large."],
   internal_error: ["500", "Unexpected error on our side. Safe to retry with the same Idempotency-Key."],
+  thread_required: ["400", "A ticket needs a thread_id."],
+  thread_not_found: ["404", "That thread does not exist in your organization."],
+  ticket_not_found: ["404", "That ticket does not exist in your organization."],
+  ticket_exists: ["409", "This thread already has a ticket."],
+  invalid_transition: ["409", "The state change is not allowed from the current state."],
+  invalid_priority: ["400", "priority must be low, normal, high or urgent."],
+  note_required: ["400", "An internal note needs a body."],
+  no_inbound_message: ["409", "The thread has no inbound message to reply to."],
 };
 
 export const errors: DocPage = {

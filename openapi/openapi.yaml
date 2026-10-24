@@ -710,7 +710,9 @@ components:
                        invalid_signature, too_many_streams, payload_too_large, attachment_infected, antivirus_unavailable,
                        auth_disabled, provider_not_configured, invalid_magic_link, invalid_state, code_rejected,
                        email_not_verified, provider_unavailable, email_delivery_failed, invalid_refresh_token,
-                       token_expired, unknown_token, session_revoked, access_denied, internal_error]
+                       token_expired, unknown_token, session_revoked, access_denied, internal_error,
+                       thread_required, thread_not_found, ticket_not_found, ticket_exists,
+                       invalid_transition, invalid_priority, note_required, no_inbound_message]
               message: { type: string }
   schemas:
     User:

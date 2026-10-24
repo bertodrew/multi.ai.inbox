@@ -14,8 +14,10 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -53,7 +55,30 @@ func (d *DB) OpenSystem(ctx context.Context, url string) error {
 }
 
 func connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, url)
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	// Every timestamp we return is UTC, whatever time zone the host happens to
+	// be in. Without this the same instant is serialized as +01:00 on a machine
+	// in Zurich and as Z in a container, which is a difference no client should
+	// ever have to see.
+	if cfg.ConnConfig.RuntimeParams == nil {
+		cfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
+	// The session parameter alone is not enough: pgx decodes timestamptz into
+	// time.Local unless it is told otherwise, so the same instant would be
+	// serialized as +02:00 on a laptop and as Z in a container. Scan in UTC.
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		conn.TypeMap().RegisterType(&pgtype.Type{
+			Name:  "timestamptz",
+			OID:   pgtype.TimestamptzOID,
+			Codec: &pgtype.TimestamptzCodec{ScanLocation: time.UTC},
+		})
+		return nil
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}

@@ -111,7 +111,10 @@ An internal note must be impossible to email by accident. Reusing `messages` wit
 * `open`: a human or an agent is working on it.
 * `pending`: waiting on the customer (SLA clock paused).
 * `resolved`: answered, waiting for confirmation; reopens on a new inbound message.
-* `closed`: terminal; a new message in the thread creates a new ticket (same thread, new number).
+* `closed`: terminal for this number. Fase A keeps one ticket per thread, so a new message
+  in a closed thread reopens the same ticket with `PATCH` and the queue shows the count
+  it already had; a second number on the same thread (the design sketched below) needs
+  the numbering to stop being unique per thread, which is Fase B work.
 
 Transitions are explicit and audited. Every transition writes a `ticket_events` row.
 

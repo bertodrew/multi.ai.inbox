@@ -97,8 +97,10 @@ func (s *Service) Ingest(ctx context.Context, raw []byte, rcpts []*LocalRecipien
 				}
 			}
 			// A thread that opens in an intake inbox becomes a ticket in the same
-			// transaction, so the queue and the mailbox cannot disagree.
-			if newThread {
+			// transaction, so the queue and the mailbox cannot disagree. Held mail
+			// is the exception: it opens its ticket only when it becomes visible,
+			// otherwise the queue would list a thread nobody can read yet.
+			if newThread && !hold {
 				if err := s.IntakeTicket(ctx, tx, rc.OrgID, rc.InboxID, threadID, parsed.Subject,
 					strings.ToLower(parsed.From)); err != nil {
 					return err

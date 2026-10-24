@@ -553,6 +553,20 @@ func (s *Service) TicketStats(ctx context.Context, p *Principal) (*TicketStats, 
 	return out, err
 }
 
+// IntakeTicketForMessage opens the ticket for a message that has just become
+// visible: the screening verdict allowed it, or a human released it. Held mail
+// never opens a ticket, so the queue cannot list a thread the reader cannot
+// open. One ticket per thread, so a later reply is a no-op.
+func (s *Service) IntakeTicketForMessage(ctx context.Context, tx pgx.Tx, messageID string) error {
+	var orgID, inboxID, threadID, subject, requester string
+	err := tx.QueryRow(ctx, `select org_id::text, inbox_id::text, thread_id::text, subject, from_addr
+		from messages where id = $1`, messageID).Scan(&orgID, &inboxID, &threadID, &subject, &requester)
+	if err != nil {
+		return err
+	}
+	return s.IntakeTicket(ctx, tx, orgID, inboxID, threadID, subject, strings.ToLower(requester))
+}
+
 // IntakeTicket creates a ticket for a thread in an inbox marked as intake. It is
 // called from the ingest path, inside the same transaction, and does nothing for
 // an inbox that is not an intake.

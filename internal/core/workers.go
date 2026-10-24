@@ -359,6 +359,11 @@ func (s *Service) SaveEnrichment(ctx context.Context, j EnrichJob, v Verdict) er
 		case hold:
 			return s.emitEvent(ctx, tx, "message.security.review", j.Address, j.ID, true)
 		case pending:
+			// The message becomes visible now, so this is the moment its thread
+			// may open a ticket in an intake inbox.
+			if err := s.IntakeTicketForMessage(ctx, tx, j.ID); err != nil {
+				return err
+			}
 			if err := s.emitMessageEvent(ctx, tx, "message.security.completed", j.Address, j.ID); err != nil {
 				return err
 			}

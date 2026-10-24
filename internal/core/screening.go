@@ -59,6 +59,11 @@ func (s *Service) ReleaseMessage(ctx context.Context, orgID, address, id string)
 		if _, err := tx.Exec(ctx, "update messages set screening = 'released' where id = $1", m.ID); err != nil {
 			return err
 		}
+		// A human released it: if the inbox is an intake, the thread now opens
+		// its ticket, the same way a message that screening allowed does.
+		if err := s.IntakeTicketForMessage(ctx, tx, m.ID); err != nil {
+			return err
+		}
 		if err := s.notifyReceived(ctx, tx, address, m.ID, h.threadID, h.subject, h.preview, h.labels); err != nil {
 			return err
 		}
