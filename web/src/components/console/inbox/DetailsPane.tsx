@@ -74,10 +74,15 @@ export function DetailsPane({
   const removable = customLabels(labels);
   const participants = [...new Set(messages.flatMap((message) => [message.from, ...message.to, ...message.cc]))].filter(Boolean);
 
+  // The workspace renders this pane twice, in the third column on a desktop and
+  // under the reader on a phone. Two landmarks with the same name are noise for
+  // a screen reader, so the small screen copy says so.
+  const paneLabel = idPrefix.startsWith("thread-mobile") ? "Thread details, small screen" : "Thread details";
+
   if (!summary) {
     return (
       <aside
-        aria-label="Thread details"
+        aria-label={paneLabel}
         className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto bg-card px-3 py-3"
       >
         <p className="font-medium">No thread open</p>
@@ -114,7 +119,7 @@ export function DetailsPane({
   };
 
   return (
-    <aside aria-label="Thread details" className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto bg-card px-3 py-3">
+    <aside aria-label={paneLabel} className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto bg-card px-3 py-3">
       <section>
         <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">Details</h2>
         <dl className="mt-2 flex flex-col gap-1.5 text-xs">

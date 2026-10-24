@@ -22,6 +22,10 @@ configMapGenerator:
       # commented MAI_S3_* env in base/mai.yaml switches to Object Storage.
       # Browser origins allowed to call the API (the future console).
       - MAI_CORS_ORIGINS=https://162-55-213-24.sslip.io
+      # Where a magic link comes back to. It must be this deployment's own
+      # host, not the future brand domain: a form that redirects to another
+      # origin is refused by the browser under form-action 'self'.
+      - MAI_WEB_ORIGIN=https://162-55-213-24.sslip.io
   # Billing stays off until the founder provides the Stripe keys (see
   # docs/billing-enable.md). Uncomment this generator and fill the six real
   # price ids to make the paid plans buyable; the keys go in mai-secrets.

@@ -29,7 +29,7 @@ const priorityTone: Record<TicketPriority, "neutral" | "good" | "warn" | "bad"> 
 /** The moves an agent or a person can make from the current state. */
 const moves: Record<TicketState, { to: TicketState; label: string; variant: "primary" | "secondary" | "danger" }[]> = {
   new: [
-    { to: "open", label: "Take it", variant: "primary" },
+    { to: "open", label: "Open", variant: "primary" },
     { to: "pending", label: "Waiting on customer", variant: "secondary" },
     { to: "resolved", label: "Resolved", variant: "secondary" },
     { to: "closed", label: "Close", variant: "danger" },

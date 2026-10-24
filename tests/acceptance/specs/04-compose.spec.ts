@@ -30,7 +30,7 @@ test.describe("compose", () => {
     await page.locator("#compose-text").fill("Sent by the acceptance suite through the console composer.");
     await page.getByRole("button", { name: "Send", exact: true }).click();
 
-    const queued = page.getByRole("status").filter({ hasText: "Queued" });
+    const queued = page.getByRole("status").filter({ hasText: /queued/i });
     const ok = await queued.waitFor({ state: "visible", timeout: 25_000 }).then(() => true).catch(() => false);
     await probe.check("the composer reports the message as queued", ok, await page.locator("body").innerText().then((t) => t.slice(0, 300)));
 

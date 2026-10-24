@@ -508,15 +508,17 @@ func lastInboundMessage(ctx context.Context, s *Service, orgID, threadID string)
 
 func (s *Service) markTicketReply(ctx context.Context, p *Principal, id string) error {
 	return s.DB.WithOrg(ctx, p.Org.ID, func(tx pgx.Tx) error {
-		var firstReply bool
-		err := tx.QueryRow(ctx, `update tickets set first_reply_at = coalesce(first_reply_at, now()),
+		// Every reply goes on the timeline, because a customer conversation is
+		// the record that matters in a dispute. The first one also stamps the
+		// SLA and takes a new ticket out of the queue.
+		tag, err := tx.Exec(ctx, `update tickets set first_reply_at = coalesce(first_reply_at, now()),
 			state = case when state = 'new' then 'open' else state end, updated_at = now()
-			where org_id = $1 and id = $2 and first_reply_at is null returning true`, p.Org.ID, id).Scan(&firstReply)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil // already answered
-		}
+			where org_id = $1 and id = $2`, p.Org.ID, id)
 		if err != nil {
 			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return nil // the ticket disappeared between the send and this write
 		}
 		return s.ticketEvent(ctx, tx, p, id, "reply", map[string]any{})
 	})
