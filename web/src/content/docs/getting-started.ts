@@ -20,6 +20,7 @@ const permissionMeaning: Record<string, string> = {
   message_release: "Release a message held for review, which then fires `message.received`. Keep it away from the agent that reads the mail. A full access key does not hold it: only keys that list it do, and the operator issues the first one.",
   billing_read: "Read the plan and the subscription state with `GET /v0/billing`.",
   billing_write: "Start a Stripe Checkout for a paid plan and open the customer portal.",
+  notification_write: "Register a device for web push and drop it again. It wakes a browser, it does not read mail.",
 };
 
 export const quickstart: DocPage = {

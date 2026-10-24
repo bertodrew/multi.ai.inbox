@@ -29,6 +29,7 @@ const meaning: Record<Permission, string> = {
   data_delete: "Delete the organization and its data (GDPR Art. 17)",
   ticket_read: "Read the support queue (tickets and their timeline)",
   ticket_write: "Change ticket state, priority, tags and assignment",
+  notification_write: "Register this device for web push and drop it again",
 };
 
 export function KeysView() {

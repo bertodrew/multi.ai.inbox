@@ -1,29 +1,27 @@
 "use client";
 
-// Web push, client side only.
+// Web push, browser side.
 //
-// The server half of push does not exist yet: openapi.yaml has no subscription
-// route, so this build is configured with no VAPID key and no endpoint, and
-// every entry point here reports "unconfigured" instead of pretending. The
-// contract this module speaks when both variables are set is written down in
-// web/docs/push-design.md.
+// The server half is POST /v0/push/subscriptions, GET for the devices this key
+// registered and DELETE by id or by endpoint (openapi.yaml, and the contract in
+// web/docs/push-design.md). It lives on the same API base as every other console
+// call, so the browser keeps talking to one origin. The build is configured by
+// NEXT_PUBLIC_MAI_VAPID_PUBLIC_KEY: without it there is nothing to subscribe
+// with, every entry point reports "unconfigured" and the card says so instead
+// of pretending.
 //
 // iOS needs the app installed on the home screen (16.4 and later) and the
 // permission asked for inside a user gesture, so enablePush must be called from
 // a click handler, never from an effect.
 
 import type { ConsoleSession } from "@/lib/console/session";
+import { ApiError, call, callNoContent } from "@/lib/console/client";
+import { PushSubscription as PushSubscriptionResource, PushSubscriptionList } from "@/lib/console/schemas";
 
 /** VAPID public key, base64url, from the build environment. Safe to ship. */
 export const VAPID_PUBLIC_KEY: string = process.env.NEXT_PUBLIC_MAI_VAPID_PUBLIC_KEY ?? "";
 
-/**
- * Absolute or relative URL of the subscription route. Unset until the route
- * exists: with no endpoint and no key, push stays off in this build.
- */
-export const PUSH_ENDPOINT: string = process.env.NEXT_PUBLIC_MAI_PUSH_ENDPOINT ?? "";
-
-/** The body this client sends. Mirrored by the design note and, later, the spec. */
+/** The body this client sends; the server rejects any other field. */
 export type PushSubscriptionBody = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
@@ -39,9 +37,16 @@ export type PushState =
   | { kind: "on" }
   | { kind: "error"; detail: string };
 
-/** Both halves are needed to do anything: a key to subscribe with, a route to send it to. */
+/** One device as the API reports it: a label, never the endpoint or its keys. */
+export type PushDevice = {
+  id: string;
+  label: string;
+  lastUsedAt: string | null;
+};
+
+/** One half is needed to do anything: the key the browser subscribes with. */
 export function pushConfigured(): boolean {
-  return VAPID_PUBLIC_KEY.length > 0 && PUSH_ENDPOINT.length > 0;
+  return VAPID_PUBLIC_KEY.length > 0;
 }
 
 export function notificationPermission(): NotificationPermission | "unsupported" {
@@ -110,12 +115,14 @@ export async function enablePush(session: ConsoleSession): Promise<PushState> {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       }));
-    await postSubscription(session, created);
+    const id = await postSubscription(session, created);
+    remember(created.endpoint, id);
     return { kind: "on" };
   } catch (err) {
     // A subscription the API does not know about would wake the device for no
     // reason and never show a mail, so it is dropped again.
     if (created) await created.unsubscribe().catch(() => false);
+    forget();
     return { kind: "error", detail: message(err) };
   }
 }
@@ -130,19 +137,29 @@ export async function disablePush(session: ConsoleSession): Promise<PushState> {
       await deleteSubscription(session, existing.endpoint).catch(() => undefined);
       await existing.unsubscribe();
     }
+    forget();
     return { kind: "off" };
   } catch (err) {
     return { kind: "error", detail: message(err) };
   }
 }
 
-function subscriptionUrl(session: ConsoleSession): string {
-  // An absolute PUSH_ENDPOINT wins; a path is resolved against the API base the
-  // console is signed in to.
-  return new URL(PUSH_ENDPOINT, session.apiBase.replace(/\/?$/, "/")).toString();
+/** The devices this key registered, as the API reports them. */
+export async function listPushDevices(session: ConsoleSession): Promise<PushDevice[]> {
+  const res = await call(session, "GET /v0/push/subscriptions", { params: {} }, PushSubscriptionList);
+  return res.push_subscriptions.map((sub) => ({
+    id: sub.push_subscription_id,
+    label: sub.device,
+    lastUsedAt: sub.last_used_at ?? null,
+  }));
 }
 
-async function postSubscription(session: ConsoleSession, subscription: PushSubscription): Promise<void> {
+/** Drops one device by id, without touching this browser. */
+export async function removePushDevice(session: ConsoleSession, id: string): Promise<void> {
+  await callNoContent(session, "DELETE /v0/push/subscriptions/{subscription}", { params: { subscription: id } });
+}
+
+async function postSubscription(session: ConsoleSession, subscription: PushSubscription): Promise<string> {
   const json = subscription.toJSON();
   if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) {
     throw new Error("The browser returned an incomplete subscription.");
@@ -153,31 +170,59 @@ async function postSubscription(session: ConsoleSession, subscription: PushSubsc
     expiration_time: subscription.expirationTime,
     user_agent: navigator.userAgent,
   };
-  await send(session, "POST", body);
+  const saved = await call(session, "POST /v0/push/subscriptions", { params: {}, body }, PushSubscriptionResource);
+  return saved.push_subscription_id;
 }
 
 async function deleteSubscription(session: ConsoleSession, endpoint: string): Promise<void> {
-  await send(session, "DELETE", { endpoint });
+  const known = recall(endpoint);
+  if (known) {
+    // DELETE /{id}: the id came back when this device subscribed.
+    try {
+      await removePushDevice(session, known);
+      return;
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 404) throw err;
+    }
+  }
+  // The design allows the endpoint in the body, for a device this tab did not
+  // register or when the id was never stored.
+  await callNoContent(session, "DELETE /v0/push/subscriptions", { params: {}, body: { endpoint } });
 }
 
-async function send(session: ConsoleSession, method: "POST" | "DELETE", body: unknown): Promise<void> {
-  const res = await fetch(subscriptionUrl(session), {
-    method,
-    headers: {
-      Authorization: `Bearer ${session.apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-    credentials: "omit",
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(
-      res.status === 404 || res.status === 405
-        ? "This API does not accept push subscriptions yet."
-        : `The API answered ${res.status} ${res.statusText}.`.trim(),
-    );
+// The id of the subscription this browser made, so the next "turn off" is a
+// DELETE by id. localStorage is fine: the id is not a capability, the endpoint
+// is, and that one never leaves the browser except to the API.
+const REMEMBERED = "mai.push.device";
+
+type Remembered = { endpoint: string; id: string };
+
+function remember(endpoint: string, id: string): void {
+  if (!id) return;
+  try {
+    const value: Remembered = { endpoint, id };
+    window.localStorage.setItem(REMEMBERED, JSON.stringify(value));
+  } catch {
+    // storage blocked: the next turn off falls back to DELETE by endpoint
+  }
+}
+
+function recall(endpoint: string): string {
+  try {
+    const raw = window.localStorage.getItem(REMEMBERED);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as Remembered;
+    return parsed.endpoint === endpoint ? parsed.id : "";
+  } catch {
+    return "";
+  }
+}
+
+function forget(): void {
+  try {
+    window.localStorage.removeItem(REMEMBERED);
+  } catch {
+    // nothing stored
   }
 }
 
@@ -191,5 +236,9 @@ function urlBase64ToUint8Array(base64url: string): Uint8Array<ArrayBuffer> {
 }
 
 function message(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === "push_disabled") return "This API does not accept push notifications yet.";
+    if (err.isPermission) return "This key cannot register a device: it needs notification_write.";
+  }
   return err instanceof Error ? err.message : "Something went wrong.";
 }

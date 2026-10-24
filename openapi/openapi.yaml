@@ -662,6 +662,71 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /v0/push/subscriptions:
+    get:
+      summary: List the devices the caller registered (requires notification_write)
+      description: |
+        Only what the calling API key or person registered, and never the
+        endpoint or the two keys: those are capabilities, not data a client
+        reads back. `device` is derived from the user agent and is a label, not
+        an identity.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/PushSubscriptionList" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Register a browser for web push (requires notification_write, audited)
+      description: |
+        Called by the console with the subscription the browser handed it. The
+        same endpoint upserts: a returning device re-subscribes on every fresh
+        permission grant and must not accumulate rows. `201` is answered for a
+        new and a returning device.
+
+        The endpoint and the keys are stored as the browser produced them and
+        never returned, logged or shared across organizations. The notification
+        sent on `message.received` carries the inbox address and a console link,
+        never the sender, the subject or a snippet of the body.
+
+        `501 push_disabled` when the deployment has no VAPID key pair, and
+        `409 too_many_subscriptions` when the organization already has the
+        maximum number of devices.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushSubscribe" }
+      responses:
+        "201": { description: Created (or updated), content: { application/json: { schema: { $ref: "#/components/schemas/PushSubscription" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Drop a device by endpoint (requires notification_write, audited)
+      description: |
+        The endpoint may come in the body or as `?endpoint=`, for a proxy that
+        strips DELETE bodies. Answers `204` even when this organization has no
+        such endpoint: the browser has already dropped the subscription.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushUnsubscribe" }
+      responses:
+        "204": { description: "No content, the device is off" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /v0/push/subscriptions/{subscription}:
+    delete:
+      summary: Drop a device by id (requires notification_write, audited)
+      description: Removes the subscription and every notification still queued for it.
+      parameters: [{ name: subscription, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: "No content, the device is off" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
   /stripe/webhook:
     post:
       summary: Stripe webhook endpoint (public, Stripe-Signature verified)
@@ -712,7 +777,8 @@ components:
                        email_not_verified, provider_unavailable, email_delivery_failed, invalid_refresh_token,
                        token_expired, unknown_token, session_revoked, access_denied, internal_error,
                        thread_required, thread_not_found, ticket_not_found, ticket_exists,
-                       invalid_transition, invalid_priority, note_required, no_inbound_message]
+                       invalid_transition, invalid_priority, note_required, no_inbound_message,
+                       push_disabled, too_many_subscriptions]
               message: { type: string }
   schemas:
     User:
@@ -972,7 +1038,40 @@ components:
       type: string
       enum: [inbox_read, inbox_write, message_read, message_send, message_update, domain_read, domain_write,
              webhook_read, webhook_write, api_key_read, api_key_write, audit_read, message_review, message_release,
-             billing_read, billing_write, data_export, data_delete, ticket_read, ticket_write]
+             billing_read, billing_write, data_export, data_delete, ticket_read, ticket_write, notification_write]
+    PushSubscribe:
+      type: object
+      additionalProperties: false
+      required: [endpoint, keys]
+      description: What PushSubscription.toJSON returns, plus the user agent.
+      properties:
+        endpoint: { type: string, format: uri, description: "The device at its push service. A capability: never logged, never returned" }
+        keys:
+          type: object
+          additionalProperties: false
+          required: [p256dh, auth]
+          properties:
+            p256dh: { type: string, description: "Uncompressed P-256 public key, base64url" }
+            auth: { type: string, description: "16 byte authentication secret, base64url" }
+        expiration_time: { type: integer, nullable: true, description: "Milliseconds since the epoch, or null" }
+        user_agent: { type: string, maxLength: 512, description: "The browser that subscribed, for the device label" }
+    PushUnsubscribe:
+      type: object
+      additionalProperties: false
+      required: [endpoint]
+      properties:
+        endpoint: { type: string, format: uri, description: "The endpoint the browser is dropping" }
+    PushSubscription:
+      type: object
+      properties:
+        push_subscription_id: { type: string, format: uuid }
+        device: { type: string, description: "Label derived from the user agent, for example iPhone" }
+        user_agent: { type: string }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time }
+    PushSubscriptionList:
+      type: object
+      properties: { count: { type: integer }, push_subscriptions: { type: array, items: { $ref: "#/components/schemas/PushSubscription" } } }
     TicketState:
       type: string
       enum: [new, open, pending, resolved, closed]

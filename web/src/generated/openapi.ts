@@ -2576,6 +2576,190 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "id": "get-v0-push-subscriptions",
+      "method": "GET",
+      "path": "/v0/push/subscriptions",
+      "summary": "List the devices the caller registered (requires notification_write)",
+      "params": [],
+      "body": null,
+      "responses": [
+        {
+          "code": "200",
+          "description": "OK",
+          "schema": "PushSubscriptionList"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "post-v0-push-subscriptions",
+      "method": "POST",
+      "path": "/v0/push/subscriptions",
+      "summary": "Register a browser for web push (requires notification_write, audited)",
+      "params": [],
+      "body": {
+        "schema": "PushSubscribe",
+        "fields": [
+          {
+            "name": "endpoint",
+            "type": "string (uri)",
+            "required": true,
+            "description": "The device at its push service. A capability: never logged, never returned",
+            "constraints": []
+          },
+          {
+            "name": "keys",
+            "type": "object",
+            "required": true,
+            "description": "",
+            "constraints": []
+          },
+          {
+            "name": "expiration_time",
+            "type": "integer",
+            "required": false,
+            "description": "Milliseconds since the epoch, or null",
+            "constraints": []
+          },
+          {
+            "name": "user_agent",
+            "type": "string",
+            "required": false,
+            "description": "The browser that subscribed, for the device label",
+            "constraints": [
+              "max length 512"
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "201",
+          "description": "Created (or updated)",
+          "schema": "PushSubscription"
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "409",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "422",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "429",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "delete-v0-push-subscriptions",
+      "method": "DELETE",
+      "path": "/v0/push/subscriptions",
+      "summary": "Drop a device by endpoint (requires notification_write, audited)",
+      "params": [],
+      "body": {
+        "schema": "PushUnsubscribe",
+        "fields": [
+          {
+            "name": "endpoint",
+            "type": "string (uri)",
+            "required": true,
+            "description": "The endpoint the browser is dropping",
+            "constraints": []
+          }
+        ]
+      },
+      "responses": [
+        {
+          "code": "204",
+          "description": "No content, the device is off",
+          "schema": ""
+        },
+        {
+          "code": "400",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
+      "id": "delete-v0-push-subscriptions-subscription",
+      "method": "DELETE",
+      "path": "/v0/push/subscriptions/{subscription}",
+      "summary": "Drop a device by id (requires notification_write, audited)",
+      "params": [
+        {
+          "name": "subscription",
+          "in": "path",
+          "required": true,
+          "type": "string (uuid)",
+          "description": "",
+          "constraints": []
+        }
+      ],
+      "body": null,
+      "responses": [
+        {
+          "code": "204",
+          "description": "No content, the device is off",
+          "schema": ""
+        },
+        {
+          "code": "403",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "404",
+          "description": "Error envelope",
+          "schema": "Error"
+        },
+        {
+          "code": "501",
+          "description": "Error envelope",
+          "schema": "Error"
+        }
+      ]
+    },
+    {
       "id": "post-stripe-webhook",
       "method": "POST",
       "path": "/stripe/webhook",
@@ -3850,6 +4034,112 @@ export const apiReference: ApiReference = {
       ]
     },
     {
+      "name": "PushSubscribe",
+      "fields": [
+        {
+          "name": "endpoint",
+          "type": "string (uri)",
+          "required": true,
+          "description": "The device at its push service. A capability: never logged, never returned",
+          "constraints": []
+        },
+        {
+          "name": "keys",
+          "type": "object",
+          "required": true,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "expiration_time",
+          "type": "integer",
+          "required": false,
+          "description": "Milliseconds since the epoch, or null",
+          "constraints": []
+        },
+        {
+          "name": "user_agent",
+          "type": "string",
+          "required": false,
+          "description": "The browser that subscribed, for the device label",
+          "constraints": [
+            "max length 512"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PushUnsubscribe",
+      "fields": [
+        {
+          "name": "endpoint",
+          "type": "string (uri)",
+          "required": true,
+          "description": "The endpoint the browser is dropping",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "PushSubscription",
+      "fields": [
+        {
+          "name": "push_subscription_id",
+          "type": "string (uuid)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "device",
+          "type": "string",
+          "required": false,
+          "description": "Label derived from the user agent, for example iPhone",
+          "constraints": []
+        },
+        {
+          "name": "user_agent",
+          "type": "string",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "created_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "last_used_at",
+          "type": "string (date-time)",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
+      "name": "PushSubscriptionList",
+      "fields": [
+        {
+          "name": "count",
+          "type": "integer",
+          "required": false,
+          "description": "",
+          "constraints": []
+        },
+        {
+          "name": "push_subscriptions",
+          "type": "PushSubscription[]",
+          "required": false,
+          "description": "",
+          "constraints": []
+        }
+      ]
+    },
+    {
       "name": "Ticket",
       "fields": [
         {
@@ -4427,7 +4717,7 @@ export const apiReference: ApiReference = {
         },
         {
           "name": "code",
-          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | auth_disabled | provider_not_configured | invalid_magic_link | invalid_state | code_rejected | email_not_verified | provider_unavailable | email_delivery_failed | invalid_refresh_token | token_expired | unknown_token | session_revoked | access_denied | internal_error | thread_required | thread_not_found | ticket_not_found | ticket_exists | invalid_transition | invalid_priority | note_required | no_inbound_message",
+          "type": "missing_authorization | unknown_api_key | validation_error | not_found | already_exists | domain_not_verified | conflict | cannot_delete | limit_exceeded | rate_limit_exceeded | rate_limited | address_quarantined | sending_paused | missing_permission | permission_escalation | api_key_expired | not_held | billing_disabled | billing_provider_error | already_subscribed | no_billing_account | invalid_signature | too_many_streams | payload_too_large | attachment_infected | antivirus_unavailable | auth_disabled | provider_not_configured | invalid_magic_link | invalid_state | code_rejected | email_not_verified | provider_unavailable | email_delivery_failed | invalid_refresh_token | token_expired | unknown_token | session_revoked | access_denied | internal_error | thread_required | thread_not_found | ticket_not_found | ticket_exists | invalid_transition | invalid_priority | note_required | no_inbound_message | push_disabled | too_many_subscriptions",
           "required": true,
           "description": "",
           "constraints": []
@@ -4490,7 +4780,9 @@ export const apiReference: ApiReference = {
     "invalid_transition",
     "invalid_priority",
     "note_required",
-    "no_inbound_message"
+    "no_inbound_message",
+    "push_disabled",
+    "too_many_subscriptions"
   ],
   "eventTypes": [
     "message.received",
@@ -4529,6 +4821,7 @@ export const apiReference: ApiReference = {
     "data_export",
     "data_delete",
     "ticket_read",
-    "ticket_write"
+    "ticket_write",
+    "notification_write"
   ]
 };

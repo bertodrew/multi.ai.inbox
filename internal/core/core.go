@@ -35,6 +35,9 @@ type Service struct {
 	// Auth configures people signing in (magic link, Google, GitHub). Nil
 	// disables those endpoints with 501; API keys always keep working.
 	Auth *AuthConfig
+	// Push holds the VAPID key pair. Nil disables web push: every
+	// /v0/push route answers 501 push_disabled, like billing.
+	Push *Push
 }
 
 // Plan holds the limits of a pricing plan (doc 01, section 7). The 5 minute

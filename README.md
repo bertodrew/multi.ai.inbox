@@ -77,7 +77,7 @@ MAI_TEST_GATEKEEPER_BIN=$PWD/gatekeeper/target/release/gatekeeper \
 go test -race ./...
 ```
 
-The end to end test creates a fresh database with the production roles (`deploy/k8s/base/postgres-roles.sql`), migrates as the owner, runs as the runtime roles and proves they cannot disable row level security or use `app.system`; it also covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP. `TestScreenBeforeNotify` covers the hold: no `message.received` before the verdict, review messages hidden on REST and MCP, release with its permission and audit entry, webhook order, and the fail closed paths (gatekeeper unavailable, screening timeout).
+The end to end test creates a fresh database with the production roles (`deploy/k8s/base/postgres-roles.sql`), migrates as the owner, runs as the runtime roles and proves they cannot disable row level security or use `app.system`; it also covers SMTP in, RLS isolation between organizations, gatekeeper verdicts, signed webhooks, idempotent replies through a relay with DKIM, agent to agent delivery and MCP. `TestScreenBeforeNotify` covers the hold: no `message.received` before the verdict, review messages hidden on REST and MCP, release with its permission and audit entry, webhook order, and the fail closed paths (gatekeeper unavailable, screening timeout). `TestWebPush` covers web push against a fake push service: registration and the upsert of a returning device, isolation between two organizations, the payload decrypted exactly as the browser opens it (the inbox and nothing else), removal on 404 and 410, the failure threshold, the per device rate limit, and a mail delivery that still succeeds while the push service is unreachable.
 
 ## API surface
 
@@ -102,6 +102,7 @@ The table below writes paths with the `/v0` prefix used by older docs; `/v1` ans
 | Events | `GET /v0/events/stream`: Server Sent Events with the webhook payloads (held mail redacted), `?types=`, `?inbox=`, resume with `Last-Event-ID`, 5 streams per key |
 | Access | `POST/GET /v0/api-keys`, `DELETE /v0/api-keys/{id}` (scoped permissions, no escalation), `GET /v0/audit-logs` |
 | Billing | `GET /v0/billing` (`billing_read`), `POST /v0/billing/checkout`, `POST /v0/billing/portal` (`billing_write`, audited), `POST /stripe/webhook` (public, Stripe-Signature verified); all `501 billing_disabled` without Stripe settings |
+| Push | `POST/GET /v0/push/subscriptions`, `DELETE /v0/push/subscriptions/{id}` (or by endpoint in the body): `notification_write`, audited; all `501 push_disabled` without a VAPID key pair |
 | Ops | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml`; `GET /metrics` on its own address (below) |
 
 Security at the edge: request IDs, security headers, CORS allowlist, per organization rate limit, per IP limit on failed keys, X-Forwarded-For only from trusted proxies, SMTP STARTTLS (certificate from Caddy, self signed fallback). The MCP gateway applies the same permissions per tool and writes agent actions to the audit log. `mai mcp-config -url <api>` prints the setup for Claude Code, Cursor and Codex.
@@ -128,6 +129,16 @@ Screen before notify (organization setting `screen_before_notify`, on by default
 | `message.security.review` | after screening, full payload | when held for review, no bodies |
 
 Plans (`mai admin org-plan`, or Stripe): free 3 inboxes, 100/day, 3,000/month, footer; builder (€15) 10 inboxes, 1,000/day, 10,000/month; growth (€59) 50 inboxes, 20 domains, 2,500/day, 40,000/month; team (€149) 150 inboxes, 15,000/day, 150,000/month. Yearly prices are 10 × monthly. Sends are also capped per 5 minutes at 10% of the daily cap (free 10, builder 100, growth 250, team 1,500): `429 rate_limited` with `Retry-After`.
+
+Web push is on when the deployment carries a VAPID key pair (`MAI_VAPID_KEYS`, or
+`MAI_VAPID_PRIVATE_KEY` and `MAI_VAPID_PUBLIC_KEY`, plus `MAI_VAPID_SUBJECT`); without it
+every route answers `501 push_disabled` and the console card stays disabled.
+`mai admin vapid-keygen` prints a fresh pair once and `mai admin push-status` shows the
+resolved configuration offline, keys redacted. A subscription is one device, bound to its
+organization and to the key that registered it; the `push` role delivers on
+`message.received` through a queue, so ingest never waits for a push service. The payload
+names the inbox and links into the console, never the sender, the subject or the body.
+Step by step: [`docs/push-enable.md`](docs/push-enable.md).
 
 Billing (Stripe REST API over `net/http`, no SDK) is on when `MAI_STRIPE_SECRET_KEY` and `MAI_STRIPE_WEBHOOK_SECRET` are set; prices come from `MAI_STRIPE_PRICE_<BUILDER|GROWTH|TEAM>_<MONTHLY|YEARLY>` and `MAI_BILLING_RETURN_URL` is the default return page. `mai admin billing-status` prints the resolved configuration offline, keys redacted, with what is missing. Step by step: [`docs/billing-enable.md`](docs/billing-enable.md). In Stripe: create the six prices in EUR (tax behaviour exclusive), register `https://<api host>/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` and `invoice.payment_failed`, enable the customer portal, and **set up Stripe Tax** (origin address, EU OSS registration): Checkout runs with `automatic_tax` and VAT ID collection and fails until Stripe Tax is configured. A `past_due` or `unpaid` subscription keeps its plan for 7 days, then the scheduler moves the organization to free; payment restores it.
 

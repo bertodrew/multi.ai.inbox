@@ -144,6 +144,13 @@ func (s *Server) Handler() http.Handler {
 	route("PATCH /v0/tickets/{ticket}", core.PermTicketWrite, s.updateTicket)
 	route("POST /v0/tickets/{ticket}/notes", core.PermTicketWrite, s.addTicketNote)
 	route("POST /v0/tickets/{ticket}/reply", core.PermMessageSend, s.replyTicket)
+	// Web push: a device registers once and is woken on message.received.
+	// notification_write is what it takes to wake a browser, not what it takes
+	// to read the mail that arrived.
+	route("POST /v0/push/subscriptions", core.PermNotificationWrite, s.subscribePush)
+	route("GET /v0/push/subscriptions", core.PermNotificationWrite, s.listPushSubscriptions)
+	route("DELETE /v0/push/subscriptions", core.PermNotificationWrite, s.unsubscribePush)
+	route("DELETE /v0/push/subscriptions/{subscription}", core.PermNotificationWrite, s.unsubscribePush)
 	if s.MCP != nil {
 		auth.Handle("/mcp", s.MCP)
 	}

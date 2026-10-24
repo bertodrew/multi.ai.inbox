@@ -138,6 +138,18 @@ spec:
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_STRIPE_SECRET_KEY, optional: true } }
             - name: MAI_STRIPE_WEBHOOK_SECRET
               valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_STRIPE_WEBHOOK_SECRET, optional: true } }
+            # Web push (env-gated the same way). MAI_VAPID_KEYS holds both halves
+            # in one JSON document, so the key material stays a single secret:
+            #   kubectl -n mai create secret generic mai-secrets \
+            #     --from-literal=MAI_VAPID_KEYS='{"public_key":"...","private_key":"..."}' \
+            #     --dry-run=client -o yaml | kubectl apply -f -
+            # The subject is a contact, not a secret: it belongs in mai-config.
+            # Generate the pair once (docs/push-enable.md); a rotating key
+            # invalidates every existing subscription. With it missing the pod
+            # still starts, every /v0/push route answers 501 push_disabled and
+            # `mai admin push-status` says what is absent.
+            - name: MAI_VAPID_KEYS
+              valueFrom: { secretKeyRef: { name: mai-secrets, key: MAI_VAPID_KEYS, optional: true } }
           ports:
             - { name: http, containerPort: 8080 }
             - { name: smtp, containerPort: 2525 }

@@ -145,8 +145,9 @@ function offlineResponse() {
 }
 
 // Web push. The notification is rendered from the message the push service
-// delivers; nothing is fetched. The server side of this is not built yet, see
-// web/docs/push-design.md.
+// delivers; nothing is fetched. The payload holds the inbox address and a path
+// into the console, never mail content: it is read on a lock screen. See
+// web/docs/push-design.md and internal/core/push.go.
 self.addEventListener("push", (event) => {
   let payload = {};
   if (event.data) {
@@ -164,10 +165,18 @@ self.addEventListener("push", (event) => {
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
       tag: typeof payload.tag === "string" && payload.tag ? payload.tag : "mai-mail",
-      data: { url: "/console/" },
+      data: { url: consolePath(payload.url) },
     }),
   );
 });
+
+// A path this origin can open. Anything absolute, of another origin or not a
+// path at all falls back to the console home: a payload can never navigate the
+// installed app somewhere else.
+function consolePath(value) {
+  if (typeof value !== "string" || !value.startsWith("/")) return "/console/";
+  return value;
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

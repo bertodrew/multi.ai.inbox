@@ -13,6 +13,8 @@
 //	mai admin org-delete -org <uuid> -confirm <org name>  revoke keys, print a final summary, delete with cascade
 //	mai admin check-port25                      can this host deliver directly?
 //	mai admin billing-status                    resolved Stripe settings, keys redacted (offline)
+//	mai admin push-status                       resolved VAPID settings, keys redacted (offline)
+//	mai admin vapid-keygen                      print a fresh VAPID pair once, for MAI_VAPID_KEYS (offline)
 //	mai mcp-config -url https://api.example.eu  MCP setup for Claude Code, Cursor, Codex
 package main
 
@@ -81,6 +83,10 @@ type config struct {
 	SendMaxAge     time.Duration
 	Billing        *core.Billing
 	BillingStatus  core.BillingStatus
+	// Web push (VAPID). A nil Push disables the push routes with 501; the
+	// status says what is missing and never carries a key.
+	Push       *core.Push
+	PushStatus core.PushStatus
 	// People signing in. AuthSecret enables the endpoints at all; the OAuth
 	// client ids are optional, a provider without them answers 501.
 	AuthSecret     string
@@ -131,6 +137,8 @@ func loadConfig() config {
 	// Billing is env-gated: core.LoadBilling returns nil (501 billing_disabled
 	// everywhere) unless both Stripe secrets are set. Secrets are never printed.
 	billing, billingStatus := core.LoadBilling(os.Getenv)
+	// Push is env-gated the same way: no VAPID key pair, no push endpoint.
+	push, pushStatus := core.LoadPush(os.Getenv)
 	return config{
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		SystemDBURL:    os.Getenv("MAI_SYSTEM_DATABASE_URL"),
@@ -159,6 +167,8 @@ func loadConfig() config {
 		SendMaxAge:     sendMaxAge,
 		Billing:        billing,
 		BillingStatus:  billingStatus,
+		Push:           push,
+		PushStatus:     pushStatus,
 		AuthSecret:     os.Getenv("MAI_AUTH_SECRET"),
 		AuthMailFrom:   authMailFrom,
 		WebOrigin:      env("MAI_WEB_ORIGIN", "https://aimulti.inbox"),
@@ -279,7 +289,7 @@ func withDB(ctx context.Context, cfg config, fn func(*db.DB) error) error {
 func service(d *db.DB, cfg config) *core.Service {
 	svc := &core.Service{DB: d, Blob: cfg.Blob, SharedDomain: cfg.SharedDomain,
 		Hostname: cfg.Hostname, AllowHTTPWebhooks: cfg.AllowHTTPHook, SPFInclude: cfg.SPFInclude,
-		SendMaxAge: cfg.SendMaxAge, AntivirusFailClosed: cfg.ClamdFailClose, Billing: cfg.Billing}
+		SendMaxAge: cfg.SendMaxAge, AntivirusFailClosed: cfg.ClamdFailClose, Billing: cfg.Billing, Push: cfg.Push}
 	if cfg.AuthSecret != "" {
 		// Without a relay a magic link cannot be delivered, so the link
 		// endpoint reports 501 and OAuth keeps working.
@@ -299,7 +309,7 @@ func service(d *db.DB, cfg config) *core.Service {
 
 func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	roles := fs.String("roles", "api,mx,sender,dispatcher,enrich,scheduler", "comma separated roles to run")
+	roles := fs.String("roles", "api,mx,sender,dispatcher,enrich,scheduler,push", "comma separated roles to run")
 	_ = fs.Parse(args)
 	enabled := map[string]bool{}
 	for _, r := range strings.Split(*roles, ",") {
@@ -344,6 +354,11 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 					"hint", "set MAI_STRIPE_SECRET_KEY and MAI_STRIPE_WEBHOOK_SECRET; mai admin billing-status shows what is missing")
 			} else {
 				log.Info("billing enabled", "prices", len(cfg.Billing.Prices), "warnings", cfg.BillingStatus.Warnings)
+			}
+			if cfg.Push == nil {
+				log.Info("web push disabled", "hint", "set MAI_VAPID_KEYS or MAI_VAPID_PRIVATE_KEY, MAI_VAPID_PUBLIC_KEY and MAI_VAPID_SUBJECT; mai admin push-status shows what is missing")
+			} else {
+				log.Info("web push enabled", "warnings", cfg.PushStatus.Warnings)
 			}
 			srv.Done = ctx.Done() // open event streams end so shutdown does not wait for them
 			httpSrv := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -412,6 +427,13 @@ func serve(ctx context.Context, cfg config, log *slog.Logger, args []string) err
 			wg.Add(1)
 			go func() { defer wg.Done(); sc.Run(ctx) }()
 		}
+		if enabled["push"] {
+			// Delivery in its own role: a slow push service occupies this loop,
+			// never a request handler or the SMTP edge.
+			ps := &core.PushSender{Svc: svc, Log: log, Client: dispatcher.SafeClient()}
+			wg.Add(1)
+			go func() { defer wg.Done(); ps.Run(ctx) }()
+		}
 		select {
 		case err := <-errs:
 			return err
@@ -455,6 +477,16 @@ func admin(ctx context.Context, cfg config, args []string) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(cfg.BillingStatus)
+	}
+	if args[0] == "push-status" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(cfg.PushStatus)
+	}
+	// vapid-keygen needs neither a database nor a network: it prints a fresh
+	// key pair once, as the JSON document MAI_VAPID_KEYS expects.
+	if args[0] == "vapid-keygen" {
+		return vapidKeygen()
 	}
 	if args[0] == "check-port25" {
 		return checkPort25(ctx)
@@ -596,6 +628,25 @@ func seed(ctx context.Context, svc *core.Service, cfg config) (*seedResult, erro
 		}
 	}
 	return res, nil
+}
+
+// vapidKeygen prints a fresh VAPID key pair once, as the JSON document
+// MAI_VAPID_KEYS expects. Run it where the secret store is reachable, put the
+// output there, and give the public half to the web build. It never touches the
+// database and never logs the key: stdout is the only copy.
+func vapidKeygen() error {
+	public, private, err := core.GenerateVAPIDKeys()
+	if err != nil {
+		return err
+	}
+	doc, err := json.MarshalIndent(map[string]string{"public_key": public, "private_key": private}, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "This pair is shown once. Store it as MAI_VAPID_KEYS (secret) and build the console with "+
+		"NEXT_PUBLIC_MAI_VAPID_PUBLIC_KEY set to the public half. Rotating it unsubscribes every device.")
+	_, err = os.Stdout.Write(append(doc, '\n'))
+	return err
 }
 
 // checkPort25 tells whether outbound SMTP is open on this host (Hetzner

@@ -32,6 +32,10 @@ export const CONSOLE_ENDPOINTS = [
   "PATCH /v0/tickets/{ticket}",
   "POST /v0/tickets/{ticket}/notes",
   "POST /v0/tickets/{ticket}/reply",
+  "POST /v0/push/subscriptions",
+  "GET /v0/push/subscriptions",
+  "DELETE /v0/push/subscriptions",
+  "DELETE /v0/push/subscriptions/{subscription}",
 ] as const;
 
 export type Endpoint = (typeof CONSOLE_ENDPOINTS)[number];

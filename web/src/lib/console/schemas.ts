@@ -36,6 +36,7 @@ export const PERMISSIONS = [
   "data_delete",
   "ticket_read",
   "ticket_write",
+  "notification_write",
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;
@@ -210,6 +211,19 @@ export const Webhook = z.object({
 export type Webhook = z.infer<typeof Webhook>;
 
 export const WebhookList = z.object({ count: z.number().int(), webhooks: list(Webhook) });
+
+// A web push device as the API reports it: the endpoint and the two browser
+// keys are capabilities and never come back, so the console only shows a label.
+export const PushSubscription = z.object({
+  push_subscription_id: z.string(),
+  device: z.string(),
+  user_agent: z.string(),
+  created_at: timestamp,
+  last_used_at: timestamp.nullish(),
+});
+export type PushSubscription = z.infer<typeof PushSubscription>;
+
+export const PushSubscriptionList = z.object({ count: z.number().int(), push_subscriptions: list(PushSubscription) });
 
 export const DnsRecord = z.object({
   type: z.string(),

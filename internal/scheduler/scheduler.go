@@ -47,6 +47,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 		} else if n > 0 {
 			s.Log.Info("expired audit entries purged", "count", n)
 		}
+		// Push jobs are a queue, not a log: finished rows go after a week.
+		if n, err := s.Svc.PurgePushJobs(ctx); err != nil {
+			s.Log.Error("push job retention sweep failed", "err", err)
+		} else if n > 0 {
+			s.Log.Info("finished push jobs purged", "count", n)
+		}
 		if n, err := s.Svc.PurgeExpiredQuarantine(ctx); err != nil {
 			s.Log.Error("quarantine purge failed", "err", err)
 		} else if n > 0 {

@@ -31,6 +31,13 @@ type Bodies = {
   "PATCH /v0/tickets/{ticket}": UpdateTicketBody;
   "POST /v0/tickets/{ticket}/notes": { body: string };
   "POST /v0/tickets/{ticket}/reply": ReplyBody;
+  "POST /v0/push/subscriptions": {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    expiration_time: number | null;
+    user_agent: string;
+  };
+  "DELETE /v0/push/subscriptions": { endpoint: string };
 };
 type BodyOf<E extends Endpoint> = E extends keyof Bodies ? Bodies[E] : never;
 

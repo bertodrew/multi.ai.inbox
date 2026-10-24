@@ -51,11 +51,16 @@ const (
 	// reply also needs message_send.
 	PermTicketRead  = "ticket_read"
 	PermTicketWrite = "ticket_write"
+	// PermNotificationWrite registers and drops a device for web push
+	// (POST and DELETE /v0/push/subscriptions). It wakes a browser, it does
+	// not read mail: a key without message_read still cannot see what arrived.
+	PermNotificationWrite = "notification_write"
 )
 
 var AllPermissions = []string{PermInboxRead, PermInboxWrite, PermMessageRead, PermMessageSend, PermMessageUpdate,
 	PermDomainRead, PermDomainWrite, PermWebhookRead, PermWebhookWrite, PermAPIKeyRead, PermAPIKeyWrite, PermAuditRead,
-	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite, PermDataExport, PermTicketRead, PermTicketWrite}
+	PermMessageReview, PermMessageRelease, PermBillingRead, PermBillingWrite, PermDataExport, PermTicketRead, PermTicketWrite,
+	PermNotificationWrite}
 
 // ExplicitPermissions are never implied by a full access key (nil
 // permissions): a key holds them only when they are listed, so an agent with a

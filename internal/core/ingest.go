@@ -225,7 +225,18 @@ func (s *Service) emitEvent(ctx context.Context, tx pgx.Tx, eventType, address, 
 		m.Text, m.HTML, m.ExtractedText, m.Preview = nil, nil, nil, ""
 		t.Preview = ""
 	}
-	return insertEvent(ctx, tx, m.orgID, m.inboxUUID, eventType, map[string]any{"message": m, "thread": t})
+	if err := insertEvent(ctx, tx, m.orgID, m.inboxUUID, eventType, map[string]any{"message": m, "thread": t}); err != nil {
+		return err
+	}
+	// Web push hangs off the same event, so it fires exactly when
+	// message.received does: at ingest for an organization that does not hold
+	// mail for screening, and on release otherwise. Never for spam, never for
+	// a message still held. The call only writes rows in this transaction, so
+	// the delivery of mail never waits for a push service.
+	if eventType == "message.received" {
+		s.enqueuePush(ctx, tx, m.orgID, m.InboxID, m.ThreadID)
+	}
+	return nil
 }
 
 func insertEvent(ctx context.Context, tx pgx.Tx, orgID, inboxID, eventType string, data map[string]any) error {
