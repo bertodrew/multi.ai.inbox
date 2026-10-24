@@ -22,8 +22,10 @@ kind: CronJob
 metadata:
   name: restore-drill
 spec:
-  # Mondays 04:43 UTC, after the 00:17 and before the 06:17 backup.
-  schedule: "43 4 * * 1"
+  # :43 every 6 hours — 26 min after each backup (backup: "17 */6 * * *").
+  # With HC_RESTORE_DRILL_URL Period 7h + Grace 1h: the drill pings every 6h,
+  # so the monitor never expires between runs.
+  schedule: "43 */6 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -128,7 +130,7 @@ spec:
                                 where n.nspname = 'public' and c.relkind = 'r' and not c.relforcerowsecurity
                                   and exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'org_id' and not a.attisdropped)")
                   [ -z "$unforced" ] || fail "tables with org_id but without FORCE ROW LEVEL SECURITY: $unforced"
-                  echo "newest message: $(q 'select coalesce(max(created_at)::text, $$none$$) from messages')"
+                  echo "newest message: $(q 'select max(created_at)::text from messages')"
                   q "(select raw_key from messages where raw_key is not null order by created_at desc limit $BLOB_SAMPLE)
                      union all (select storage_key from attachments order by created_at desc limit $BLOB_SAMPLE)" > /work/blob-keys.txt
                   echo "sampled $(wc -l < /work/blob-keys.txt) blob keys"
