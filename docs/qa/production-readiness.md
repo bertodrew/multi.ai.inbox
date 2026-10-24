@@ -55,7 +55,8 @@ con lo stesso nome accessibile.
 
 | Cosa | Perché | Cosa serve |
 |---|---|---|
-| Recapito outbound reale (SPF, DKIM, DMARC allineati, spam) | porta 25 in uscita bloccata da Hetzner, si esce via relay Brevo | unblock porta 25 piu dominio reale con i record pubblicati |
+| Recapito outbound reale (SPF, DKIM, DMARC allineati, spam) | **misurato: il relay Brevo risponde `525 5.7.1 Unauthorized IP address` all'IP del server**, e la porta 25 in uscita e bloccata da Hetzner, quindi oggi non esce posta verso l'esterno | autorizzare `162.55.213.24` in Brevo (SMTP e API, IP autorizzati) oppure ottenere l'unblock della 25, poi dominio reale con i record pubblicati |
+| Iscrizione self service con email o Google | senza un mittente che il relay accetta nessun magic link arriva, e Google non ha client id | le due cose sopra piu le credenziali OAuth |
 | Magic link | `MAI_AUTH_SECRET` assente: l'endpoint risponde `auth_disabled`, quindi il form ora funziona ma non manda nulla | generare il secret, poi `kubectl -n mai rollout restart deploy/mai` |
 | Google, GitHub | client id e secret non configurati su staging | credenziali OAuth del founder |
 | Stripe live (checkout, portal, webhook firmato) | chiavi di test assenti e prezzi non creati | chiavi Stripe e i tre price id |
