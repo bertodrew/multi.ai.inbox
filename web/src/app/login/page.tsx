@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ButtonLink, Container, Eyebrow } from "@/components/ui";
+import { AuthNotice } from "@/components/auth/AuthNotice";
 import { SessionFromHash } from "@/components/auth/SessionFromHash";
 
 export const metadata: Metadata = {
@@ -16,6 +17,7 @@ export default function LoginPage() {
   return (
     <>
       <SessionFromHash />
+      <AuthNotice />
     <Container className="py-16 sm:py-24">
       <div className="mx-auto w-full max-w-md">
         <Eyebrow>Console</Eyebrow>
