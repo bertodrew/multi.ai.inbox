@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ButtonLink, Container, Eyebrow } from "@/components/ui";
+import { SessionFromHash } from "@/components/auth/SessionFromHash";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -13,6 +14,8 @@ const oauth = (provider: "google" | "github"): string => `/v0/auth/oauth/${provi
 
 export default function LoginPage() {
   return (
+    <>
+      <SessionFromHash />
     <Container className="py-16 sm:py-24">
       <div className="mx-auto w-full max-w-md">
         <Eyebrow>Console</Eyebrow>
@@ -74,5 +77,6 @@ export default function LoginPage() {
         </p>
       </div>
     </Container>
+    </>
   );
 }
