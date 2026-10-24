@@ -71,7 +71,10 @@ export default function Home() {
               arrive as signed webhooks, and the data is stored on servers in Germany.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <ButtonLink href="/docs/quickstart/">Read the quickstart</ButtonLink>
+              <ButtonLink href="/console/">Open the console</ButtonLink>
+              <ButtonLink href="/docs/quickstart/" variant="secondary">
+                Read the quickstart
+              </ButtonLink>
               <ButtonLink href="/pricing/" variant="secondary">
                 See pricing
               </ButtonLink>
@@ -107,6 +110,49 @@ export default function Home() {
               </li>
             ))}
           </ol>
+        </Container>
+      </section>
+
+      <section id="humans" aria-labelledby="humans-title" className="border-t border-border py-20">
+        <Container className="grid gap-10 lg:grid-cols-[1fr_1.6fr]">
+          <SectionHeading
+            id="humans-title"
+            eyebrow="For the humans"
+            title="A person can read this mail too."
+            intro="The API is for the agent. The console is for whoever has to step in: the same threads, a three pane reader, and the support queue, in a browser, on a phone, installable as an app."
+          />
+          <ul className="grid gap-4 sm:grid-cols-2">
+            <li className="rounded-xl border border-border bg-card p-5">
+              <h3 className="font-display text-lg font-semibold">Read the mail</h3>
+              <p className="mt-2 text-sm text-muted">
+                Threads, sanitised HTML, blocked remote images and attachments, with the gatekeeper verdict next to every
+                message.
+              </p>
+            </li>
+            <li className="rounded-xl border border-border bg-card p-5">
+              <h3 className="font-display text-lg font-semibold">Work the queue</h3>
+              <p className="mt-2 text-sm text-muted">
+                A thread can open a ticket with a number, an owner and an SLA in business hours. A ticket is the thread:
+                no copy, no sync.
+              </p>
+            </li>
+            <li className="rounded-xl border border-border bg-card p-5">
+              <h3 className="font-display text-lg font-semibold">Answer as a person</h3>
+              <p className="mt-2 text-sm text-muted">
+                Replies leave on the same thread with the right headers, and internal notes never reach the customer.
+              </p>
+            </li>
+            <li className="rounded-xl border border-border bg-card p-5">
+              <h3 className="font-display text-lg font-semibold">No separate deployment</h3>
+              <p className="mt-2 text-sm text-muted">
+                One origin, one session, no cookies on this site. Sign in with an API key today; email and OAuth sign in
+                arrive with the brand domain.
+              </p>
+            </li>
+          </ul>
+        </Container>
+        <Container className="mt-8">
+          <ButtonLink href="/console/">Open the console</ButtonLink>
         </Container>
       </section>
 
