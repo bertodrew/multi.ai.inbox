@@ -200,6 +200,19 @@ func (d *DB) Migrate(ctx context.Context) error {
 			return err
 		}
 		err = d.tx(ctx, func(tx pgx.Tx) error {
+			// Two replicas can start at the same time, for example a rolling
+			// deploy against a fresh database. The lock makes the second one
+			// wait, and the re-check makes it a no-op instead of a race.
+			if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock(hashtext('mai:migrate'))"); err != nil {
+				return err
+			}
+			var done bool
+			if err := tx.QueryRow(ctx, "select exists(select 1 from schema_migrations where name = $1)", short).Scan(&done); err != nil {
+				return err
+			}
+			if done {
+				return nil
+			}
 			// Data migrations see every tenant (the owner is a member of mai_system).
 			if _, err := tx.Exec(ctx, "select set_config('app.system', 'on', true)"); err != nil {
 				return err
