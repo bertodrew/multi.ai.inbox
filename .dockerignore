@@ -1,0 +1,30 @@
+# Build context hygiene. Without this, `COPY web/ web/` in deploy/landing/Dockerfile
+# brings a .next built on the developer's machine into the image, and the build
+# inside the image then fails on artifacts that only exist in that cache (the
+# Turbopack font modules), or worse, succeeds with binaries from another
+# platform. It also keeps secrets and test output out of the context.
+
+.git
+.github
+**/node_modules
+web/.next
+web/out
+web/.turbo
+tests/e2e/node_modules
+tests/acceptance/node_modules
+tests/e2e/test-results
+tests/acceptance/test-results
+tests/e2e/playwright-report
+tests/acceptance/playwright-report
+
+# Never ship a secret, even by accident.
+.env
+.env.*
+!.env.example
+**/*.pem
+**/*.key
+
+# Local noise.
+.DS_Store
+*.log
+/tmp
