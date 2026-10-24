@@ -75,6 +75,7 @@ export function StepDomain({
               spellCheck={false}
               placeholder="your-company.eu"
               aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
             />
           </Field>
 

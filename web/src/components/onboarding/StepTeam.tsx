@@ -75,6 +75,7 @@ export function StepTeam({
               disabled={full}
               placeholder="ada@example.com"
               aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
             />
           </Field>
         </div>

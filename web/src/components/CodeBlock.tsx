@@ -10,7 +10,7 @@ export function CodeBlock({ sample, showLabel = true }: { sample: CodeSample; sh
         </span>
         <CopyButton text={sample.code} />
       </figcaption>
-      <pre className="overflow-x-auto p-4 text-[13px] leading-relaxed">
+      <pre className="overflow-x-auto p-4 text-[13px] leading-relaxed" tabIndex={0}>
         <code className="font-mono">{sample.code}</code>
       </pre>
     </figure>

@@ -27,7 +27,7 @@ export function CodeTabs({ samples, label }: { samples: CodeSample[]; label: str
             <figcaption className="border-b border-white/10 px-4 py-3 font-mono text-xs tracking-[0.08em] text-code-fg/70 uppercase">
               {s.label}
             </figcaption>
-            <pre className="overflow-x-auto p-4 text-[13px] leading-relaxed">
+            <pre className="overflow-x-auto p-4 text-[13px] leading-relaxed" tabIndex={0}>
               <code className="font-mono">{s.code}</code>
             </pre>
           </figure>
@@ -80,7 +80,7 @@ export function CodeTabs({ samples, label }: { samples: CodeSample[]; label: str
         <CopyButton text={current.code} className="shrink-0" />
       </div>
       <div role="tabpanel" id={`${baseId}-panel`} aria-labelledby={`${baseId}-tab-${active}`} tabIndex={0}>
-        <pre className="overflow-x-auto p-4 text-[13px] leading-relaxed">
+        <pre className="overflow-x-auto p-4 text-[13px] leading-relaxed" tabIndex={0}>
           <code className="font-mono">{current.code}</code>
         </pre>
       </div>

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ButtonLink, Container, Eyebrow } from "@/components/ui";
-import { API_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -10,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 /** Where a browser starts an OAuth flow; the API redirects to the provider. */
-const oauth = (provider: "google" | "github"): string => `${API_URL}/v0/auth/oauth/${provider}/start?redirect=1`;
+const oauth = (provider: "google" | "github"): string => `/v0/auth/oauth/${provider}/start?redirect=1`;
 
 export default function LoginPage() {
   return (
@@ -38,7 +37,7 @@ export default function LoginPage() {
             <span className="h-px flex-1 bg-border" aria-hidden="true" />
           </div>
 
-          <form action={`${API_URL}/v0/auth/magic-link`} method="post" className="flex flex-col gap-3">
+          <form action="/v0/auth/magic-link" method="post" className="flex flex-col gap-3">
             <input type="hidden" name="redirect_after" value="/login/" />
             <label htmlFor="email" className="text-sm font-medium">
               Work email

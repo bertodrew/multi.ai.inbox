@@ -97,7 +97,7 @@ export function Field({
       {children}
       {hint ? <p className="text-xs text-muted">{hint}</p> : null}
       {error ? (
-        <p className="text-sm text-danger" role="alert">
+        <p className="text-sm text-danger" role="alert" id={`${id}-error`}>
           {error}
         </p>
       ) : null}

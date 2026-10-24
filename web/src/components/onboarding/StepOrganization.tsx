@@ -37,6 +37,7 @@ export function StepOrganization({
             maxLength={MAX_ORG_NAME}
             placeholder="Acme GmbH"
             aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
           />
         </Field>
       </div>
