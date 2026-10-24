@@ -30,7 +30,9 @@ test.describe("compose", () => {
     await page.locator("#compose-text").fill("Sent by the acceptance suite through the console composer.");
     await page.getByRole("button", { name: "Send", exact: true }).click();
 
-    const queued = page.getByRole("status").filter({ hasText: /queued/i });
+    // Two things carry the confirmation: the banner and a toast, both live
+    // regions. First match is enough, the point is that one is visible.
+    const queued = page.getByRole("status").filter({ hasText: /queued/i }).first();
     const ok = await queued.waitFor({ state: "visible", timeout: 25_000 }).then(() => true).catch(() => false);
     await probe.check("the composer reports the message as queued", ok, await page.locator("body").innerText().then((t) => t.slice(0, 300)));
 
@@ -53,12 +55,16 @@ test.describe("compose", () => {
     if (shown) {
       await row.click();
       const conversation = page.locator('section[aria-label="Conversation"]');
-      const body = await conversation.innerText().catch(() => "");
-      await probe.check(
-        "opening the new thread shows the sent text",
-        body.includes("acceptance suite through the console composer"),
-        body.slice(0, 200),
-      );
+      // The reader fetches the thread after the click: wait for the text
+      // instead of sampling the pane once.
+      const needle = "acceptance suite through the console composer";
+      let body = "";
+      for (let i = 0; i < 20; i++) {
+        body = await conversation.innerText().catch(() => "");
+        if (body.includes(needle)) break;
+        await page.waitForTimeout(500);
+      }
+      await probe.check("opening the new thread shows the sent text", body.includes(needle), body.slice(0, 200));
     }
 
     await probe.clean("new thread in the inbox");

@@ -18,6 +18,8 @@ comando eseguito e il suo output; le righe "non testabile" dicono cosa serve.
 | Suite Go end to end | `go test ./internal/e2e/` con Postgres reale e i tre ruoli di produzione | PASS (dopo i fix sotto) |
 | Gate statici | `gofmt`, `go build`, `go vet`, `go test ./...`, SDK Go, `npm run gen`, `tsc`, `eslint`, `next build`, `check-copy`, `check-pwa` | PASS |
 | Deploy | immagine in cluster 1/1, `healthz` 204, sito e console 200, proxy same-origin `/v0` `/v1` attivo con CSP `connect-src 'self'` | PASS |
+| Console nel browser | suite di accettazione Playwright con chiave reale, 26 spec su desktop e 390 px, axe su ogni pagina | 24 PASS, 0 FAIL, 2 saltati per configurazione |
+| Push web | iscrizione, invio su `message.received`, isolamento fra due organizzazioni, servizio irraggiungibile senza perdere la posta | PASS (12 sottotest) |
 
 ## 2. Difetti trovati e corretti
 
@@ -40,16 +42,22 @@ comando eseguito e il suo output; le righe "non testabile" dicono cosa serve.
 
 ## 3. Difetti trovati dalla suite di accettazione nel browser
 
-Vedi `docs/qa/acceptance-report.md`, prodotto dalla passata Playwright. Il file
-elenca i casi con esito e i difetti con passi di riproduzione; qui vanno riportati
-solo quelli bloccanti o alti, e chiusi prima del go live.
+Sette, tutti chiusi. Il dettaglio con stato e gravita sta in
+`docs/qa/acceptance-report.md`. I due bloccanti erano lo stesso sintomo visto da
+due lati: il form del magic link veniva rifiutato dalla CSP, prima perche
+puntava a `api.<host>` e poi perche `MAI_WEB_ORIGIN` portava il 303 su un'altra
+origine. Gli altri: la risposta del reply interpretata con lo schema sbagliato,
+il secondo reply senza traccia nella timeline, gli attributi `style` della lista
+virtualizzata, i campioni di codice non raggiungibili da tastiera, due pannelli
+con lo stesso nome accessibile.
 
 ## 4. Non testabile oggi, e perché
 
 | Cosa | Perché | Cosa serve |
 |---|---|---|
 | Recapito outbound reale (SPF, DKIM, DMARC allineati, spam) | porta 25 in uscita bloccata da Hetzner, si esce via relay Brevo | unblock porta 25 piu dominio reale con i record pubblicati |
-| Magic link, Google, GitHub | client id e secret non configurati su staging | credenziali OAuth del founder |
+| Magic link | `MAI_AUTH_SECRET` assente: l'endpoint risponde `auth_disabled`, quindi il form ora funziona ma non manda nulla | generare il secret, poi `kubectl -n mai rollout restart deploy/mai` |
+| Google, GitHub | client id e secret non configurati su staging | credenziali OAuth del founder |
 | Stripe live (checkout, portal, webhook firmato) | chiavi di test assenti e prezzi non creati | chiavi Stripe e i tre price id |
 | Installazione PWA su iPhone fisico e push iOS | serve un dispositivo e una chiave VAPID | chiave VAPID e un telefono |
 | Firma legale | review v2 in attesa di un legale umano | firma del revisore |

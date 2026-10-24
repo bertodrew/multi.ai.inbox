@@ -57,7 +57,12 @@ test.describe("onboarding", () => {
     await page.waitForURL(/\/onboarding\/done\/?/, { timeout: 20_000 }).catch(() => undefined);
     const landed = /\/onboarding\/done\/?/.test(page.url());
     await probe.check("finishing lands on the checklist route", landed, page.url());
-    await probe.check("the checklist is rendered", await page.getByRole("heading", { name: "Setup checklist" }).isVisible().catch(() => false));
+    const checklist = await page
+      .getByRole("heading", { name: "Setup checklist" })
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    await probe.check("the checklist is rendered", checklist, page.url());
 
     const overflow = await noHorizontalOverflow(page);
     await probe.check("the checklist does not scroll sideways", overflow.ok, overflow.detail);

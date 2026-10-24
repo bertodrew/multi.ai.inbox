@@ -87,7 +87,12 @@ test.describe("tickets", () => {
     await row.click();
 
     const detail = page.getByRole("heading", { level: 2, name: subject });
-    await probe.check("the ticket detail opens", await detail.isVisible());
+    // Opening a ticket is a fetch: wait for the pane instead of sampling it.
+    const paneOpen = await detail
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    await probe.check("the ticket detail opens", paneOpen, page.url());
     await probe.check("the ticket number is shown", (await page.getByText(new RegExp(`T-${ticket.number}`)).count()) > 0);
 
     const timelineBefore = await timelineCount(page);
